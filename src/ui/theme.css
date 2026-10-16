@@ -1,0 +1,84 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-paper: #faf8f3;
+  --color-ink: #16140f;
+  --color-muted: #6b675e;
+  --color-rule: #e4dfd3;
+  --color-raffles: #a6192e;
+  --color-raffles-dark: #861425;
+  --color-gold: #c9a227;
+  --color-gold-soft: #f6efd6;
+  --color-ok: #1f7a4d;
+  --color-ok-bg: #e6f2eb;
+  --color-grey: #5e6470;
+  --color-grey-bg: #ecedef;
+  --color-error: #b42318;
+  --color-error-bg: #fbeae8;
+  --color-warning: #b54708;
+  --color-warning-bg: #fcf0e3;
+  --color-card: #ffffff;
+
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --text-cap: 12px;
+  --text-cap--line-height: 16px;
+  --text-body: 13px;
+  --text-body--line-height: 18px;
+  --text-ui: 14px;
+  --text-ui--line-height: 20px;
+  --text-lead: 16px;
+  --text-lead--line-height: 22px;
+  --text-title: 20px;
+  --text-title--line-height: 26px;
+  --text-display: 28px;
+  --text-display--line-height: 34px;
+}
+
+@layer base {
+  html,
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-gold);
+    outline-offset: 2px;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  dialog::backdrop {
+    background: rgb(22 20 15 / 0.35);
+  }
+  input[type='number'] {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  input[type='range'] {
+    accent-color: var(--color-raffles);
+  }
+}
+
+@layer utilities {
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .motion {
+    transition-property: opacity, transform, background-color, color, border-color;
+    transition-duration: 150ms;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}

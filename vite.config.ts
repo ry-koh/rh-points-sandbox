@@ -1,10 +1,11 @@
+import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
 const COVERAGE_THRESHOLD = 80
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   test: {
     include: ['src/**/*.test.ts'],
     coverage: {

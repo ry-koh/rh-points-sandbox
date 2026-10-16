@@ -1,4 +1,4 @@
-# RH Hall Points Spec — v1
+# RH Hall Points Spec — v1.1
 
 Authoritative rules for the Raffles Hall AY26-27 points system. Where this document and the
 CLAUDE.md summary differ, this document wins. Every number below is a **config variable**
@@ -185,7 +185,13 @@ warning ("IHG for a non-member"). Placement points are given to **all members** 
    memberships remain their own slots.
 2. Choose the pairing that **maximises the weighted total** (step 3), trying every
    pairing (every matching on the resident's `0.5x` memberships, including the empty one).
-   If a resident has more than 10 `0.5x` memberships, raise a warning (search size).
+   If a resident has more than 10 `0.5x` memberships, raise a warning (search size) and
+   instead pair them greedily: sort by `stayNet` descending and pair 1st+2nd, 3rd+4th, …
+   (an odd one out stays unpaired).
+   When several pairings tie on the total (compared at 6 d.p.), pick the one with the
+   **fewest pairs**, then the one whose sorted list of pair keys (each pair written as its
+   two `ccaID`s in ascending order, joined by `+`) is lowest in lexicographic order, so the
+   breakdown is deterministic.
 3. Sort slot values descending; slot at position `i` (0-indexed) gets weight
    `w(i) = stayingWeights[i]` if `i < len(stayingWeights)`, else
    `stayingWeights[last] / 2^(i - len + 1)` (halve per position).
@@ -226,7 +232,7 @@ positions).
   (`B = G` green/grey, `B = G + H` grey/white), the group straddles it if `a <= B < b`.
   Every resident in the group gets status `TIE green/grey` (or `TIE grey/white`) plus
   `k of n seats`, where `n = b - a + 1` and `k = B - a + 1` (the number of tied residents
-  who fit above the boundary). A group straddling both boundaries carries both flags.
+  who fit above the boundary). A tie group straddling both boundaries carries both flags.
   Ties are not broken by the tool.
 
 ### 5.3 Bidding lists (male, female)
@@ -242,7 +248,7 @@ positions).
 - All sem-2 residents (both genders), ranked by `bidding` descending, competition ranking.
   Sem-2 residents have no staying list.
 - The top `sem2Spots` positions get a spot; a tie group straddling the boundary is flagged
-  `TIE spot/no spot` with `k of n seats`, using the same rule as 5.2.
+  `TIE spot/no spot` (the sem-2 flag) with `k of n seats`, using the same rule as 5.2.
 - In `"separate"` mode this is the only place sem-2 residents appear. In `"merged"` mode it is
   still produced, and spot-holders are also inserted into their gender's bidding list.
 
@@ -260,7 +266,11 @@ role).
 3. If the resident was green and the new `staying` is **strictly below** the frozen cut-off
    (compared at 6 d.p.), mark them **removed** and promote the top grey resident to green.
    The promotion may itself land in a tie group, which is then flagged as in 5.2. A resident
-   at or above the cut-off stays green. The cut-off is not recomputed after a removal.
+   at or above the cut-off stays green. The frozen cut-off is **never recomputed**, not
+   after a removal and not after further penalties.
+   Only green residents can be "removed".
+   If the resident was **grey**, recompute them and re-sort the non-green part of the
+   list, so they may fall to white. If they were **white**, just recompute.
 4. Bidding is recomputed for the resident but marked
    **"informational — rooms may already be picked"**.
 
@@ -272,7 +282,8 @@ Run on import. The RH app uses the identical mean/SD check.
 
 Computed over the CCA's **full `basePoints`** — leaders included, semester-only members
 **unhalved** — using the **population SD (÷N)**. Bounds are inclusive with tolerance
-`1e-9`. The range is the CCA's override fields, else `meanSdDefault`, field by field.
+`1e-9`. The range is the CCA's override fields, else `meanSdDefault`; each of the four
+range fields falls back to `meanSdDefault` independently.
 
 ### 7.2 ERRORS
 
@@ -291,6 +302,10 @@ override is listed on the outputs.
 - an outgoing leader in a CCA whose outgoing tier/multiplier is blank for the active `outgoingMode`
 - duplicate matric in residents.csv
 - bad `gender`, `sem2` or `aux` value
+- ihg.csv `matric` not in residents.csv
+- ihg.csv `ccaID` not in ccas.csv
+- an `outgoingTier` name in ccas.csv that is not in `outgoingTiers`
+- an `outgoingMultiplier` in ccas.csv that is not a positive number
 
 ### 7.3 WARNINGS
 

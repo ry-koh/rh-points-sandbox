@@ -1,6 +1,7 @@
 import { Plus, X } from 'lucide-react'
 import { DEFAULT_CONFIG, type OutgoingTier } from '../../engine'
 import { ChangedMark, MULTIPLIER_SLIDER, NumberField, NumberInput, SegmentedField, differs } from './fields'
+import { INCOMING_LABELS, OUTGOING_MODE_OPTIONS, STACKING_OPTIONS, SETTINGS_TEXT as T } from './labels'
 import { ObjectFields } from './ObjectFields'
 import type { SectionProps } from './Section'
 
@@ -36,7 +37,7 @@ function TiersTable({ config, update }: SectionProps) {
     set(tiers.map((tier, i) => (i === index ? { ...tier, ...change } : tier)))
   return (
     <div className="mr-[42px]">
-      <TableHeader title="Outgoing tiers" changed={differs(tiers, D.outgoingTiers)} onReset={() => set(D.outgoingTiers)} />
+      <TableHeader title={T.outgoingTiers.label} changed={differs(tiers, D.outgoingTiers)} onReset={() => set(D.outgoingTiers)} />
       <ul className="mt-1 divide-y divide-rule border-y border-rule">
         {tiers.map((tier, i) => (
           <li key={i} className="flex items-center gap-1.5 py-1">
@@ -60,7 +61,7 @@ function TiersTable({ config, update }: SectionProps) {
       >
         <Plus aria-hidden size={12} /> Add tier
       </button>
-      <p className="text-cap text-muted">Tier names must match the outgoingTier column in ccas.csv.</p>
+      <p className="text-cap text-muted">{T.outgoingTiers.help}</p>
     </div>
   )
 }
@@ -74,31 +75,27 @@ export function LeaderFields({ config, update }: SectionProps) {
         onChange={(next) => update('incomingMultiplier', next)}
         min={0}
         slider={MULTIPLIER_SLIDER}
-        labels={{ head: 'Incoming Head', vice_head: 'Incoming Vice Head' }}
+        labels={INCOMING_LABELS}
+        help={T.incomingMultiplier.help}
       />
       <SegmentedField
-        label="Outgoing multiplier comes from"
+        label={T.outgoingMode.label}
+        hint={T.outgoingMode.help}
         value={config.outgoingMode}
         defaultValue={D.outgoingMode}
         onChange={(v) => update('outgoingMode', v)}
-        options={[
-          { value: 'tier', label: 'Tier table' },
-          { value: 'manual', label: 'Manual per CCA' },
-        ]}
+        options={OUTGOING_MODE_OPTIONS}
       />
       <div className={config.outgoingMode === 'tier' ? '' : 'opacity-60'}>
         <TiersTable config={config} update={update} />
       </div>
       <SegmentedField
-        label="Outgoing + incoming in one CCA"
+        label={T.stackingMode.label}
+        hint={T.stackingMode.help}
         value={config.stackingMode}
         defaultValue={D.stackingMode}
         onChange={(v) => update('stackingMode', v)}
-        options={[
-          { value: 'max', label: 'Max' },
-          { value: 'additive', label: 'Additive' },
-          { value: 'multiplicative', label: 'Multiply' },
-        ]}
+        options={STACKING_OPTIONS}
       />
     </>
   )
@@ -110,7 +107,8 @@ export function WeightsFields({ config, update }: SectionProps) {
   const last = weights[weights.length - 1] ?? DEFAULT_NEW_MULTIPLIER
   return (
     <div>
-      <TableHeader title="Weight per slot (best first)" changed={differs(weights, D.stayingWeights)} onReset={() => set(D.stayingWeights)} />
+      <TableHeader title={T.stayingWeights.label} changed={differs(weights, D.stayingWeights)} onReset={() => set(D.stayingWeights)} />
+      <p className="pr-10 text-cap text-muted">{T.stayingWeights.help}</p>
       <ol className="mt-1 mr-[42px] grid grid-cols-1">
         {weights.map((weight, i) => (
           <li key={i} className="flex items-center gap-1.5 border-b border-rule py-1">
@@ -128,11 +126,12 @@ export function WeightsFields({ config, update }: SectionProps) {
         <Plus aria-hidden size={12} /> Add slot weight
       </button>
       <SegmentedField
-        label="After the last weight"
+        label={T.stayingWeightTail.label}
+        hint={T.stayingWeightTail.help}
         value={config.stayingWeightTail}
         defaultValue={D.stayingWeightTail}
         onChange={(v) => update('stayingWeightTail', v)}
-        options={[{ value: 'halve', label: 'Halve each further slot' }]}
+        options={[{ value: 'halve', label: 'Keep halving' }]}
       />
     </div>
   )
@@ -142,7 +141,8 @@ export function AuxFields({ config, update }: SectionProps) {
   const table = config.auxTable
   return (
     <>
-      <TableHeader title="Hall points per AUX count" changed={differs(table, D.auxTable)} onReset={() => update('auxTable', D.auxTable)} />
+      <TableHeader title={T.auxTable.label} changed={differs(table, D.auxTable)} onReset={() => update('auxTable', D.auxTable)} />
+      <p className="pr-10 text-cap text-muted">{T.auxTable.help}</p>
       <div className="mt-1 mr-[42px] grid grid-cols-4 gap-x-2 gap-y-1">
         {table.map((points, i) => (
           <label key={i} className="flex flex-col text-cap text-muted">
@@ -152,14 +152,14 @@ export function AuxFields({ config, update }: SectionProps) {
         ))}
       </div>
       <NumberField
-        label="AUX cap"
+        label={T.auxCap.label}
         value={config.auxCap}
         defaultValue={D.auxCap}
         onChange={(v) => update('auxCap', v)}
         min={0}
         max={table.length - 1}
         integer
-        hint="AUX above the cap count as the cap."
+        hint={T.auxCap.help}
       />
     </>
   )

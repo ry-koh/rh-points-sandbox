@@ -1,5 +1,7 @@
 import {
   DEFAULT_CONFIG,
+  upsertDiscretion,
+  upsertOverride,
   type Discretion,
   type EntryOptions,
   type FinalOverride,
@@ -7,6 +9,7 @@ import {
   type PenaltyState,
   type PipelineResult,
   type ScenarioConfig,
+  type WheelList,
   type WheelResolution,
 } from '../../engine'
 import { validateImport, type ImportReport, type SourceFile } from '../../import'
@@ -27,15 +30,31 @@ export interface Finalised {
 
 export interface AppState {
   readonly files: readonly SourceFile[]
+  /** ccaIDs whose mean/SD error is overridden. */
   readonly overrides: readonly string[]
   readonly config: ScenarioConfig
-  /** Final-points overrides, discretion and wheel resolutions: resident data, in memory only. */
+  /** Final-points overrides, discretion and wheel results: resident data, in memory only. */
   readonly finalOverrides: readonly FinalOverride[]
   readonly discretion: readonly Discretion[]
   readonly resolutions: readonly WheelResolution[]
   readonly report: ImportReport
   readonly results: PipelineResult | null
   readonly computeError: string | null
+  readonly finalised: Finalised | null
+  /** Something changed since the last Save or Open workspace. */
+  readonly dirty: boolean
+  /** When the workspace was last saved (ISO), or null. */
+  readonly savedAt: string | null
+}
+
+/** Everything a workspace file restores; the report is recomputed from the files. */
+export interface LoadedWorkspace {
+  readonly files: readonly SourceFile[]
+  readonly overrides: readonly string[]
+  readonly config: ScenarioConfig
+  readonly finalOverrides: readonly FinalOverride[]
+  readonly discretion: readonly Discretion[]
+  readonly resolutions: readonly WheelResolution[]
   readonly finalised: Finalised | null
 }
 
@@ -44,11 +63,19 @@ export type Action =
   | { readonly type: 'removeFile'; readonly name: string }
   | { readonly type: 'toggleOverride'; readonly ccaID: string }
   | { readonly type: 'setConfig'; readonly config: ScenarioConfig }
+  | { readonly type: 'setFinalOverride'; readonly entry: FinalOverride }
+  | { readonly type: 'removeFinalOverride'; readonly matric: string; readonly ccaID: string }
+  | { readonly type: 'setDiscretion'; readonly entry: Discretion }
+  | { readonly type: 'removeDiscretion'; readonly matric: string }
+  | { readonly type: 'setResolution'; readonly resolution: WheelResolution }
+  | { readonly type: 'clearResolution'; readonly list: WheelList; readonly matrics: readonly string[] }
   | { readonly type: 'setResults'; readonly results: PipelineResult | null; readonly error: string | null }
   | { readonly type: 'finalise'; readonly penalty: PenaltyState }
   | { readonly type: 'applyPenalty'; readonly penalty: PenaltyState; readonly entry: PenaltyLogEntry }
   | { readonly type: 'undoPenalty'; readonly penalty: PenaltyState; readonly key: PenaltyKey }
   | { readonly type: 'unlock' }
+  | { readonly type: 'loadWorkspace'; readonly workspace: LoadedWorkspace }
+  | { readonly type: 'markSaved'; readonly at: string }
 
 type Inputs = Pick<AppState, 'files' | 'overrides' | 'config'> & Partial<AppState>
 
@@ -66,6 +93,8 @@ function revalidate(state: Inputs): AppState {
     results: report.canCompute ? (state.results ?? null) : null,
     computeError: null,
     finalised: state.finalised ?? null,
+    dirty: state.dirty ?? false,
+    savedAt: state.savedAt ?? null,
   }
 }
 
@@ -86,7 +115,13 @@ function mergeFiles(current: readonly SourceFile[], added: readonly SourceFile[]
 
 const sameKey = (a: PenaltyKey, b: PenaltyKey): boolean => a.matric === b.matric && a.ccaID === b.ccaID
 
-/** Changes to files, overrides and settings are refused while finalised. */
+/** A wheel result is identified by its list and the set of matrics in its tie group. */
+export const resolutionKey = (list: WheelList, matrics: readonly string[]): string =>
+  `${list}|${[...matrics].sort().join(',')}`
+
+const keyOfResolution = (r: WheelResolution): string => resolutionKey(r.list, r.order)
+
+/** Files, mean/SD overrides, settings, final-points overrides and discretion: locked while finalised. */
 function inputChange(state: AppState, action: Action): AppState {
   if (state.finalised) return state
   switch (action.type) {
@@ -101,9 +136,30 @@ function inputChange(state: AppState, action: Action): AppState {
     }
     case 'setConfig':
       return revalidate({ ...state, config: action.config })
+    case 'setFinalOverride':
+      return { ...state, finalOverrides: upsertOverride(state.finalOverrides, action.entry) }
+    case 'removeFinalOverride':
+      return { ...state, finalOverrides: state.finalOverrides.filter((o) => !(o.matric === action.matric && o.ccaID === action.ccaID)) }
+    case 'setDiscretion':
+      return { ...state, discretion: upsertDiscretion(state.discretion, action.entry) }
+    case 'removeDiscretion':
+      return { ...state, discretion: state.discretion.filter((d) => d.matric !== action.matric) }
     default:
       return state
   }
+}
+
+/** Wheel results stay editable while finalised (spec 5.6). */
+function wheelChange(state: AppState, action: Action): AppState {
+  if (action.type === 'setResolution') {
+    const key = keyOfResolution(action.resolution)
+    return { ...state, resolutions: [...state.resolutions.filter((r) => keyOfResolution(r) !== key), action.resolution] }
+  }
+  if (action.type === 'clearResolution') {
+    const key = resolutionKey(action.list, action.matrics)
+    return { ...state, resolutions: state.resolutions.filter((r) => keyOfResolution(r) !== key) }
+  }
+  return state
 }
 
 function penaltyChange(state: AppState, action: Action): AppState {
@@ -120,22 +176,45 @@ function penaltyChange(state: AppState, action: Action): AppState {
         finalised: { penalty: action.penalty, log: state.finalised.log.filter((e) => !sameKey(e.key, action.key)) },
       }
     case 'unlock':
-      return { ...state, finalised: null }
+      // Wheel results are kept; they may go stale and are then flagged.
+      return state.finalised ? { ...state, finalised: null } : state
     default:
       return state
   }
 }
 
-export function reducer(state: AppState, action: Action): AppState {
+function change(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'addFiles':
     case 'removeFile':
     case 'toggleOverride':
     case 'setConfig':
+    case 'setFinalOverride':
+    case 'removeFinalOverride':
+    case 'setDiscretion':
+    case 'removeDiscretion':
       return inputChange(state, action)
-    case 'setResults':
-      return { ...state, results: action.results, computeError: action.error }
+    case 'setResolution':
+    case 'clearResolution':
+      return wheelChange(state, action)
     default:
       return penaltyChange(state, action)
+  }
+}
+
+export function reducer(state: AppState, action: Action): AppState {
+  switch (action.type) {
+    case 'setResults':
+      return { ...state, results: action.results, computeError: action.error }
+    case 'markSaved':
+      return { ...state, dirty: false, savedAt: action.at }
+    case 'loadWorkspace':
+      return revalidate({ ...action.workspace, dirty: false, savedAt: null })
+    default: {
+      // Any real change to files, overrides, adjustments, wheel results, penalties,
+      // finalise state or settings marks the workspace as having unsaved changes.
+      const next = change(state, action)
+      return next === state ? state : { ...next, dirty: true }
+    }
   }
 }

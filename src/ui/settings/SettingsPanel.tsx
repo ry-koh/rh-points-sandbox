@@ -13,6 +13,7 @@ import {
   Sem2Fields,
 } from './basicSections'
 import { differs } from './fields'
+import { SECTION_TITLES as S } from './labels'
 import { Section, type SectionProps } from './Section'
 import { AuxFields, LeaderFields, WeightsFields } from './tableSections'
 
@@ -25,17 +26,17 @@ interface SectionDef {
 
 /** Every key of the scenario config (spec §3) appears in exactly one section. */
 export const SECTIONS: readonly SectionDef[] = [
-  { id: 'headcounts', title: 'Headcounts', keys: ['headcounts'], Body: HeadcountsFields },
-  { id: 'placement', title: 'Placement bonus', keys: ['placementBonus'], Body: PlacementFields },
-  { id: 'leaders', title: 'Leader multipliers', keys: ['incomingMultiplier', 'outgoingMode', 'outgoingTiers', 'stackingMode'], Body: LeaderFields },
-  { id: 'weights', title: 'Staying weights', keys: ['stayingWeights', 'stayingWeightTail'], Body: WeightsFields },
-  { id: 'half', title: 'Half CCAs and semester-only', keys: ['halfCcaBaseFactor', 'halfCcaPlacementHalved', 'mergeHalfCcas', 'semesterOnlyFactor'], Body: HalfCcaFields },
-  { id: 'dropped', title: 'Dropped role', keys: ['droppedRoleBase'], Body: DroppedRoleFields },
-  { id: 'aux', title: 'AUX', keys: ['auxTable', 'auxCap'], Body: AuxFields },
-  { id: 'ihg', title: 'IHG', keys: ['ihgPoints', 'ihgInSportNet'], Body: IhgFields },
-  { id: 'sem2', title: 'Sem-2', keys: ['sem2Mode', 'sem2Factor'], Body: Sem2Fields },
-  { id: 'jcrc', title: 'JCRC residents', keys: ['jcrcFullYearOffset', 'jcrcExchangeFactor'], Body: JcrcFields },
-  { id: 'meanSd', title: 'Mean/SD defaults', keys: ['meanSdDefault'], Body: MeanSdFields },
+  { id: 'headcounts', title: S.headcounts, keys: ['headcounts'], Body: HeadcountsFields },
+  { id: 'placement', title: S.placement, keys: ['placementBonus'], Body: PlacementFields },
+  { id: 'leaders', title: S.leaders, keys: ['incomingMultiplier', 'outgoingMode', 'outgoingTiers', 'stackingMode'], Body: LeaderFields },
+  { id: 'weights', title: S.weights, keys: ['stayingWeights', 'stayingWeightTail'], Body: WeightsFields },
+  { id: 'half', title: S.half, keys: ['halfCcaBaseFactor', 'halfCcaPlacementHalved', 'mergeHalfCcas', 'semesterOnlyFactor'], Body: HalfCcaFields },
+  { id: 'dropped', title: S.dropped, keys: ['droppedRoleBase'], Body: DroppedRoleFields },
+  { id: 'aux', title: S.aux, keys: ['auxTable', 'auxCap'], Body: AuxFields },
+  { id: 'ihg', title: S.ihg, keys: ['ihgPoints', 'ihgInSportNet'], Body: IhgFields },
+  { id: 'sem2', title: S.sem2, keys: ['sem2Mode', 'sem2Factor'], Body: Sem2Fields },
+  { id: 'jcrc', title: S.jcrc, keys: ['jcrcFullYearOffset', 'jcrcExchangeFactor'], Body: JcrcFields },
+  { id: 'meanSd', title: S.meanSd, keys: ['meanSdDefault'], Body: MeanSdFields },
 ]
 
 const countChanged = (config: ScenarioConfig, keys: readonly (keyof ScenarioConfig)[]): number =>

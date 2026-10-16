@@ -49,8 +49,8 @@ export function ResultsHeader({ state, lists, dispatch, scenarios }: ResultsHead
           setAsk(null)
         }}
       >
-        <p>The settings and imported files lock, and each gender’s green cut-off freezes at today’s lowest green score.</p>
-        <p className="mt-2 text-muted">After that you can drop incoming roles (penalties) from a resident’s breakdown. Unlocking clears every penalty.</p>
+        <p>The settings, imported files, final-points overrides and discretion lock, and each gender’s green cut-off freezes at today’s lowest green score.</p>
+        <p className="mt-2 text-muted">Wheel results stay editable. After finalising you can drop incoming roles (penalties) from a resident’s breakdown, and publish. Unlocking clears every penalty.</p>
       </ConfirmDialog>
       <ConfirmDialog
         open={ask === 'unlock'}
@@ -62,7 +62,8 @@ export function ResultsHeader({ state, lists, dispatch, scenarios }: ResultsHead
           setAsk(null)
         }}
       >
-        This clears {penalties} {penalties === 1 ? 'penalty' : 'penalties'} and unfreezes the cut-offs. Settings and files can be changed again.
+        This clears {penalties} {penalties === 1 ? 'penalty' : 'penalties'} and unfreezes the cut-offs. Settings, files and adjustments can be changed again.
+        Wheel results are kept; any that no longer match a tie are flagged.
       </ConfirmDialog>
       <ScenariosDialog
         open={scenariosOpen}

@@ -1,0 +1,59 @@
+import { AlertTriangle, CheckCircle2 } from 'lucide-react'
+import type { RestoredWorkspace } from '../../workspace'
+import { Button } from '../common/controls'
+import { Modal } from '../common/Modal'
+import { countIssues, plural } from '../shell/blockReason'
+
+interface OpenSummaryDialogProps {
+  readonly restored: RestoredWorkspace | null
+  readonly onClose: () => void
+}
+
+function Line({ ok, children }: { readonly ok: boolean; readonly children: React.ReactNode }) {
+  return (
+    <li className="flex items-start gap-2 py-0.5">
+      {ok ? <CheckCircle2 aria-hidden size={15} className="mt-0.5 shrink-0 text-ok" /> : <AlertTriangle aria-hidden size={15} className="mt-0.5 shrink-0 text-warning" />}
+      <span>{children}</span>
+    </li>
+  )
+}
+
+/** What was just loaded, and anything in the file that no longer applies. */
+export function OpenSummaryDialog({ restored, onClose }: OpenSummaryDialogProps) {
+  if (!restored) return <Modal open={false} title="Workspace opened" onClose={onClose} footer={null}>{null}</Modal>
+  const { workspace, report, stale } = restored
+  const { errors, warnings } = countIssues(report)
+  const staleCount = stale.overrides.length + stale.discretion.length + stale.resolutions.length
+  return (
+    <Modal
+      open
+      wide
+      title="Workspace opened"
+      onClose={onClose}
+      onSubmit={onClose}
+      footer={<Button type="submit" variant="primary">Continue</Button>}
+    >
+      <ul className="text-body">
+        <Line ok>{plural(workspace.files.length, 'file')} loaded and checked again.</Line>
+        <Line ok={errors === 0}>
+          {errors === 0 ? 'The files pass every check' : `${plural(errors, 'import error')} to fix`}
+          {warnings > 0 ? ` · ${plural(warnings, 'warning')}` : ''}.
+        </Line>
+        <Line ok>Your settings were replaced by the ones saved in the file.</Line>
+        <Line ok={staleCount === 0}>
+          {staleCount === 0
+            ? 'Every final-points override, discretion entry and wheel result still applies.'
+            : `${plural(staleCount, 'saved item')} no longer match the files and are not used:`}
+        </Line>
+      </ul>
+      {staleCount > 0 && (
+        <ul className="mt-1 ml-6 list-disc text-body text-muted">
+          {stale.overrides.map((o) => <li key={`o-${o.matric}-${o.ccaID}`}>Final points {o.finalPoints} for {o.matric} in {o.ccaID}</li>)}
+          {stale.discretion.map((d) => <li key={`d-${d.matric}`}>Discretion for {d.matric}</li>)}
+          {stale.resolutions.map((r) => <li key={`r-${r.list}-${r.order.join()}`}>Wheel result on {r.list} for {plural(r.order.length, 'resident')}</li>)}
+        </ul>
+      )}
+      {staleCount > 0 && <p className="mt-2 text-cap text-muted">They are listed under Adjustments and Ties to resolve, where you can remove them.</p>}
+    </Modal>
+  )
+}

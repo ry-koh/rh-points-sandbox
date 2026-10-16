@@ -10,6 +10,8 @@ interface ObjectFieldsProps<T extends Readonly<Record<keyof T, number>>> {
   readonly step?: number
   readonly integer?: boolean
   readonly slider?: { readonly min: number; readonly max: number; readonly step: number }
+  /** One help line for the whole group, shown under the fields. */
+  readonly help?: string
 }
 
 /** One number field per key of a settings object (e.g. placement bonus per level). */
@@ -32,6 +34,7 @@ export function ObjectFields<T extends Readonly<Record<keyof T, number>>>(props:
           slider={props.slider}
         />
       ))}
+      {props.help && <p className="pr-10 pb-1 text-cap text-muted">{props.help}</p>}
     </>
   )
 }

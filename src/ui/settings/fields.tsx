@@ -83,18 +83,23 @@ interface NumberFieldProps {
   readonly integer?: boolean
   readonly slider?: { readonly min: number; readonly max: number; readonly step: number }
   readonly hint?: ReactNode
+  /** Greyed out and not editable (e.g. a setting that only applies in another mode). */
+  readonly disabled?: boolean
+  /** Shown after the box, e.g. "%". */
+  readonly suffix?: string
 }
 
 export function NumberField(props: NumberFieldProps) {
-  const { label, value, defaultValue, onChange, slider, hint } = props
+  const { label, value, defaultValue, onChange, slider, hint, disabled = false, suffix } = props
   const id = useId()
   return (
-    <div className="py-1.5">
+    <fieldset disabled={disabled} className={`py-1.5 ${disabled ? 'opacity-50' : ''}`}>
       <div className="flex items-center gap-2">
         <label htmlFor={id} className="min-w-0 flex-1 text-body">
           {label}
         </label>
         <NumberInput id={id} label={label} value={value} onChange={onChange} min={props.min} max={props.max} step={props.step ?? slider?.step} integer={props.integer} />
+        {suffix && <span className="-ml-1 text-body text-muted">{suffix}</span>}
         <ChangedMark changed={value !== defaultValue} label={label} onReset={() => onChange(defaultValue)} />
       </div>
       {slider && (
@@ -109,8 +114,8 @@ export function NumberField(props: NumberFieldProps) {
           className="mt-1 w-[calc(100%-42px)]"
         />
       )}
-      {hint && <p className="text-cap text-muted">{hint}</p>}
-    </div>
+      {hint && <p className="pr-10 text-cap text-muted">{hint}</p>}
+    </fieldset>
   )
 }
 
@@ -150,9 +155,10 @@ interface SegmentedFieldProps<T extends string> {
   readonly defaultValue: T
   readonly options: readonly { readonly value: T; readonly label: string }[]
   readonly onChange: (value: T) => void
+  readonly hint?: string
 }
 
-export function SegmentedField<T extends string>({ label, value, defaultValue, options, onChange }: SegmentedFieldProps<T>) {
+export function SegmentedField<T extends string>({ label, value, defaultValue, options, onChange, hint }: SegmentedFieldProps<T>) {
   return (
     <div className="py-1.5">
       <div className="flex items-center gap-2">
@@ -175,6 +181,7 @@ export function SegmentedField<T extends string>({ label, value, defaultValue, o
           </button>
         ))}
       </div>
+      {hint && <p className="mt-0.5 pr-10 text-cap text-muted">{hint}</p>}
     </div>
   )
 }

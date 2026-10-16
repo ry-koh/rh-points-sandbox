@@ -52,6 +52,8 @@ export function StayingBuild({ result, inputs, config }: BuildProps) {
         <SumRow label={staying.usedGreedyPairing ? 'Sum of slots (halves paired greedily)' : 'Sum of slots'} value={pts(staying.slotTotal)} />
         <SumRow label={auxNote(inputs, config)} value={pts(staying.auxPoints)} />
         <SumRow label="Flat IHG" value={pts(staying.flatIHG)} />
+        {result.jcrc && <SumRow label={result.jcrc.note} value={pts(result.jcrc.value)} />}
+        {staying.discretion !== 0 && <SumRow label="JCRC discretion" value={pts(staying.discretion)} />}
         <SumRow label="Staying points" value={pts(staying.points)} strong />
       </tbody>
     </table>
@@ -73,6 +75,8 @@ export function BiddingBuild({ result, inputs, config }: BuildProps) {
         <SumRow label="Sum of bidding nets (every CCA at 100%)" value={pts(netTotal)} />
         <SumRow label={auxNote(inputs, config)} value={pts(bidding.auxPoints)} />
         <SumRow label="Flat IHG" value={pts(bidding.flatIHG)} />
+        {result.jcrc && <SumRow label={result.jcrc.note} value={pts(result.jcrc.value)} />}
+        {bidding.discretion !== 0 && <SumRow label="JCRC discretion" value={pts(bidding.discretion)} />}
         <SumRow label="Bidding points" value={pts(bidding.points)} strong />
       </tbody>
     </table>

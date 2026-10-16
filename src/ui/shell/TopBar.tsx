@@ -1,7 +1,7 @@
 import { ArrowRight, Lock, ShieldCheck } from 'lucide-react'
-import { Fragment } from 'react'
+import { Fragment, type ReactNode } from 'react'
 
-export type Screen = 'import' | 'results' | 'compare'
+export type Screen = 'import' | 'results' | 'publish' | 'compare'
 
 interface TopBarProps {
   readonly screen: Screen
@@ -9,11 +9,14 @@ interface TopBarProps {
   readonly locks: Readonly<Record<Screen, string | null>>
   readonly finalised: boolean
   readonly onNavigate: (screen: Screen) => void
+  /** Save / Open workspace, shown on the right. */
+  readonly actions?: ReactNode
 }
 
 const STEPS: readonly { readonly screen: Screen; readonly label: string }[] = [
   { screen: 'import', label: 'Import' },
   { screen: 'results', label: 'Results' },
+  { screen: 'publish', label: 'Publish' },
   { screen: 'compare', label: 'Compare' },
 ]
 
@@ -46,7 +49,7 @@ function StepButton({ index, label, active, disabledReason, onClick }: {
   )
 }
 
-export function TopBar({ screen, locks, finalised, onNavigate }: TopBarProps) {
+export function TopBar({ screen, locks, finalised, onNavigate, actions }: TopBarProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-rule bg-paper/95 backdrop-blur-sm">
       <div className="h-1 bg-raffles" />
@@ -70,6 +73,7 @@ export function TopBar({ screen, locks, finalised, onNavigate }: TopBarProps) {
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-2">
+          {actions}
           {finalised && (
             <span className="flex items-center gap-1.5 rounded-[3px] bg-gold-soft px-2 py-1 text-cap font-medium">
               <Lock aria-hidden size={13} /> Finalised
@@ -80,7 +84,7 @@ export function TopBar({ screen, locks, finalised, onNavigate }: TopBarProps) {
             title="Files are read in this browser tab only. Nothing is uploaded; reloading the page clears all resident data."
           >
             <ShieldCheck aria-hidden size={14} />
-            Data stays on this computer
+            <span className="hidden 2xl:inline">Data stays on this computer</span>
           </div>
         </div>
       </div>

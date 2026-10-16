@@ -82,3 +82,91 @@
     animation-duration: 0ms !important;
   }
 }
+
+/* ---------------------------------------------------------------------------------------
+   Published lists (Publish step). These colours and the Arial face are the ONLY exception
+   to the app's palette: they must match last year's published lists exactly.
+   --------------------------------------------------------------------------------------- */
+.pub-sheet {
+  background: #ffffff;
+  color: #000000;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 10pt;
+}
+.pub-title {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 12pt;
+  font-weight: bold;
+  text-align: center;
+  margin: 0 0 6pt;
+}
+.pub-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 10pt;
+  color: #000000;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.pub-table th,
+.pub-table td {
+  border: 1px solid #000000;
+  padding: 2pt 4pt;
+}
+.pub-table thead {
+  display: table-header-group;
+}
+.pub-table th {
+  background: rgb(107, 168, 79);
+  font-weight: bold;
+}
+.pub-table tr {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.pub-table .pub-no {
+  width: 12mm;
+  text-align: center;
+}
+.pub-table .pub-name {
+  text-align: left;
+}
+.pub-table .pub-points {
+  width: 32mm;
+  text-align: center;
+}
+.pub-table .pub-green td {
+  background: rgb(148, 196, 125);
+}
+.pub-table .pub-grey td {
+  background: rgb(184, 184, 184);
+}
+.pub-table .pub-white td {
+  background: #ffffff;
+}
+.pub-print {
+  display: none;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 15mm;
+}
+
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+  }
+  #root {
+    display: none !important;
+  }
+  .pub-print {
+    display: block;
+  }
+  .pub-print .pub-list + .pub-list {
+    break-before: page;
+    page-break-before: always;
+  }
+}

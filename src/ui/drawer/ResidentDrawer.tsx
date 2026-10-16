@@ -5,6 +5,7 @@ import { Chip, Eyebrow, StatusChip } from '../common/controls'
 import { LIST_TITLES, POINTS_DECIMALS } from '../export/exportCsv'
 import { BiddingBuild, StayingBuild } from './BuildTables'
 import { drawerInputs, findResult, placements } from './drawerData'
+import { DiscretionEditor, type DrawerEditing } from './Editors'
 import { MembershipTable } from './MembershipTable'
 
 interface ResidentDrawerProps {
@@ -18,6 +19,8 @@ interface ResidentDrawerProps {
   readonly onNavigate: (matric: string) => void
   readonly onClose: () => void
   readonly onDropRole: ((key: PenaltyKey) => void) | null
+  /** Final-points and discretion editing; null when no data is loaded. */
+  readonly editing: DrawerEditing | null
 }
 
 function Block({ title, children }: { readonly title: string; readonly children: ReactNode }) {
@@ -40,7 +43,7 @@ function Total({ label, value }: { readonly label: string; readonly value: numbe
 
 /** Right-side modal drawer: focus is trapped, Esc closes, ↑/↓ steps through the list. */
 export function ResidentDrawer(props: ResidentDrawerProps) {
-  const { matric, order, lists, input, config, penalty, onNavigate, onClose, onDropRole } = props
+  const { matric, order, lists, input, config, penalty, onNavigate, onClose, onDropRole, editing } = props
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
     const dialog = ref.current
@@ -115,8 +118,14 @@ export function ResidentDrawer(props: ResidentDrawerProps) {
           </header>
           <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8">
             <Block title="CCAs">
-              <MembershipTable result={result} inputs={inputs} penalty={penalty} onDropRole={onDropRole} />
+              <MembershipTable result={result} inputs={inputs} penalty={penalty} onDropRole={onDropRole} editing={editing} />
             </Block>
+            {editing && (
+              <Block title="JCRC discretion">
+                <p className="mb-2 text-cap text-muted">Added straight onto the final staying and bidding totals.</p>
+                <DiscretionEditor key={matric} matric={matric} editing={editing} />
+              </Block>
+            )}
             <Block title="How staying was built">
               <StayingBuild result={result} inputs={inputs} config={config} />
             </Block>

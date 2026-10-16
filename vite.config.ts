@@ -9,8 +9,8 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      include: ['src/engine/**'],
-      exclude: ['src/engine/__tests__/**'],
+      include: ['src/engine/**', 'src/import/**'],
+      exclude: ['src/**/__tests__/**'],
       thresholds: {
         lines: COVERAGE_THRESHOLD,
         branches: COVERAGE_THRESHOLD,

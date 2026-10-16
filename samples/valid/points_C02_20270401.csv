@@ -1,0 +1,15 @@
+formatVersion,ccaID,ccaName,matric,name,basePoints,semesterOnly,outgoingRole,incomingRole,exportedAt
+1,C02,Test CCA 02,A9900005Z,Test Resident 005,16,N,none,none,2027-04-01T00:00:00Z
+1,C02,Test CCA 02,A9900035Z,Test Resident 035,14,N,none,head,2027-04-01T00:00:00Z
+1,C02,Test CCA 02,A9900008Z,Test Resident 008,14,N,none,none,2027-04-01T00:00:00Z
+1,C02,Test CCA 02,A9900021Z,Test Resident 021,13,N,head,none,2027-04-01T00:00:00Z
+1,C02,Test CCA 02,A9900024Z,Test Resident 024,9,N,none,none,2027-04-01T00:00:00Z
+1,C02,Test CCA 02,A9900079Z,Test Resident 079,14,N,none,none,2027-04-01T00:00:00Z
+1,C02,Test CCA 02,A9900023Z,Test Resident 023,6,Y,none,none,2027-04-01T00:00:00Z
+1,C02,Test CCA 02,A9900029Z,Test Resident 029,10,N,none,none,2027-04-01T00:00:00Z
+1,C02,Test CCA 02,A9900057Z,Test Resident 057,10,Y,none,none,2027-04-01T00:00:00Z
+1,C02,Test CCA 02,A9900077Z,Test Resident 077,10,N,none,none,2027-04-01T00:00:00Z
+1,C02,Test CCA 02,A9900046Z,Test Resident 046,11,N,none,none,2027-04-01T00:00:00Z
+1,C02,Test CCA 02,A9900065Z,Test Resident 065,11,N,none,none,2027-04-01T00:00:00Z
+1,C02,Test CCA 02,A9900044Z,Test Resident 044,10,N,none,none,2027-04-01T00:00:00Z
+1,C02,Test CCA 02,A9900017Z,Test Resident 017,13,N,none,none,2027-04-01T00:00:00Z

@@ -1,0 +1,24 @@
+formatVersion,ccaID,ccaName,matric,name,basePoints,semesterOnly,outgoingRole,incomingRole,exportedAt
+1,C01,Test CCA 01,A9900005Z,Test Resident 005,17,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900024Z,Test Resident 024,12,N,head,head,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900057Z,Test Resident 057,8,N,none,vice_head,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900025Z,Test Resident 025,11,N,head,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900040Z,Test Resident 040,13,N,vice_head,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900026Z,Test Resident 026,11,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900023Z,Test Resident 023,8,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900054Z,Test Resident 054,9,Y,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900027Z,Test Resident 027,16,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900006Z,Test Resident 006,11,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900045Z,Test Resident 045,11,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900033Z,Test Resident 033,10,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900041Z,Test Resident 041,12,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900053Z,Test Resident 053,12,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900020Z,Test Resident 020,8,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900068Z,Test Resident 068,15,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900010Z,Test Resident 010,14,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900042Z,Test Resident 042,7,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900078Z,Test Resident 078,11,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900046Z,Test Resident 046,14,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900073Z,Test Resident 073,12,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900036Z,Test Resident 036,7,N,none,none,2027-04-01T00:00:00Z
+1,C01,Test CCA 01,A9900043Z,Test Resident 043,16,N,none,none,2027-04-01T00:00:00Z

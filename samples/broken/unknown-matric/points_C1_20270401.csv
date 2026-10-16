@@ -1,0 +1,7 @@
+formatVersion,ccaID,ccaName,matric,name,basePoints,semesterOnly,outgoingRole,incomingRole,exportedAt
+1,C1,Test CCA C1,A9900001Z,Test Resident 001,8,N,none,none,2027-04-01T00:00:00Z
+1,C1,Test CCA C1,A9900002Z,Test Resident 002,10,N,none,none,2027-04-01T00:00:00Z
+1,C1,Test CCA C1,A9900003Z,Test Resident 003,12,N,none,none,2027-04-01T00:00:00Z
+1,C1,Test CCA C1,A9900004Z,Test Resident 004,14,N,none,none,2027-04-01T00:00:00Z
+1,C1,Test CCA C1,A9900005Z,Test Resident 005,16,N,none,none,2027-04-01T00:00:00Z
+1,C1,Test CCA C1,A9900099Z,Test Resident 006,18,N,none,none,2027-04-01T00:00:00Z

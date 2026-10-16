@@ -48,3 +48,10 @@ export const DEFAULT_CONFIG: ScenarioConfig = {
   sem2Mode: 'separate',
   sem2Factor: 2,
 }
+
+/** Allowed base points for one member of a CCA (spec 2a). */
+export const BASE_POINTS_MIN = 0
+export const BASE_POINTS_MAX = 20
+
+/** The only leader-export format version the sandbox accepts (spec 2a). */
+export const LEADER_FORMAT_VERSION = 1

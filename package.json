@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "samples": "node scripts/make-samples.mjs"
   },
   "dependencies": {
     "react": "^19.3.1",

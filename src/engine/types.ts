@@ -153,3 +153,65 @@ export interface ResidentResult {
   readonly bidding: BiddingBreakdown
   readonly warnings: readonly EngineWarning[]
 }
+
+/** Already-parsed data handed to the engine (no CSV handling here). */
+export interface PipelineInput {
+  readonly residents: readonly Resident[]
+  readonly ccas: readonly Cca[]
+  readonly memberships: readonly Membership[]
+  readonly ihg: readonly IhgEntry[]
+}
+
+export type Band = 'green' | 'grey' | 'white'
+export type RowStatus = Band | 'removed' | 'spot' | 'no spot' | null
+
+/** Flag on a tie group that straddles a band boundary, e.g. "TIE green/grey — 1 of 2 seats". */
+export interface TieFlag {
+  readonly boundary: string
+  readonly k: number
+  readonly n: number
+  readonly text: string
+}
+
+export interface ListRow {
+  readonly position: number
+  readonly rank: number
+  readonly matric: string
+  readonly name: string
+  readonly points: number
+  /** Staying list: band or removed. Bidding list: the staying status (null for inserted sem-2 rows). */
+  readonly status: RowStatus
+  readonly tieFlags: readonly TieFlag[]
+  readonly labels: readonly string[]
+  readonly result: ResidentResult
+}
+
+export interface Lists {
+  readonly maleStaying: readonly ListRow[]
+  readonly femaleStaying: readonly ListRow[]
+  readonly maleBidding: readonly ListRow[]
+  readonly femaleBidding: readonly ListRow[]
+  readonly sem2: readonly ListRow[]
+}
+
+export interface PenaltyKey {
+  readonly matric: string
+  readonly ccaID: string
+}
+
+export interface PenaltyState {
+  /** Frozen green cut-off per gender, taken before any penalty (null when nobody was green). */
+  readonly cutoffs: Readonly<Record<Gender, number | null>>
+  readonly applied: readonly PenaltyKey[]
+  readonly removed: readonly string[]
+}
+
+export type PenaltyResult =
+  | { readonly ok: true; readonly state: PenaltyState }
+  | { readonly ok: false; readonly error: string }
+
+export interface PipelineResult {
+  readonly results: readonly ResidentResult[]
+  readonly lists: Lists
+  readonly warnings: readonly EngineWarning[]
+}

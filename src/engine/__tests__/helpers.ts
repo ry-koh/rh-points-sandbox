@@ -1,10 +1,16 @@
+import { DEFAULT_CONFIG } from '../defaults'
 import type {
   Cca,
   CcaType,
+  Gender,
+  Headcounts,
   IhgEntry,
   Membership,
+  PipelineInput,
   PlacementLevel,
   Resident,
+  Role,
+  ScenarioConfig,
 } from '../types'
 
 export const TEST_MATRIC = 'A0000001A'
@@ -97,4 +103,47 @@ export function e1Memberships(
   return E1_ROWS.map(([id, base]) =>
     makeMembership(id, base, id === 'Handball' ? handballOverrides : {}),
   )
+}
+
+export interface RowSpec {
+  readonly id: string
+  readonly gender?: Gender
+  readonly sem2?: boolean
+  /** Base in CCA "X" (pass placement, so the staying/bidding net equals the base). */
+  readonly base?: number
+  readonly incoming?: Role
+  /** Extra [ccaID, base] memberships, e.g. in CCA "Y". */
+  readonly extra?: readonly (readonly [string, number])[]
+  readonly aux?: number
+}
+
+/** Synthetic dataset: matric = id, every membership in the plain 1x CCAs "X" and "Y". */
+export function makeInput(rows: readonly RowSpec[]): PipelineInput {
+  const residents = rows.map((row) =>
+    makeResident({
+      matric: row.id,
+      name: row.id,
+      gender: row.gender ?? 'M',
+      sem2: row.sem2 ?? false,
+      aux: row.aux ?? NEUTRAL_AUX,
+    }),
+  )
+  const memberships = rows.flatMap((row) => [
+    ...(row.base === undefined
+      ? []
+      : [makeMembership('X', row.base, { matric: row.id, incomingRole: row.incoming ?? 'none' })]),
+    ...(row.extra ?? []).map(([ccaID, base]) => makeMembership(ccaID, base, { matric: row.id })),
+  ])
+  return { residents, ccas: [makeCca('X'), makeCca('Y')], memberships, ihg: [] }
+}
+
+export function configWith(
+  headcounts: Partial<Headcounts>,
+  overrides: Partial<ScenarioConfig> = {},
+): ScenarioConfig {
+  return {
+    ...DEFAULT_CONFIG,
+    ...overrides,
+    headcounts: { ...DEFAULT_CONFIG.headcounts, ...headcounts },
+  }
 }

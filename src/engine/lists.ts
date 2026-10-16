@@ -202,9 +202,10 @@ export function buildLists(
     config.headcounts.sem2Spots,
     penalty,
   )
-  const withSpot = sem2.filter((row) => row.status === 'spot')
-  const male = genderLists(entries, 'M', withSpot, config, penalty)
-  const female = genderLists(entries, 'F', withSpot, config, penalty)
+  // A tie group straddling the spot boundary is inserted whole, flags kept.
+  const insertable = sem2.filter((row) => row.status === 'spot' || row.tieFlags.length > 0)
+  const male = genderLists(entries, 'M', insertable, config, penalty)
+  const female = genderLists(entries, 'F', insertable, config, penalty)
   return {
     maleStaying: male.staying,
     femaleStaying: female.staying,

@@ -1,4 +1,4 @@
-# RH Hall Points Spec — v1.2
+# RH Hall Points Spec — v1.3
 
 Authoritative rules for the Raffles Hall AY26-27 points system. Where this document and the
 CLAUDE.md summary differ, this document wins. Every number below is a **config variable**
@@ -251,6 +251,8 @@ positions).
   `TIE spot/no spot` (the sem-2 flag) with `k of n seats`, using the same rule as 5.2.
 - In `"separate"` mode this is the only place sem-2 residents appear. In `"merged"` mode it is
   still produced, and spot-holders are also inserted into their gender's bidding list.
+  **Every member of a tie group that straddles the spot boundary is inserted** (not only
+  those whose position fits), keeping their `TIE spot/no spot` flag with `k of n seats`.
 
 Ties are never broken automatically; they are settled by a wheel spin outside the tool.
 
@@ -306,8 +308,10 @@ range fields falls back to `meanSdDefault` independently.
 
 ### 7.2 ERRORS
 
-Block results until each is fixed by re-importing, or explicitly overridden. Every
-override is listed on the outputs.
+Block results until each is fixed by re-importing a corrected file. **Mean/SD out of range is
+the only overridable error**: JCRC may override it explicitly, per CCA, and every override is
+listed on all outputs. Every other error is **non-overridable** and must be fixed by
+re-importing a corrected file; override attempts for them are ignored.
 
 - mean/SD out of range
 - unknown matric (not in residents.csv)
@@ -335,6 +339,52 @@ Shown, do not block.
 - `aux` above `auxCap`
 - IHG for a non-member when `ihgInSportNet` is on
 - more than 10 `0.5x` memberships for one resident
+
+### 7.4 Issue codes
+
+Every issue carries `severity`, `code`, `overridable`, `fileName`, and where known `line`,
+`column`, `ccaID` and `matric`, plus a plain-English `message`. Line numbers count the header as
+line 1. `canCompute` is true when no error remains except overridden ones. Checks that need a
+reference file (residents.csv, ccas.csv) are skipped when that file is missing, so one mistake
+raises one issue rather than a cascade. The IHG file is optional.
+
+| Code | Sev | Overridable | Raised when |
+|---|---|---|---|
+| `UNRECOGNISED_FILE` | error | no | header matches no file kind and the file name gives no hint |
+| `CSV_SYNTAX` | error | no | unterminated quote, or a row whose cell count differs from the header |
+| `BAD_HEADER` | error | no | file name says leader (`points_*`) / residents / ihg / ccas but the header columns are not exactly right |
+| `BAD_FORMAT_VERSION` | error | no | leader `formatVersion` is not `1` |
+| `MIXED_CCA_ID` | error | no | one leader file contains more than one `ccaID` |
+| `DUPLICATE_CCA_FILE` | error | no | two leader files for the same `ccaID` |
+| `MISSING_RESIDENTS_FILE` | error | no | no residents.csv |
+| `MISSING_CCAS_FILE` | error | no | no ccas.csv |
+| `DUPLICATE_RESIDENTS_OR_CCAS_FILE` | error | no | more than one residents, ccas or ihg file |
+| `BAD_MATRIC` | error | no | matric does not match `^A\d{7}[A-Z]$` after uppercasing |
+| `UNKNOWN_MATRIC` | error | no | leader matric not in residents.csv |
+| `DUPLICATE_MATRIC_IN_FILE` | error | no | same matric twice in one leader file (the later row is ignored) |
+| `DUPLICATE_RESIDENT` | error | no | same matric twice in residents.csv |
+| `BAD_BASE_POINTS` | error | no | `basePoints` not a whole number 0–20 |
+| `BAD_ENUM` | error | no | bad `outgoingRole` / `incomingRole` / `type` / `placement` value |
+| `BAD_YN` | error | no | `semesterOnly` / `sem2` not `Y` or `N` |
+| `BAD_GENDER` | error | no | `gender` not `M` or `F` |
+| `BAD_AUX` | error | no | `aux` not a whole number ≥ 0 |
+| `UNKNOWN_CCA` | error | no | leader file `ccaID` not in ccas.csv |
+| `IHG_UNKNOWN_MATRIC` | error | no | ihg.csv matric not in residents.csv |
+| `IHG_UNKNOWN_CCA` | error | no | ihg.csv `ccaID` not in ccas.csv |
+| `UNKNOWN_TIER` | error | no | `outgoingTier` not blank and not in `outgoingTiers` |
+| `BAD_MANUAL_MULTIPLIER` | error | no | `outgoingMultiplier` not blank and not a positive number |
+| `MISSING_OUTGOING_MULTIPLIER` | error | no | a CCA has an outgoing leader but the field for the active `outgoingMode` is blank |
+| `DUPLICATE_CCA` | error | no | same `ccaID` twice in ccas.csv |
+| `BAD_RANGE` | error | no | a mean/SD range field in ccas.csv is not blank and not a number |
+| `MEAN_SD_OUT_OF_RANGE` | error | **yes** | mean or population SD outside the CCA's range (also raised for a leader file with no members) |
+| `NO_LEADER_FILE` | warning | – | a CCA in ccas.csv has no leader file |
+| `SEMESTER_ONLY_ON_HALF_CCA` | warning | – | `semesterOnly` = `Y` on a `0.5x` CCA (ignored) |
+| `AUX_ABOVE_CAP` | warning | – | `aux` above `auxCap` |
+| `IHG_NON_MEMBER` | warning | – | IHG row for a CCA the resident is not in, only when `ihgInSportNet` is on |
+| `MANY_HALF_CCAS` | warning | – | a resident has more than 10 `0.5x` memberships |
+
+`exportedAt` is not validated. Mean/SD is computed from every valid, non-duplicate leader row,
+whether or not the file has other errors.
 
 ## 8. Worked examples
 

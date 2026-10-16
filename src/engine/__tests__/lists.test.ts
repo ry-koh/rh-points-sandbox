@@ -163,6 +163,29 @@ describe('E12: sem-2 merged mode', () => {
   })
 })
 
+describe('merged sem-2 mode with a tie group straddling the spot boundary', () => {
+  const rows: RowSpec[] = [
+    { id: 'S1', gender: 'M', sem2: true, base: 40 },
+    { id: 'S2', gender: 'M', sem2: true, base: 30 },
+    { id: 'S3', gender: 'M', sem2: true, base: 30 },
+    { id: 'S4', gender: 'M', sem2: true, base: 10 },
+  ]
+  const { maleBidding, sem2 } = lists(rows, configWith({ sem2Spots: 2 }, { sem2Mode: 'merged' }))
+
+  it('inserts every member of the straddling tie group, with its flag', () => {
+    expect(ids(maleBidding).sort()).toEqual(['S1', 'S2', 'S3'])
+    const tied = maleBidding.filter((r) => r.matric !== 'S1')
+    for (const row of tied) {
+      expect(row.tieFlags.map((f) => f.text)).toEqual(['TIE spot/no spot — 1 of 2 seats'])
+      expect(row.labels).toContain(SEM2_LABEL)
+    }
+  })
+
+  it('keeps the sem-2 list statuses position-based', () => {
+    expect(sem2.map((r) => r.status)).toEqual(['spot', 'spot', 'no spot', 'no spot'])
+  })
+})
+
 describe('buildLists directly', () => {
   it('does not mutate frozen inputs', () => {
     const input = makeInput([{ id: 'M1', base: 10 }])

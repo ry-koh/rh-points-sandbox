@@ -67,3 +67,45 @@ describe('RH-app export imports cleanly', () => {
     expect(lists.maleBidding.length + lists.femaleBidding.length).toBe(6)
   })
 })
+
+// Contract test for the flat-points file: samples/app-export/flat/flat_points_20270401.csv is
+// byte-for-byte what RH-app's buildFlatPointsCsv writes (src/lib/points/flatCsv.ts there;
+// its test holds the same fixture): CRLF with a trailing CRLF, a quoted name with a comma,
+// an apostrophe formula guard on ccaName and name, a fractional value and one ISO exportedAt.
+const FLAT = 'flat_points_20270401.csv'
+const flatRead = (name: string): SourceFile => ({ name, text: readFileSync(`${DIR}/flat/${name}`, 'utf8') })
+const flatFiles = [flatRead(FLAT), flatRead('residents.csv'), flatRead('ccas.csv')]
+
+describe('RH-app flat-points export', () => {
+  const text = flatFiles[0]!.text
+  const report = validateImport(flatFiles, DEFAULT_CONFIG, [])
+
+  it('uses CRLF line endings with a trailing CRLF, as the app writes', () => {
+    expect(text.startsWith('formatVersion,ccaID,ccaName,matric,name,flatPoints,exportedAt\r\n')).toBe(true)
+    expect(text.endsWith('\r\n')).toBe(true)
+    expect(text.replace(/\r\n/g, '')).not.toMatch(/[\r\n]/)
+  })
+
+  it('is detected as a flat file', () => {
+    expect(detectFileKind(parseCsv(text).header)).toBe('flat')
+  })
+
+  it('has no errors: flat CCAs have no mean/SD check and need no leader file', () => {
+    expect(report.issues).toEqual([])
+    expect(report.canCompute).toBe(true)
+    expect(report.perCca.filter((c) => c.status === 'flat').map((c) => [c.ccaID, c.flatPoints, c.mean, c.sd])).toEqual([
+      ['9001', 12, null, null],
+      ['9002', 7.5, null, null],
+    ])
+  })
+
+  it('gives each member exactly the flat value for that CCA', () => {
+    if (!report.input) throw new Error('expected an engine input')
+    const { results } = computeAll(report.input, DEFAULT_CONFIG)
+    const netOf = (matric: string, ccaID: string) =>
+      results.find((r) => r.matric === matric)?.memberships.find((m) => m.ccaID === ccaID)
+    expect(netOf('A9910101X', '9001')).toMatchObject({ stayNet: 12, bidNet: 12 })
+    expect(netOf('A9910102X', '9001')).toMatchObject({ stayNet: 12, bidNet: 12 })
+    expect(netOf('A9910103X', '9002')).toMatchObject({ stayNet: 7.5, bidNet: 7.5 })
+  })
+})

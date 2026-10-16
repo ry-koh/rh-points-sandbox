@@ -1,0 +1,3 @@
+# The RH-app export contract sample must keep its exact bytes (CRLF line
+# endings, trailing CRLF), so git must not convert its line endings.
+samples/app-export/*.csv -text

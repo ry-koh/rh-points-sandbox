@@ -1,4 +1,4 @@
-import { computeAll, type Comparison, type PipelineResult, type ScenarioConfig } from '../../engine'
+import { computeAll, type Comparison, type EntryOptions, type PipelineResult, type ScenarioConfig } from '../../engine'
 import { validateImport, type SourceFile } from '../../import'
 import { LIST_KEYS, POINTS_DECIMALS, headerLines, toCsvLine } from '../export/exportCsv'
 import { CONFIG_KEYS } from '../state/configShape'
@@ -8,18 +8,22 @@ export const CURRENT = 'current'
 
 export type SideRun = { readonly ok: true; readonly run: PipelineResult } | { readonly ok: false; readonly error: string }
 
-/** Runs one side of a comparison on the imported files without touching the live results. */
+/**
+ * Runs one side of a comparison on the imported files without touching the live results.
+ * Both sides use the same final-points overrides, discretion and wheel results (`entries`).
+ */
 export function runSide(
   files: readonly SourceFile[],
   overrides: readonly string[],
   config: ScenarioConfig,
+  entries: EntryOptions,
 ): SideRun {
   const report = validateImport(files, config, overrides.map((ccaID) => ({ ccaID })))
   if (!report.canCompute || !report.input) {
     return { ok: false, error: `the files do not pass with these settings (${blockReason(report, files.length) ?? 'blocked'})` }
   }
   try {
-    return { ok: true, run: computeAll(report.input, config) }
+    return { ok: true, run: computeAll(report.input, config, entries) }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'the calculation failed' }
   }

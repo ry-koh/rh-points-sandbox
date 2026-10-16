@@ -77,12 +77,19 @@ describe('E18: a flat CCA is final', () => {
     expect(result.staying.points).toBe(10 + 10 + 10 + 10 + 5)
   })
 
-  it('ignores an IHG row for a flat CCA, with a warning, when ihgInSportNet is on', () => {
+  it.each([true, false])('always ignores an IHG row for a flat CCA, with a warning (ihgInSportNet %s)', (inNet) => {
     const withIhg = input(ccas, [...base, flat('Flat', 12)], [makeIhg('Flat', '1st')])
-    const { out, result } = mine(withIhg, configWith({}, { ihgInSportNet: true }))
+    const { out, result } = mine(withIhg, configWith({}, { ihgInSportNet: inNet }))
     expect(result.staying.points).toBe(60)
     expect(result.bidding.points).toBe(60)
+    expect(result.staying.flatIHG).toBe(0)
     expect(out.warnings.map((w) => [w.code, w.ccaID])).toEqual([['IHG_ON_FINAL_CCA', 'Flat']])
+  })
+
+  it('still counts IHG for a normal CCA next to a flat one', () => {
+    const withIhg = input(ccas, [...base, flat('Flat', 12)], [makeIhg('Flat', '1st'), makeIhg('Handball', '2nd')])
+    const { result } = mine(withIhg, configWith({}, { ihgInSportNet: false }))
+    expect(result.bidding.points).toBe(64)
   })
 
   it('counts a sem-2 resident in a flat CCA normally', () => {
@@ -137,9 +144,11 @@ describe('E19: final-points overrides', () => {
 
   it('ignores an IHG row for the overridden membership, with a warning', () => {
     const withIhg = input(e1Ccas(), e1Memberships(), [makeIhg('Rhebels', '1st')])
-    const { out, result } = mine(withIhg, configWith({}, { ihgInSportNet: true }), { overrides: [override] })
-    expect(result.bidding.points).toBe(74.5)
-    expect(out.warnings.map((w) => w.code)).toEqual(['IHG_ON_FINAL_CCA'])
+    for (const inNet of [true, false]) {
+      const { out, result } = mine(withIhg, configWith({}, { ihgInSportNet: inNet }), { overrides: [override] })
+      expect(result.bidding.points).toBe(74.5)
+      expect(out.warnings.map((w) => w.code)).toEqual(['IHG_ON_FINAL_CCA'])
+    }
   })
 
   it('reports an applied override as applied and a vanished membership as stale', () => {

@@ -217,9 +217,8 @@ export function validateImport(
   const ihgOutcome = ihg ? checkIhgRows(ihg, residents, ccas) : null
   if (ihgOutcome) issues.push(...ihgOutcome.issues)
   if (ccas) issues.push(...checkOutgoing(ccas, checked, config), ...leaderWarnings(ccas, checked))
-  if (ihg && config.ihgInSportNet) {
-    issues.push(...ihgNonMemberWarnings(ihg, checked, flats), ...ihgOnFlatWarnings(ihg, flats))
-  }
+  if (ihg && config.ihgInSportNet) issues.push(...ihgNonMemberWarnings(ihg, checked, flats))
+  if (ihg) issues.push(...ihgOnFlatWarnings(ihg, flats))
   const wanted = new Set(overrides.map((o) => o.ccaID))
   const stats = (ccas?.result.rows ?? []).map((cca) => {
     const flat = flats.find((f) => f.ccaID === cca.ccaID)

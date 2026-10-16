@@ -138,9 +138,10 @@ describe('IHG on a flat membership', () => {
     expect(report.issues[0]?.severity).toBe('warning')
   })
 
-  it('is silent when ihgInSportNet is off', () => {
+  it('warns IHG_ON_FINAL_CCA when ihgInSportNet is off too (the row is always ignored)', () => {
     const report = run(scenario({ ccas: [...baseCcas(), flatCca()], flat: flatRows(), ihg }))
-    expect(report.issues).toEqual([])
+    expect(codesOf(report)).toEqual(['IHG_ON_FINAL_CCA'])
+    expect(report.canCompute).toBe(true)
   })
 
   it('does not call a flat member a non-member', () => {

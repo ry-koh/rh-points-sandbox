@@ -165,7 +165,7 @@ export function checkIhgRows(
   return { issues, rows }
 }
 
-/** An IHG row for a flat membership is ignored when ihgInSportNet is on (spec 4.1). */
+/** An IHG row for a flat membership is always ignored, whatever ihgInSportNet says (spec 4.1). */
 export function ihgOnFlatWarnings(ihg: Loaded<IhgRow>, flats: readonly CheckedFlat[]): Issue[] {
   const members = new Set(flats.flatMap((f) => f.rows.map((row) => `${row.matric}|${f.ccaID}`)))
   return ihg.result.rows

@@ -133,8 +133,10 @@ export function computeResident(
     computeMembership(m, lookupCca(ccas, m.ccaID), ownIhg, config, overrideOf(m.ccaID)),
   )
   const finalIds = new Set(results.filter((r) => r.final !== null).map((r) => r.ccaID))
-  const ignoredIhg = config.ihgInSportNet ? ownIhg.filter((entry) => finalIds.has(entry.ccaID)) : []
-  const flatEntries = flatIhgEntries(ownIhg, new Set(own.map((m) => m.ccaID)), config)
+  // IHG for a flat or overridden membership is ALWAYS ignored, whatever ihgInSportNet says (spec 4.1).
+  const ignoredIhg = ownIhg.filter((entry) => finalIds.has(entry.ccaID))
+  const countedIhg = ownIhg.filter((entry) => !finalIds.has(entry.ccaID))
+  const flatEntries = flatIhgEntries(countedIhg, new Set(own.map((m) => m.ccaID)), config)
   const aux = auxPoints(resident.aux, config)
   const flatIHG = sumIhg(flatEntries, config)
   const nonMemberIhg = config.ihgInSportNet ? flatEntries : []

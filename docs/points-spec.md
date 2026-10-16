@@ -175,9 +175,9 @@ Notation: resident `r`, CCA `c`, membership `m = (r, c)` taken from the leader f
 - Both are **final**: exactly that value, with no placement bonus, no leader multipliers,
   no semester-only or half-CCA factors and no IHG (even when `ihgInSportNet` is on). They are
   **never paired** by half-CCA merging, even in a `0.5x` CCA. They still occupy one slot in the
-  staying ranking and take that slot's weight. An IHG row for such a membership is ignored with
-  the warning `IHG_ON_FINAL_CCA` (only when `ihgInSportNet` is on, when it would otherwise have
-  gone into the sport's net).
+  staying ranking and take that slot's weight. An IHG row for such a membership is **always
+  ignored** (whatever `ihgInSportNet` says, so it is neither in the net nor flat) with the
+  warning `IHG_ON_FINAL_CCA`, to avoid counting IHG twice.
 - Everything below describes the **normal calculation**.
 
 **effBase**
@@ -448,8 +448,8 @@ for an EXISTING membership (from a leader file or the flat-points file). It sets
 membership's `stayNet = bidNet = finalPoints` exactly, as in 4.1: no placement, multipliers,
 halving or IHG, never paired in half-CCA merging, but still ranked and weighted as one slot.
 Precedence: **override > flat > normal calculation.** The breakdown reads
-`Final points set by JCRC: X — <reason>`. An IHG row for an overridden membership is ignored
-with the warning `IHG_ON_FINAL_CCA` (4.1).
+`Final points set by JCRC: X — <reason>`. An IHG row for an overridden membership is always
+ignored, whatever `ihgInSportNet` says, with the warning `IHG_ON_FINAL_CCA` (4.1).
 
 - `validateOverride` returns `BAD_FINAL_POINTS` (`finalPoints` is not a finite number),
   `MISSING_REASON` (reason empty after trimming, or over 200 characters) or
@@ -525,7 +525,7 @@ Shown, do not block.
 - `aux` above `auxCap`
 - IHG for a non-member when `ihgInSportNet` is on
 - more than 10 `0.5x` memberships for one resident
-- an IHG row for a flat or overridden membership while `ihgInSportNet` is on (the row is ignored)
+- an IHG row for a flat or overridden membership (the row is always ignored)
 
 ### 7.4 Issue codes
 
@@ -580,7 +580,7 @@ raises one issue rather than a cascade. The IHG file is optional.
 | `AUX_ABOVE_CAP` | warning | – | `aux` above `auxCap` |
 | `IHG_NON_MEMBER` | warning | – | IHG row for a CCA the resident is not in, only when `ihgInSportNet` is on |
 | `MANY_HALF_CCAS` | warning | – | a resident has more than 10 `0.5x` memberships |
-| `IHG_ON_FINAL_CCA` | warning | – | an IHG row for a flat or overridden membership while `ihgInSportNet` is on; the row is ignored |
+| `IHG_ON_FINAL_CCA` | warning | – | an IHG row for a flat or overridden membership; the row is always ignored, whatever `ihgInSportNet` says |
 
 The five entry codes (`BAD_FINAL_POINTS` … `DISCRETION_UNKNOWN_RESIDENT`) are returned by the
 engine's `validateOverride` / `validateDiscretion` when an entry is added; they are not raised

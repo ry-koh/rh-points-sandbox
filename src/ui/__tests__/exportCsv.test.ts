@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_CONFIG, computeAll, type ListRow } from '../../engine'
+import { DEFAULT_CONFIG, compareRuns, computeAll, type ListRow } from '../../engine'
 import { makeInput } from '../../engine/__tests__/helpers'
 import { EXPORT_COLUMNS, buildListCsv, exportFileName, overridesLine } from '../export/exportCsv'
+import { buildComparisonCsv } from '../compare/compareData'
 import { bandRows } from '../results/bands'
 
+const NL = String.fromCharCode(10)
 const config = { ...DEFAULT_CONFIG, headcounts: { ...DEFAULT_CONFIG.headcounts, maleGreen: 1, maleGrey: 1 } }
 const { lists } = computeAll(
   makeInput([
@@ -39,6 +41,24 @@ describe('CSV export', () => {
     const line = buildListCsv([row], []).split('\n')[2]
     expect(line).toContain('"Resident, ""Test"""')
     expect(line?.endsWith('sem-2; informational')).toBe(true)
+  })
+
+  it('adds the finalised line as the second line while finalised', () => {
+    const lines = buildListCsv(lists.maleStaying, [{ name: 'Test CCA 03' }], 2).split(NL)
+    expect(lines.slice(0, 3)).toEqual([
+      '# overrides: Test CCA 03',
+      '# finalised: yes · penalties: 2',
+      'rank,position,matric,name,points,status,tieFlags,labels',
+    ])
+    expect(buildListCsv(lists.maleStaying, [], 0).split(NL)[1]).toBe('# finalised: yes · penalties: 0')
+  })
+
+  it('starts a comparison export with the overrides line', () => {
+    const run = computeAll(makeInput([{ id: 'A9900001Z', base: 15 }]), config)
+    const lines = buildComparisonCsv(compareRuns(run, run), [], { a: 'Current settings', b: 'Draft' }).split(NL)
+    expect(lines[0]).toBe('# overrides: none')
+    expect(lines[1]).toBe('# A: Current settings · B: Draft')
+    expect(lines[2]?.startsWith('list,matric,name,statusA,statusB')).toBe(true)
   })
 
   it('names files rhps_<list>_<YYYYMMDD-HHmm>.csv', () => {

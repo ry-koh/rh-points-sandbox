@@ -47,12 +47,31 @@ function rowCells(row: ListRow): string[] {
   ]
 }
 
+/** Second line of every export made while the lists are finalised. */
+export function finalisedLine(penalties: number): string {
+  return `# finalised: yes · penalties: ${penalties}`
+}
+
+/** The comment lines every export starts with. */
+export function headerLines(
+  overrides: readonly Pick<OverrideRecord, 'name'>[],
+  finalisedPenalties: number | null,
+): string[] {
+  return [
+    overridesLine(overrides.map((o) => o.name)),
+    ...(finalisedPenalties === null ? [] : [finalisedLine(finalisedPenalties)]),
+  ]
+}
+
+export const toCsvLine = (cells: readonly string[]): string => cells.map(quote).join(',')
+
 export function buildListCsv(
   rows: readonly ListRow[],
   overrides: readonly Pick<OverrideRecord, 'name'>[],
+  finalisedPenalties: number | null = null,
 ): string {
   const lines = [
-    overridesLine(overrides.map((o) => o.name)),
+    ...headerLines(overrides, finalisedPenalties),
     EXPORT_COLUMNS.join(','),
     ...rows.map((row) => rowCells(row).map(quote).join(',')),
   ]
@@ -61,14 +80,23 @@ export function buildListCsv(
 
 const pad2 = (n: number): string => String(n).padStart(2, '0')
 
-export function exportFileName(list: ListKey, at: Date): string {
+/** YYYYMMDD-HHmm in local time. */
+export function exportStamp(at: Date): string {
   const date = `${at.getFullYear()}${pad2(at.getMonth() + 1)}${pad2(at.getDate())}`
-  return `rhps_${FILE_SLUGS[list]}_${date}-${pad2(at.getHours())}${pad2(at.getMinutes())}.csv`
+  return `${date}-${pad2(at.getHours())}${pad2(at.getMinutes())}`
+}
+
+export function exportFileName(list: ListKey, at: Date): string {
+  return `rhps_${FILE_SLUGS[list]}_${exportStamp(at)}.csv`
 }
 
 /** Saves a file through a local Blob URL; nothing leaves the computer. */
 export function downloadCsv(fileName: string, text: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }))
+  downloadText(fileName, text, 'text/csv;charset=utf-8')
+}
+
+export function downloadText(fileName: string, text: string, type: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type }))
   const link = document.createElement('a')
   link.href = url
   link.download = fileName

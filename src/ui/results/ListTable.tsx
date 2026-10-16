@@ -11,6 +11,7 @@ interface ListTableProps {
   readonly rows: readonly ListRow[]
   readonly config: ScenarioConfig
   readonly search: string
+  readonly onOpen: (matric: string) => void
 }
 
 const BAND_RULE: Readonly<Record<string, string>> = {
@@ -22,9 +23,21 @@ const BAND_RULE: Readonly<Record<string, string>> = {
   'no spot': 'border-ink/40 text-ink',
 }
 
-function Row({ row }: { readonly row: ListRow }) {
+function Row({ row, onOpen }: { readonly row: ListRow; readonly onOpen: (matric: string) => void }) {
   return (
-    <tr className="border-b border-rule/70 hover:bg-gold-soft/50">
+    <tr
+      tabIndex={0}
+      data-row-matric={row.matric}
+      aria-label={`${row.name}, rank ${row.rank}. Press Enter for the breakdown.`}
+      onClick={() => onOpen(row.matric)}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter') return
+        // Stop the same keypress from also activating a button inside the drawer.
+        event.preventDefault()
+        onOpen(row.matric)
+      }}
+      className="motion cursor-pointer border-b border-rule/70 hover:bg-gold-soft/50 focus-visible:bg-gold-soft/50 focus-visible:outline-offset-[-2px]"
+    >
       <td className="num py-1.5 pr-4 pl-4 text-right text-muted">{row.rank}</td>
       <td className="py-1.5 pr-4 font-medium">{row.name}</td>
       <td className="py-1.5 pr-4 font-mono text-cap text-muted">{row.matric}</td>
@@ -69,7 +82,7 @@ function Divider({ label, status, shown, total }: { readonly label: string; read
   )
 }
 
-export function ListTable({ list, rows, config, search }: ListTableProps) {
+export function ListTable({ list, rows, config, search, onOpen }: ListTableProps) {
   const bands = bandRows(list, rows, config, search)
   const shown = bands.reduce((n, band) => n + band.rows.length, 0)
   return (
@@ -88,7 +101,7 @@ export function ListTable({ list, rows, config, search }: ListTableProps) {
         </thead>
         <tbody>
           {bands.map((band) => (
-            <BandRows key={band.status || 'all'} label={band.label} status={band.status} rows={band.rows} total={rows.filter((r) => r.status === band.status).length} />
+            <BandRows key={band.status || 'all'} label={band.label} status={band.status} rows={band.rows} total={rows.filter((r) => r.status === band.status).length} onOpen={onOpen} />
           ))}
           {shown === 0 && (
             <tr>
@@ -103,12 +116,12 @@ export function ListTable({ list, rows, config, search }: ListTableProps) {
   )
 }
 
-function BandRows({ label, status, rows, total }: { readonly label: string; readonly status: string; readonly rows: readonly ListRow[]; readonly total: number }) {
+function BandRows({ label, status, rows, total, onOpen }: { readonly label: string; readonly status: string; readonly rows: readonly ListRow[]; readonly total: number; readonly onOpen: (matric: string) => void }) {
   return (
     <>
       {label !== '' && <Divider label={label} status={status} shown={rows.length} total={total} />}
       {rows.map((row) => (
-        <Row key={`${row.matric}-${row.labels.join()}`} row={row} />
+        <Row key={`${row.matric}-${row.labels.join()}`} row={row} onOpen={onOpen} />
       ))}
     </>
   )

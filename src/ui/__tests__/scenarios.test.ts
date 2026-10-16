@@ -1,0 +1,100 @@
+import { readFileSync } from 'node:fs'
+import { describe, expect, it } from 'vitest'
+import { DEFAULT_CONFIG, type ScenarioConfig } from '../../engine'
+import { parseScenarioFile, readScenarioList, serialiseScenario, type Scenario } from '../state/scenarios'
+import { SCENARIOS_KEY, loadScenarios, saveScenarios, type SettingsStore } from '../state/settingsStorage'
+
+const MATRIC = /^A\d{7}[A-Z]$/
+
+const config: ScenarioConfig = {
+  ...DEFAULT_CONFIG,
+  stackingMode: 'additive',
+  headcounts: { ...DEFAULT_CONFIG.headcounts, maleGreen: 40, femaleGreen: 42 },
+}
+const scenario: Scenario = { id: 'id-1', name: 'More greens', note: 'JCRC draft', savedAt: '2027-04-01T09:00:00.000Z', config }
+
+function strings(value: unknown): string[] {
+  if (typeof value === 'string') return [value]
+  if (Array.isArray(value)) return value.flatMap(strings)
+  if (value && typeof value === 'object') return [...Object.keys(value), ...Object.values(value).flatMap(strings)]
+  return []
+}
+
+function sampleNames(): string[] {
+  const [, ...lines] = readFileSync('samples/valid/residents.csv', 'utf8').trim().split('\n')
+  return lines.map((line) => line.split(',')[1] ?? '').filter(Boolean)
+}
+
+function memoryStore(): SettingsStore & { data: Record<string, string> } {
+  const data: Record<string, string> = {}
+  return { data, getItem: (k) => data[k] ?? null, setItem: (k, v) => { data[k] = v } }
+}
+
+describe('scenario files', () => {
+  it('round-trips through serialise and parse', () => {
+    const parsed = parseScenarioFile(serialiseScenario(scenario), 'fallback')
+    expect(parsed).toEqual({ ok: true, file: { version: 1, name: 'More greens', note: 'JCRC draft', savedAt: scenario.savedAt, config } })
+  })
+
+  it('never contains a matric or a sample resident name', () => {
+    const json = serialiseScenario(scenario)
+    const all = strings(JSON.parse(json))
+    expect(all.filter((s) => MATRIC.test(s))).toEqual([])
+    const names = sampleNames()
+    expect(names.length).toBeGreaterThan(0)
+    expect(names.filter((name) => json.includes(name))).toEqual([])
+  })
+
+  it('reports corrupt JSON in plain English', () => {
+    const parsed = parseScenarioFile('{oops', 'x')
+    expect(parsed.ok).toBe(false)
+    expect(!parsed.ok && parsed.error).toMatch(/not a scenario file/)
+  })
+
+  it('rejects other versions and non-objects', () => {
+    expect(parseScenarioFile(JSON.stringify({ version: 2, config }), 'x').ok).toBe(false)
+    expect(parseScenarioFile('[1,2,3]', 'x').ok).toBe(false)
+  })
+
+  it('ignores unknown keys and fills missing keys from the defaults', () => {
+    const partial = { version: 1, name: 'Partial', config: { sem2Factor: 3, somethingElse: true, residents: ['A1234567Z'] } }
+    const parsed = parseScenarioFile(JSON.stringify(partial), 'x')
+    expect(parsed.ok && parsed.file.config).toEqual({ ...DEFAULT_CONFIG, sem2Factor: 3 })
+    expect(parsed.ok && 'somethingElse' in parsed.file.config).toBe(false)
+  })
+
+  it('names a setting with the wrong format', () => {
+    const parsed = parseScenarioFile(JSON.stringify({ version: 1, config: { stackingMode: 'sum', auxCap: 'ten' } }), 'x')
+    expect(!parsed.ok && parsed.error).toBe('These settings have the wrong format: stackingMode, auxCap.')
+  })
+
+  it('uses the file name when the name is missing', () => {
+    const parsed = parseScenarioFile(JSON.stringify({ version: 1, config: {} }), 'my-file')
+    expect(parsed.ok && parsed.file.name).toBe('my-file')
+  })
+})
+
+describe('scenario storage', () => {
+  it('stores scenarios under rhps.scenarios.v1 and reads them back', () => {
+    const store = memoryStore()
+    expect(saveScenarios([scenario], store)).toBe(true)
+    expect(Object.keys(store.data)).toEqual([SCENARIOS_KEY])
+    expect(loadScenarios(store)).toEqual([scenario])
+  })
+
+  it('keeps settings only, even if extra data sneaks onto a scenario object', () => {
+    const store = memoryStore()
+    const leaky = { ...scenario, residents: [{ matric: 'A9900001Z', name: 'Test Resident 001' }] } as Scenario
+    saveScenarios([leaky], store)
+    expect(store.data[SCENARIOS_KEY]).not.toContain('A9900001Z')
+    expect(store.data[SCENARIOS_KEY]).not.toContain('Test Resident')
+  })
+
+  it('drops malformed stored entries and survives corrupt storage', () => {
+    expect(readScenarioList([{ id: 1 }, null, scenario])).toEqual([scenario])
+    const store = memoryStore()
+    store.data[SCENARIOS_KEY] = '{not json'
+    expect(loadScenarios(store)).toEqual([])
+    expect(loadScenarios(null)).toEqual([])
+  })
+})

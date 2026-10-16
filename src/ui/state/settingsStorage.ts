@@ -1,9 +1,11 @@
 import { DEFAULT_CONFIG, type ScenarioConfig } from '../../engine'
 import { isScenarioConfig } from './configShape'
+import { readScenarioList, type Scenario } from './scenarios'
 
-// The ONLY module allowed to touch browser storage. It keeps the current settings,
-// never resident data.
+// The ONLY module allowed to touch browser storage. It keeps the current settings and
+// saved scenarios (settings only), never resident data.
 export const SETTINGS_KEY = 'rhps.settings.v1'
+export const SCENARIOS_KEY = 'rhps.scenarios.v1'
 
 /** The subset of the Storage API this module needs (injectable for tests). */
 export interface SettingsStore {
@@ -19,25 +21,39 @@ function browserStore(): SettingsStore | null {
   }
 }
 
-export function loadSettings(store: SettingsStore | null = browserStore()): ScenarioConfig {
+function readJson(store: SettingsStore | null, key: string): unknown {
   try {
-    const raw = store?.getItem(SETTINGS_KEY)
-    if (!raw) return DEFAULT_CONFIG
-    const parsed: unknown = JSON.parse(raw)
-    return isScenarioConfig(parsed) ? parsed : DEFAULT_CONFIG
+    const raw = store?.getItem(key)
+    return raw ? (JSON.parse(raw) as unknown) : null
   } catch {
-    return DEFAULT_CONFIG
+    return null
   }
 }
 
-export function saveSettings(
-  config: ScenarioConfig,
-  store: SettingsStore | null = browserStore(),
-): boolean {
+function writeJson(store: SettingsStore | null, key: string, value: unknown): boolean {
   try {
-    store?.setItem(SETTINGS_KEY, JSON.stringify(config))
+    store?.setItem(key, JSON.stringify(value))
     return store !== null
   } catch {
     return false
   }
+}
+
+export function loadSettings(store: SettingsStore | null = browserStore()): ScenarioConfig {
+  const parsed = readJson(store, SETTINGS_KEY)
+  return isScenarioConfig(parsed) ? parsed : DEFAULT_CONFIG
+}
+
+export function saveSettings(config: ScenarioConfig, store: SettingsStore | null = browserStore()): boolean {
+  return writeJson(store, SETTINGS_KEY, config)
+}
+
+export function loadScenarios(store: SettingsStore | null = browserStore()): Scenario[] {
+  return readScenarioList(readJson(store, SCENARIOS_KEY))
+}
+
+/** Stores only id, name, note, savedAt and the settings of each scenario. */
+export function saveScenarios(scenarios: readonly Scenario[], store: SettingsStore | null = browserStore()): boolean {
+  const settingsOnly = scenarios.map(({ id, name, note, savedAt, config }) => ({ id, name, note, savedAt, config }))
+  return writeJson(store, SCENARIOS_KEY, settingsOnly)
 }

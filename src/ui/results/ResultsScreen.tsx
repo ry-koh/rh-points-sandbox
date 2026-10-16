@@ -1,43 +1,75 @@
 import { Download, Search } from 'lucide-react'
 import { useState, type Dispatch } from 'react'
-import type { Lists } from '../../engine'
+import { removePenalty, type Lists, type PenaltyKey } from '../../engine'
 import { Button } from '../common/controls'
+import { ResidentDrawer } from '../drawer/ResidentDrawer'
 import { LIST_KEYS, LIST_TITLES, buildListCsv, downloadCsv, exportFileName, type ListKey } from '../export/exportCsv'
+import { PenaltiesStrip } from '../penalty/PenaltiesStrip'
+import { PenaltyDialog } from '../penalty/PenaltyDialog'
 import { SettingsPanel } from '../settings/SettingsPanel'
-import type { Action, AppState } from '../state/store'
+import type { Action, AppState, PenaltyLogEntry } from '../state/store'
+import type { ScenarioStore } from '../state/useScenarios'
+import { bandRows } from './bands'
 import { ListTable } from './ListTable'
 import { ListTabs, panelId, tabId } from './ListTabs'
 import { ResultsBanner } from './ResultsBanner'
+import { ResultsHeader } from './ResultsHeader'
 
 interface ResultsScreenProps {
   readonly state: AppState
   readonly dispatch: Dispatch<Action>
+  readonly scenarios: ScenarioStore
   readonly blockedReason: string | null
   readonly openSections: ReadonlySet<string>
   readonly onOpenSectionsChange: (open: ReadonlySet<string>) => void
   readonly onBackToImport: () => void
 }
 
-function exportLists(lists: Lists, keys: readonly ListKey[], overrides: AppState['report']['overrides']): void {
+function exportLists(lists: Lists, keys: readonly ListKey[], state: AppState): void {
   const now = new Date()
-  for (const key of keys) downloadCsv(exportFileName(key, now), buildListCsv(lists[key], overrides))
+  const penalties = state.finalised ? state.finalised.log.length : null
+  for (const key of keys) downloadCsv(exportFileName(key, now), buildListCsv(lists[key], state.report.overrides, penalties))
 }
 
-export function ResultsScreen({ state, dispatch, blockedReason, openSections, onOpenSectionsChange, onBackToImport }: ResultsScreenProps) {
+const focusRow = (matric: string): void => {
+  window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-row-matric="${CSS.escape(matric)}"]`)?.focus())
+}
+
+export function ResultsScreen(props: ResultsScreenProps) {
+  const { state, dispatch, scenarios, blockedReason, openSections, onOpenSectionsChange, onBackToImport } = props
   const [active, setActive] = useState<ListKey>('maleStaying')
   const [search, setSearch] = useState('')
-  const { results, report, config, computeError } = state
+  const [openMatric, setOpenMatric] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<PenaltyKey | null>(null)
+  const [undoError, setUndoError] = useState<string | null>(null)
+  const { results, report, config, computeError, finalised } = state
   const lists = results?.lists ?? null
+  const input = report.input
+  const order = lists ? bandRows(active, lists[active], config, search).flatMap((b) => b.rows.map((r) => r.matric)) : []
+
+  const closeDrawer = (): void => {
+    if (openMatric) focusRow(openMatric)
+    setOpenMatric(null)
+  }
+  const undo = (entry: PenaltyLogEntry): void => {
+    if (!finalised || !input) return
+    const result = removePenalty(input, config, finalised.penalty, entry.key)
+    setUndoError(result.ok ? null : result.error)
+    if (result.ok) dispatch({ type: 'undoPenalty', penalty: result.state, key: entry.key })
+  }
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)]">
       <SettingsPanel
         config={config}
+        locked={finalised !== null}
         onChange={(next) => dispatch({ type: 'setConfig', config: next })}
         openSections={openSections}
         onOpenSectionsChange={onOpenSectionsChange}
       />
       <main className="flex min-h-0 min-w-0 flex-col">
+        <ResultsHeader state={state} lists={lists} dispatch={dispatch} scenarios={scenarios} />
+        {finalised && lists && <PenaltiesStrip finalised={finalised} lists={lists} undoError={undoError} onUndo={undo} />}
         <ResultsBanner report={report} onBackToImport={onBackToImport} />
         {computeError && (
           <p role="alert" className="border-b border-error/30 bg-error-bg px-6 py-2 text-body text-error">
@@ -59,7 +91,7 @@ export function ResultsScreen({ state, dispatch, blockedReason, openSections, on
           <p className="px-6 py-10 text-muted">{computeError ? 'Change the settings to continue.' : 'Calculating…'}</p>
         ) : (
           <>
-            <ListTabs lists={lists} active={active} onChange={setActive} />
+            <ListTabs counts={Object.fromEntries(LIST_KEYS.map((k) => [k, lists[k].length])) as Record<ListKey, number>} active={active} onChange={setActive} />
             <div className="flex flex-wrap items-center gap-3 px-6 py-3">
               <label className="relative flex items-center">
                 <Search aria-hidden size={14} className="pointer-events-none absolute left-2.5 text-muted" />
@@ -72,19 +104,44 @@ export function ResultsScreen({ state, dispatch, blockedReason, openSections, on
                   className="motion h-9 w-72 rounded-[3px] border border-ink/20 bg-card pr-2 pl-8 text-body hover:border-ink/50"
                 />
               </label>
-              <span className="text-cap text-muted">{LIST_TITLES[active]} · {lists[active].length} residents</span>
+              <span className="text-cap text-muted">{LIST_TITLES[active]} · {lists[active].length} residents · click a row for its breakdown</span>
               <div className="ml-auto flex gap-2">
-                <Button onClick={() => exportLists(lists, [active], report.overrides)}>
+                <Button onClick={() => exportLists(lists, [active], state)}>
                   <Download aria-hidden size={15} /> Export this list
                 </Button>
-                <Button variant="primary" onClick={() => exportLists(lists, LIST_KEYS, report.overrides)}>
+                <Button variant="primary" onClick={() => exportLists(lists, LIST_KEYS, state)}>
                   <Download aria-hidden size={15} /> Export all 5
                 </Button>
               </div>
             </div>
             <div id={panelId} role="tabpanel" aria-labelledby={tabId(active)} className="flex min-h-0 flex-1 flex-col">
-              <ListTable list={active} rows={lists[active]} config={config} search={search} />
+              <ListTable list={active} rows={lists[active]} config={config} search={search} onOpen={setOpenMatric} />
             </div>
+            <ResidentDrawer
+              matric={openMatric}
+              order={order}
+              lists={lists}
+              input={input}
+              config={config}
+              penalty={finalised?.penalty}
+              onNavigate={(m) => setOpenMatric(m)}
+              onClose={closeDrawer}
+              onDropRole={finalised ? setDropTarget : null}
+            />
+            {finalised && input && (
+              <PenaltyDialog
+                target={dropTarget}
+                input={input}
+                config={config}
+                penalty={finalised.penalty}
+                lists={lists}
+                onCancel={() => setDropTarget(null)}
+                onConfirm={(penalty, entry) => {
+                  dispatch({ type: 'applyPenalty', penalty, entry })
+                  setDropTarget(null)
+                }}
+              />
+            )}
           </>
         )}
       </main>

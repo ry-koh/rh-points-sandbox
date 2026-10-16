@@ -18,6 +18,7 @@ interface ImportScreenProps {
 
 export function ImportScreen({ state, dispatch, blockedReason, settingsCause, onViewResults }: ImportScreenProps) {
   const { report, files } = state
+  const locked = state.finalised !== null
   return (
     <main className="mx-auto max-w-[1600px] px-6 pt-8 pb-16">
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-rule pb-5">
@@ -45,6 +46,11 @@ export function ImportScreen({ state, dispatch, blockedReason, settingsCause, on
           )}
         </Button>
       </div>
+      {locked && (
+        <p role="status" className="mt-6 flex items-center gap-2 border-l-4 border-gold bg-gold-soft px-4 py-3 text-body font-medium">
+          <Lock aria-hidden size={15} /> Finalised · settings locked. Files and overrides cannot change until the lists are unlocked on the Results screen.
+        </p>
+      )}
       {settingsCause && (
         <div role="alert" className="mt-6 flex flex-wrap items-center gap-3 border-l-4 border-gold bg-gold-soft px-4 py-3">
           <SlidersHorizontal aria-hidden size={16} />
@@ -62,13 +68,14 @@ export function ImportScreen({ state, dispatch, blockedReason, settingsCause, on
       )}
       <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,4fr)]">
         <div className="min-w-0">
-          <DropZone onFiles={(added) => dispatch({ type: 'addFiles', files: added })} />
-          <FileList files={files} onRemove={(name) => dispatch({ type: 'removeFile', name })} />
+          {!locked && <DropZone onFiles={(added) => dispatch({ type: 'addFiles', files: added })} />}
+          <FileList files={files} locked={locked} onRemove={(name) => dispatch({ type: 'removeFile', name })} />
         </div>
         {files.length > 0 && <IssuesPanel issues={report.issues} />}
       </div>
       <CcaTable
         rows={report.perCca}
+        locked={locked}
         onToggleOverride={(ccaID) => dispatch({ type: 'toggleOverride', ccaID })}
       />
     </main>

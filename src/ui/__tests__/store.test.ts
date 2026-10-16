@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_CONFIG, computeAll } from '../../engine'
+import { DEFAULT_CONFIG, computeAll, createPenaltyState } from '../../engine'
 import { leaderFileName, leaderRows, scenario } from '../../import/__tests__/fixtures'
 import { initialState, reducer, type AppState } from '../state/store'
 
@@ -57,6 +57,61 @@ describe('app reducer', () => {
     expect(after.report.canCompute).toBe(false)
     expect(before.report.canCompute).toBe(true)
     expect(after).not.toBe(before)
+  })
+
+  describe('finalise and penalties', () => {
+    const ready = (): AppState => {
+      const state = withFiles()
+      const input = state.report.input
+      if (!input) throw new Error('expected input')
+      return reducer(state, { type: 'setResults', results: computeAll(input, state.config), error: null })
+    }
+    const finalised = (): AppState => {
+      const state = ready()
+      if (!state.results) throw new Error('expected results')
+      return reducer(state, { type: 'finalise', penalty: createPenaltyState(state.results.lists) })
+    }
+    const entry = { key: { matric: 'A9900001Z', ccaID: 'C1' }, residentName: 'Test Resident 001', ccaName: 'Test CCA One', outcome: 'Stays green' }
+
+    it('locks settings, files and overrides', () => {
+      const state = finalised()
+      expect(state.finalised).not.toBeNull()
+      expect(reducer(state, { type: 'setConfig', config: { ...state.config, sem2Factor: 9 } })).toBe(state)
+      expect(reducer(state, { type: 'addFiles', files: failingC1 })).toBe(state)
+      expect(reducer(state, { type: 'removeFile', name: 'residents.csv' })).toBe(state)
+      expect(reducer(state, { type: 'toggleOverride', ccaID: 'C1' })).toBe(state)
+    })
+
+    it('cannot finalise while the import is blocked', () => {
+      const blocked = withFiles(failingC1)
+      expect(reducer(blocked, { type: 'finalise', penalty: { cutoffs: { M: null, F: null }, applied: [], removed: [] } }).finalised).toBeNull()
+    })
+
+    it('records and undoes penalties', () => {
+      const state = finalised()
+      const penalty = { ...(state.finalised?.penalty ?? { cutoffs: { M: null, F: null }, removed: [] }), applied: [entry.key] }
+      const applied = reducer(state, { type: 'applyPenalty', penalty, entry })
+      expect(applied.finalised?.log).toEqual([entry])
+      const undone = reducer(applied, { type: 'undoPenalty', penalty: { ...penalty, applied: [] }, key: entry.key })
+      expect(undone.finalised?.log).toEqual([])
+      expect(undone.finalised?.penalty.applied).toEqual([])
+    })
+
+    it('unlock clears every penalty and allows changes again', () => {
+      const state = finalised()
+      const withPenalty = reducer(state, { type: 'applyPenalty', penalty: state.finalised?.penalty ?? createPenaltyState({ maleStaying: [], femaleStaying: [], maleBidding: [], femaleBidding: [], sem2: [] }), entry })
+      const unlocked = reducer(withPenalty, { type: 'unlock' })
+      expect(unlocked.finalised).toBeNull()
+      const changed = reducer(unlocked, { type: 'setConfig', config: { ...unlocked.config, sem2Factor: 9 } })
+      expect(changed.config.sem2Factor).toBe(9)
+    })
+
+    it('ignores penalty actions when not finalised', () => {
+      const state = ready()
+      const penalty = { cutoffs: { M: null, F: null }, applied: [], removed: [] }
+      expect(reducer(state, { type: 'applyPenalty', penalty, entry })).toBe(state)
+      expect(reducer(state, { type: 'undoPenalty', penalty, key: entry.key })).toBe(state)
+    })
   })
 
   it('stores results, and drops them when the import becomes blocked', () => {

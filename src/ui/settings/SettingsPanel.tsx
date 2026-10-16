@@ -1,3 +1,4 @@
+import { Lock } from 'lucide-react'
 import { useState, type ComponentType } from 'react'
 import { DEFAULT_CONFIG, type ScenarioConfig } from '../../engine'
 import { Button, ConfirmDialog } from '../common/controls'
@@ -40,12 +41,13 @@ const countChanged = (config: ScenarioConfig, keys: readonly (keyof ScenarioConf
 
 interface SettingsPanelProps {
   readonly config: ScenarioConfig
+  readonly locked: boolean
   readonly onChange: (config: ScenarioConfig) => void
   readonly openSections: ReadonlySet<string>
   readonly onOpenSectionsChange: (open: ReadonlySet<string>) => void
 }
 
-export function SettingsPanel({ config, onChange, openSections, onOpenSectionsChange }: SettingsPanelProps) {
+export function SettingsPanel({ config, locked, onChange, openSections, onOpenSectionsChange }: SettingsPanelProps) {
   const [confirmReset, setConfirmReset] = useState(false)
   const update: SectionProps['update'] = (key, value) => onChange({ ...config, [key]: value })
   const totalChanged = countChanged(config, Object.keys(DEFAULT_CONFIG) as (keyof ScenarioConfig)[])
@@ -58,11 +60,19 @@ export function SettingsPanel({ config, onChange, openSections, onOpenSectionsCh
   return (
     <aside aria-label="Settings" className="flex h-full flex-col border-r border-rule bg-paper">
       <div className="flex items-center gap-2 border-b-2 border-ink px-4 py-3">
-        <h2 className="flex-1 text-lead font-semibold">Settings</h2>
-        <Button small variant="ghost" disabled={totalChanged === 0} onClick={() => setConfirmReset(true)}>
+        <h2 className="flex flex-1 items-center gap-1.5 text-lead font-semibold">
+          {locked && <Lock aria-label="Locked" size={14} />}
+          Settings
+        </h2>
+        <Button small variant="ghost" disabled={locked || totalChanged === 0} onClick={() => setConfirmReset(true)}>
           Reset all
         </Button>
       </div>
+      {locked && (
+        <p className="flex items-center gap-1.5 border-b border-rule bg-gold-soft px-4 py-2 text-body font-medium">
+          <Lock aria-hidden size={13} /> Finalised · settings locked
+        </p>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {SECTIONS.map(({ id, title, keys, Body }) => (
           <Section
@@ -73,7 +83,9 @@ export function SettingsPanel({ config, onChange, openSections, onOpenSectionsCh
             onToggle={() => toggle(id)}
             prominent={id === 'headcounts'}
           >
-            <Body config={config} update={update} />
+            <fieldset disabled={locked} className={locked ? 'opacity-70' : ''}>
+              <Body config={config} update={update} />
+            </fieldset>
           </Section>
         ))}
       </div>

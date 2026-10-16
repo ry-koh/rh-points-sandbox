@@ -1,9 +1,8 @@
 import { useRef, type KeyboardEvent } from 'react'
-import type { Lists } from '../../engine'
 import { LIST_KEYS, LIST_TITLES, type ListKey } from '../export/exportCsv'
 
 interface ListTabsProps {
-  readonly lists: Lists
+  readonly counts: Readonly<Record<ListKey, number>>
   readonly active: ListKey
   readonly onChange: (list: ListKey) => void
 }
@@ -12,7 +11,7 @@ export const tabId = (list: ListKey): string => `tab-${list}`
 export const panelId = 'list-panel'
 
 /** WAI-ARIA tabs: arrow keys move between lists, Home/End jump to the ends. */
-export function ListTabs({ lists, active, onChange }: ListTabsProps) {
+export function ListTabs({ counts, active, onChange }: ListTabsProps) {
   const refs = useRef<Partial<Record<ListKey, HTMLButtonElement | null>>>({})
   const onKey = (event: KeyboardEvent<HTMLDivElement>): void => {
     const index = LIST_KEYS.indexOf(active)
@@ -47,7 +46,7 @@ export function ListTabs({ lists, active, onChange }: ListTabsProps) {
           >
             {LIST_TITLES[key]}
             <span className={`num rounded-[3px] px-1.5 text-cap ${selected ? 'bg-ink text-paper' : 'bg-ink/[0.07]'}`}>
-              {lists[key].length}
+              {counts[key]}
             </span>
             <span className={`motion absolute inset-x-0 -bottom-px h-[3px] bg-raffles ${selected ? 'opacity-100' : 'opacity-0'}`} />
           </button>

@@ -6,10 +6,11 @@ import { KIND_LABELS, describeFile } from '../state/fileInfo'
 
 interface FileListProps {
   readonly files: readonly SourceFile[]
+  readonly locked: boolean
   readonly onRemove: (name: string) => void
 }
 
-export function FileList({ files, onRemove }: FileListProps) {
+export function FileList({ files, locked, onRemove }: FileListProps) {
   const infos = useMemo(() => files.map(describeFile), [files])
   if (infos.length === 0) {
     return <p className="mt-4 text-body text-muted">No files yet.</p>
@@ -45,9 +46,10 @@ export function FileList({ files, onRemove }: FileListProps) {
               <td className="w-8 py-1.5 text-right">
                 <button
                   type="button"
+                  disabled={locked}
                   onClick={() => onRemove(info.name)}
                   aria-label={`Remove ${info.name}`}
-                  className="motion rounded-[3px] p-1 text-muted hover:bg-error-bg hover:text-error"
+                  className="motion rounded-[3px] p-1 text-muted hover:bg-error-bg hover:text-error disabled:opacity-30 disabled:hover:bg-transparent"
                 >
                   <X aria-hidden size={14} />
                 </button>

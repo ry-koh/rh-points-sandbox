@@ -14,6 +14,7 @@ const fmt = (n: number | null): string => (n === null ? '—' : n.toFixed(2))
 
 interface CcaTableProps {
   readonly rows: readonly PerCcaReport[]
+  readonly locked: boolean
   readonly onToggleOverride: (ccaID: string) => void
 }
 
@@ -28,7 +29,7 @@ function Th({ children, right = false }: { readonly children: string; readonly r
   )
 }
 
-function Row({ cca, onAsk }: { readonly cca: PerCcaReport; readonly onAsk: (cca: PerCcaReport) => void }) {
+function Row({ cca, locked, onAsk }: { readonly cca: PerCcaReport; readonly locked: boolean; readonly onAsk: (cca: PerCcaReport) => void }) {
   const { range } = cca
   const status = STATUS[cca.status]
   return (
@@ -60,12 +61,12 @@ function Row({ cca, onAsk }: { readonly cca: PerCcaReport; readonly onAsk: (cca:
       </td>
       <td className="py-2 text-right">
         {cca.status === 'out_of_range' && (
-          <Button small onClick={() => onAsk(cca)}>
+          <Button small disabled={locked} onClick={() => onAsk(cca)}>
             Override
           </Button>
         )}
         {cca.status === 'overridden' && (
-          <Button small variant="ghost" onClick={() => onAsk(cca)}>
+          <Button small variant="ghost" disabled={locked} onClick={() => onAsk(cca)}>
             Undo override
           </Button>
         )}
@@ -74,7 +75,7 @@ function Row({ cca, onAsk }: { readonly cca: PerCcaReport; readonly onAsk: (cca:
   )
 }
 
-export function CcaTable({ rows, onToggleOverride }: CcaTableProps) {
+export function CcaTable({ rows, locked, onToggleOverride }: CcaTableProps) {
   const [asking, setAsking] = useState<PerCcaReport | null>(null)
   if (rows.length === 0) return null
   const undo = asking?.status === 'overridden'
@@ -106,7 +107,7 @@ export function CcaTable({ rows, onToggleOverride }: CcaTableProps) {
           </thead>
           <tbody>
             {rows.map((cca) => (
-              <Row key={cca.ccaID} cca={cca} onAsk={setAsking} />
+              <Row key={cca.ccaID} cca={cca} locked={locked} onAsk={setAsking} />
             ))}
           </tbody>
         </table>

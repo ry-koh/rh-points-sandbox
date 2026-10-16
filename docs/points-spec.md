@@ -1,4 +1,4 @@
-# RH Hall Points Spec — v1.1
+# RH Hall Points Spec — v1.2
 
 Authoritative rules for the Raffles Hall AY26-27 points system. Where this document and the
 CLAUDE.md summary differ, this document wins. Every number below is a **config variable**
@@ -273,6 +273,25 @@ role).
    list, so they may fall to white. If they were **white**, just recompute.
 4. Bidding is recomputed for the resident but marked
    **"informational — rooms may already be picked"**.
+
+### 6.1 Penalty state and list rebuild
+
+1. The frozen green cut-off for a gender is taken from the lists **before any penalty** and
+   is reused unchanged for every later penalty.
+2. **Penalty state** = the set of dropped memberships (matric + ccaID) plus the set of
+   removed matrics (plus the frozen cut-offs). Lists are **rebuilt from scratch** on each
+   change: recompute every resident with `roleDropped` on the dropped memberships, exclude
+   removed residents from the band counts, sort, then assign bands by headcount. Green and
+   grey **keep their sizes**: when a green resident is removed, the top grey moves to green
+   and the top white moves to grey.
+3. Removed residents appear at the **bottom** of their gender's staying list with status
+   `removed` and their recomputed points.
+4. Applying a penalty to a membership with `incomingRole = none` is **rejected**, returning
+   an error result (not a thrown exception).
+5. A penalty on a **sem-2** resident only recomputes their points and re-sorts the sem-2
+   list. Nobody is removed and there is no frozen cut-off.
+6. On **every bidding list** (male, female, sem-2), a resident with a dropped role is marked
+   "informational — rooms may already be picked".
 
 ## 7. Validation
 

@@ -65,10 +65,6 @@ export function bandBoundaries(green: number, grey: number): Boundary[] {
   return boundaries
 }
 
-export function spotBoundaries(spots: number): Boundary[] {
-  return spots > 0 ? [{ after: spots, label: 'spot/no spot' }] : []
-}
-
 /** One flag per boundary the tie group (positions groupStart..groupEnd) straddles. */
 export function straddleFlags(
   groupStart: number,

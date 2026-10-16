@@ -3,11 +3,11 @@ import { useState, type Dispatch } from 'react'
 import { removePenalty, type Lists, type PenaltyKey } from '../../engine'
 import { Button } from '../common/controls'
 import { ResidentDrawer } from '../drawer/ResidentDrawer'
-import { LIST_KEYS, LIST_TITLES, buildListCsv, downloadCsv, exportFileName, type ListKey } from '../export/exportCsv'
+import { LIST_KEYS, LIST_TITLES, buildListCsv, downloadCsv, entryCounts, exportFileName, type ListKey } from '../export/exportCsv'
 import { PenaltiesStrip } from '../penalty/PenaltiesStrip'
 import { PenaltyDialog } from '../penalty/PenaltyDialog'
 import { SettingsPanel } from '../settings/SettingsPanel'
-import type { Action, AppState, PenaltyLogEntry } from '../state/store'
+import { entryOptions, type Action, type AppState, type PenaltyLogEntry } from '../state/store'
 import type { ScenarioStore } from '../state/useScenarios'
 import { bandRows } from './bands'
 import { ListTable } from './ListTable'
@@ -28,7 +28,8 @@ interface ResultsScreenProps {
 function exportLists(lists: Lists, keys: readonly ListKey[], state: AppState): void {
   const now = new Date()
   const penalties = state.finalised ? state.finalised.log.length : null
-  for (const key of keys) downloadCsv(exportFileName(key, now), buildListCsv(lists[key], state.report.overrides, penalties))
+  const counts = entryCounts(state.results)
+  for (const key of keys) downloadCsv(exportFileName(key, now), buildListCsv(lists[key], state.report.overrides, penalties, counts))
 }
 
 const focusRow = (matric: string): void => {
@@ -53,7 +54,7 @@ export function ResultsScreen(props: ResultsScreenProps) {
   }
   const undo = (entry: PenaltyLogEntry): void => {
     if (!finalised || !input) return
-    const result = removePenalty(input, config, finalised.penalty, entry.key)
+    const result = removePenalty(input, config, finalised.penalty, entry.key, entryOptions(state))
     setUndoError(result.ok ? null : result.error)
     if (result.ok) dispatch({ type: 'undoPenalty', penalty: result.state, key: entry.key })
   }
@@ -134,6 +135,7 @@ export function ResultsScreen(props: ResultsScreenProps) {
                 input={input}
                 config={config}
                 penalty={finalised.penalty}
+                entries={entryOptions(state)}
                 lists={lists}
                 onCancel={() => setDropTarget(null)}
                 onConfirm={(penalty, entry) => {

@@ -5,6 +5,7 @@ import type {
   Gender,
   Headcounts,
   IhgEntry,
+  JcrcStatus,
   Membership,
   PipelineInput,
   PlacementLevel,
@@ -71,6 +72,7 @@ export function makeResident(overrides: Partial<Resident> = {}): Resident {
     gender: 'M',
     sem2: false,
     aux: NEUTRAL_AUX,
+    jcrc: 'N',
     ...overrides,
   }
 }
@@ -112,29 +114,40 @@ export interface RowSpec {
   /** Base in CCA "X" (pass placement, so the staying/bidding net equals the base). */
   readonly base?: number
   readonly incoming?: Role
+  /** Outgoing role in CCA "X" (bidding only; needs the CCA's outgoingMultiplier). */
+  readonly outgoing?: Role
+  readonly name?: string
+  readonly jcrc?: JcrcStatus
   /** Extra [ccaID, base] memberships, e.g. in CCA "Y". */
   readonly extra?: readonly (readonly [string, number])[]
   readonly aux?: number
 }
 
 /** Synthetic dataset: matric = id, every membership in the plain 1x CCAs "X" and "Y". */
-export function makeInput(rows: readonly RowSpec[]): PipelineInput {
+export function makeInput(rows: readonly RowSpec[], xOverrides: Partial<Cca> = {}): PipelineInput {
   const residents = rows.map((row) =>
     makeResident({
       matric: row.id,
-      name: row.id,
+      name: row.name ?? row.id,
       gender: row.gender ?? 'M',
       sem2: row.sem2 ?? false,
       aux: row.aux ?? NEUTRAL_AUX,
+      jcrc: row.jcrc ?? 'N',
     }),
   )
   const memberships = rows.flatMap((row) => [
     ...(row.base === undefined
       ? []
-      : [makeMembership('X', row.base, { matric: row.id, incomingRole: row.incoming ?? 'none' })]),
+      : [
+          makeMembership('X', row.base, {
+            matric: row.id,
+            incomingRole: row.incoming ?? 'none',
+            outgoingRole: row.outgoing ?? 'none',
+          }),
+        ]),
     ...(row.extra ?? []).map(([ccaID, base]) => makeMembership(ccaID, base, { matric: row.id })),
   ])
-  return { residents, ccas: [makeCca('X'), makeCca('Y')], memberships, ihg: [] }
+  return { residents, ccas: [makeCca('X', 'pass', '1x', xOverrides), makeCca('Y')], memberships, ihg: [] }
 }
 
 export function configWith(

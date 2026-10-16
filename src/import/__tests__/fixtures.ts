@@ -6,7 +6,8 @@ export const LEADER_COLS = [
   'formatVersion', 'ccaID', 'ccaName', 'matric', 'name',
   'basePoints', 'semesterOnly', 'outgoingRole', 'incomingRole', 'exportedAt',
 ]
-export const RESIDENT_COLS = ['matric', 'name', 'gender', 'sem2', 'aux']
+export const RESIDENT_COLS = ['matric', 'name', 'gender', 'sem2', 'aux', 'jcrc']
+export const FLAT_COLS = ['formatVersion', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints', 'exportedAt']
 export const IHG_COLS = ['matric', 'ccaID', 'placement']
 export const CCA_COLS = [
   'ccaID', 'ccaName', 'type', 'placement', 'outgoingTier', 'outgoingMultiplier',
@@ -35,6 +36,7 @@ export function baseResidents(count = 10): Row[] {
     gender: i % 2 === 0 ? 'M' : 'F',
     sem2: 'N',
     aux: '5',
+    jcrc: 'N',
   }))
 }
 
@@ -69,6 +71,36 @@ export function leaderRows(ccaID: string, scores: readonly number[] = BASE_SCORE
 }
 
 export const leaderFileName = (ccaID: string): string => `points_${ccaID}_20270401.csv`
+export const FLAT_FILE_NAME = 'flat_points_20270401.csv'
+
+/** A CCA row for ccas.csv that has no leader file (a flat CCA). */
+export function flatCca(ccaID = 'C3'): Row {
+  return {
+    ccaID,
+    ccaName: `Test Flat ${ccaID}`,
+    type: '1x',
+    placement: 'gold',
+    outgoingTier: '',
+    outgoingMultiplier: '',
+    meanMin: '',
+    meanMax: '',
+    sdMin: '',
+    sdMax: '',
+  }
+}
+
+/** Flat-points rows for residents 1..count of one flat CCA. */
+export function flatRows(ccaID = 'C3', value = '12', count = 6): Row[] {
+  return Array.from({ length: count }, (_, i) => ({
+    formatVersion: '1',
+    ccaID,
+    ccaName: `Test Flat ${ccaID}`,
+    matric: matricOf(i + 1),
+    name: `Test Resident ${String(i + 1).padStart(3, '0')}`,
+    flatPoints: value,
+    exportedAt: EXPORTED_AT,
+  }))
+}
 
 /** Patches one row; a negative index counts from the end. */
 export function patchRow(rows: readonly Row[], index: number, patch: Row): Row[] {
@@ -81,6 +113,7 @@ export interface Scenario {
   readonly ccas: readonly Row[] | null
   readonly leaders: Readonly<Record<string, readonly Row[]>>
   readonly ihg: readonly Row[] | null
+  readonly flat: readonly Row[] | null
   readonly extra: readonly SourceFile[]
 }
 
@@ -91,6 +124,7 @@ export function scenario(overrides: Partial<Scenario> = {}): SourceFile[] {
     ccas: baseCcas(),
     leaders: { C1: leaderRows('C1'), C2: leaderRows('C2') },
     ihg: null,
+    flat: null,
     extra: [],
     ...overrides,
   }
@@ -101,5 +135,6 @@ export function scenario(overrides: Partial<Scenario> = {}): SourceFile[] {
     files.push({ name: leaderFileName(ccaID), text: toCsv(LEADER_COLS, rows) })
   }
   if (s.ihg) files.push({ name: 'ihg.csv', text: toCsv(IHG_COLS, s.ihg) })
+  if (s.flat) files.push({ name: FLAT_FILE_NAME, text: toCsv(FLAT_COLS, s.flat) })
   return [...files, ...s.extra]
 }

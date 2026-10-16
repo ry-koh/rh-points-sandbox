@@ -11,6 +11,7 @@ export const KIND_LABELS: Readonly<Record<FileKind, string>> = {
   residents: 'Residents',
   ihg: 'IHG',
   ccas: 'CCA settings',
+  flat: 'Flat points',
 }
 
 export function describeFile(file: SourceFile): FileInfo {

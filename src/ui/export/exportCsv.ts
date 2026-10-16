@@ -1,4 +1,4 @@
-import type { ListRow, Lists } from '../../engine'
+import type { Checked, Discretion, FinalOverride, ListRow, Lists } from '../../engine'
 import type { OverrideRecord } from '../../import'
 
 export type ListKey = keyof Lists
@@ -29,10 +29,31 @@ export const POINTS_DECIMALS = 3
 const quote = (cell: string): string =>
   /[",\n]/.test(cell) ? `"${cell.replaceAll('"', '""')}"` : cell
 
-/** First line of every export: which CCAs had their mean/SD check overridden. */
-export function overridesLine(overrideNames: readonly string[]): string {
-  return `# overrides: ${overrideNames.length > 0 ? overrideNames.join(', ') : 'none'}`
+/** How many JCRC entries are in force (applied, not stale) for the comment lines of an export. */
+export interface EntryCounts {
+  readonly finalOverrides: number
+  readonly discretion: number
 }
+
+const NO_ENTRIES: EntryCounts = { finalOverrides: 0, discretion: 0 }
+
+const appliedCount = <T,>(checked: readonly Checked<T>[] | undefined): number =>
+  (checked ?? []).filter((c) => c.status === 'applied').length
+
+export function entryCounts(
+  results: { readonly overrides: readonly Checked<FinalOverride>[]; readonly discretion: readonly Checked<Discretion>[] } | null,
+): EntryCounts {
+  if (!results) return NO_ENTRIES
+  return { finalOverrides: appliedCount(results.overrides), discretion: appliedCount(results.discretion) }
+}
+
+/** First comment line of every export: which CCAs had their mean/SD check overridden. */
+export function meanSdOverridesLine(overrideNames: readonly string[]): string {
+  return `# mean/SD overrides: ${overrideNames.length > 0 ? overrideNames.join(', ') : 'none'}`
+}
+
+export const finalOverridesLine = (count: number): string => `# final-points overrides: ${count}`
+export const discretionLine = (count: number): string => `# discretion adjustments: ${count}`
 
 function rowCells(row: ListRow): string[] {
   return [
@@ -47,7 +68,7 @@ function rowCells(row: ListRow): string[] {
   ]
 }
 
-/** Second line of every export made while the lists are finalised. */
+/** Fourth line of every export made while the lists are finalised. */
 export function finalisedLine(penalties: number): string {
   return `# finalised: yes · penalties: ${penalties}`
 }
@@ -56,9 +77,12 @@ export function finalisedLine(penalties: number): string {
 export function headerLines(
   overrides: readonly Pick<OverrideRecord, 'name'>[],
   finalisedPenalties: number | null,
+  counts: EntryCounts = NO_ENTRIES,
 ): string[] {
   return [
-    overridesLine(overrides.map((o) => o.name)),
+    meanSdOverridesLine(overrides.map((o) => o.name)),
+    finalOverridesLine(counts.finalOverrides),
+    discretionLine(counts.discretion),
     ...(finalisedPenalties === null ? [] : [finalisedLine(finalisedPenalties)]),
   ]
 }
@@ -69,9 +93,10 @@ export function buildListCsv(
   rows: readonly ListRow[],
   overrides: readonly Pick<OverrideRecord, 'name'>[],
   finalisedPenalties: number | null = null,
+  counts: EntryCounts = NO_ENTRIES,
 ): string {
   const lines = [
-    ...headerLines(overrides, finalisedPenalties),
+    ...headerLines(overrides, finalisedPenalties, counts),
     EXPORT_COLUMNS.join(','),
     ...rows.map((row) => rowCells(row).map(quote).join(',')),
   ]

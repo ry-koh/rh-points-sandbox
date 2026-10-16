@@ -5,10 +5,12 @@ export const ROLES = ['none', 'head', 'vice_head'] as const
 export const CCA_TYPES = ['1x', '0.5x'] as const
 export const PLACEMENTS = ['pass', 'bronze', 'silver', 'gold'] as const
 export const IHG_PLACEMENTS = ['1st', '2nd', '3rd', '3rd4th_no_match'] as const
+export const JCRC_VALUES = ['N', 'FULL', 'EXCHANGE'] as const
 
 const MATRIC_PATTERN = /^A\d{7}[A-Z]$/
 const WHOLE_NUMBER = /^\d+$/
 const DECIMAL_NUMBER = /^-?\d+(\.\d+)?$/
+const NON_NEGATIVE_NUMBER = /^\d+(\.\d+)?$/
 
 const WARNING_CODES: ReadonlySet<IssueCode> = new Set<IssueCode>([
   'NO_LEADER_FILE',
@@ -16,6 +18,7 @@ const WARNING_CODES: ReadonlySet<IssueCode> = new Set<IssueCode>([
   'AUX_ABOVE_CAP',
   'IHG_NON_MEMBER',
   'MANY_HALF_CCAS',
+  'IHG_ON_FINAL_CCA',
 ])
 
 type IssueDetails = Partial<Pick<Issue, 'line' | 'column' | 'ccaID' | 'matric'>>
@@ -115,6 +118,14 @@ export class RowReader {
     const inRange = value >= spec.min && (spec.max === undefined || value <= spec.max)
     if (!inRange) this.fail(code, column, `${column} "${raw}" must be ${spec.expect}.`)
     return inRange ? value : 0
+  }
+
+  /** A number of 0 or more (whole or decimal); anything else fails the row. */
+  nonNegativeNumber(column: string, code: IssueCode): number {
+    const raw = this.text(column)
+    const ok = NON_NEGATIVE_NUMBER.test(raw)
+    if (!ok) this.fail(code, column, `${column} "${raw}" must be a number of 0 or more.`)
+    return ok ? Number(raw) : 0
   }
 
   oneOf<T extends string>(column: string, allowed: readonly T[], code: IssueCode = 'BAD_ENUM'): T {

@@ -27,8 +27,9 @@ function bandDefs(list: ListKey, config: ScenarioConfig): readonly BandDef[] | n
   }
   if (list === 'sem2') {
     return [
-      { status: 'spot', label: `Spot · ${seats(h.sem2Spots)}` },
-      { status: 'no spot', label: 'No spot' },
+      { status: 'green', label: `Green · ${seats(h.sem2Green)}` },
+      { status: 'grey', label: `Grey · ${seats(h.sem2Grey)}` },
+      { status: 'white', label: 'White' },
     ]
   }
   return null

@@ -3,6 +3,7 @@ import type { MeanSdRange, ScenarioConfig } from '../engine'
 import { makeIssue } from './parseCommon'
 import type {
   CcaRow,
+  FlatRow,
   IhgRow,
   Issue,
   LeaderRow,
@@ -28,6 +29,19 @@ export interface CheckedLeader {
   readonly fileName: string
   readonly ccaID: string
   readonly rows: readonly LeaderRow[]
+}
+
+/** A flat-points file after the cross-file checks: one group per flat CCA (spec 2e). */
+export interface FlatFile {
+  readonly fileName: string
+  readonly result: ParseResult<FlatRow>
+}
+
+export interface CheckedFlat {
+  readonly fileName: string
+  readonly ccaID: string
+  readonly flatPoints: number
+  readonly rows: readonly FlatRow[]
 }
 
 export function checkCcaRows(ccas: Loaded<CcaRow>, config: ScenarioConfig): Issue[] {
@@ -77,6 +91,57 @@ export function checkLeaderFile(
   return { issues, checked: { fileName, ccaID, rows } }
 }
 
+/**
+ * Checks each flat CCA of the flat file: it must exist in ccas.csv, must not also have a leader
+ * file, must carry one value, and its members must be known and not repeated.
+ */
+export function checkFlatFile(
+  flat: FlatFile,
+  residents: Loaded<ResidentRow> | null,
+  ccas: Loaded<CcaRow> | null,
+  leaderIds: ReadonlySet<string>,
+): { readonly issues: Issue[]; readonly checked: CheckedFlat[] } {
+  const issues: Issue[] = []
+  const checked: CheckedFlat[] = []
+  const known = new Set(residents?.result.seenKeys ?? [])
+  const { fileName } = flat
+  for (const ccaID of flat.result.seenKeys) {
+    const rows = flat.result.rows.filter((row) => row.ccaID === ccaID)
+    if (ccas && !ccas.result.seenKeys.includes(ccaID)) {
+      issues.push(makeIssue('UNKNOWN_CCA', fileName, `CCA "${ccaID}" is not listed in ${ccas.fileName}.`, { ccaID }))
+      continue
+    }
+    if (leaderIds.has(ccaID)) {
+      const text = `${ccaID} has a points file AND flat points; a CCA is one or the other.`
+      issues.push(makeIssue('FLAT_AND_LEADER_FILE', fileName, text, { ccaID }))
+      continue
+    }
+    const first = rows[0]
+    if (!first) continue
+    if (rows.some((row) => row.flatPoints !== first.flatPoints)) {
+      const text = `${ccaID} has different flatPoints on different rows; every row of one CCA must carry the same value.`
+      issues.push(makeIssue('FLAT_VALUE_MISMATCH', fileName, text, { ccaID }))
+    }
+    const seen = new Set<string>()
+    const members = rows.filter((row) => {
+      if (residents && !known.has(row.matric)) {
+        const text = `${row.matric} is not in the residents list (${residents.fileName}).`
+        issues.push(makeIssue('UNKNOWN_MATRIC', fileName, text, { line: row.line, column: 'matric', matric: row.matric, ccaID }))
+        return false
+      }
+      if (seen.has(row.matric)) {
+        const text = `${row.matric} appears more than once for ${ccaID}; the later row is ignored.`
+        issues.push(makeIssue('DUPLICATE_MATRIC_IN_FILE', fileName, text, { line: row.line, matric: row.matric, ccaID }))
+        return false
+      }
+      seen.add(row.matric)
+      return true
+    })
+    checked.push({ fileName, ccaID, flatPoints: first.flatPoints, rows: members })
+  }
+  return { issues, checked }
+}
+
 export function checkIhgRows(
   ihg: Loaded<IhgRow>,
   residents: Loaded<ResidentRow> | null,
@@ -100,11 +165,29 @@ export function checkIhgRows(
   return { issues, rows }
 }
 
+/** An IHG row for a flat membership is ignored when ihgInSportNet is on (spec 4.1). */
+export function ihgOnFlatWarnings(ihg: Loaded<IhgRow>, flats: readonly CheckedFlat[]): Issue[] {
+  const members = new Set(flats.flatMap((f) => f.rows.map((row) => `${row.matric}|${f.ccaID}`)))
+  return ihg.result.rows
+    .filter((row) => members.has(`${row.matric}|${row.ccaID}`))
+    .map((row) =>
+      makeIssue('IHG_ON_FINAL_CCA', ihg.fileName, `${row.matric} has IHG points for ${row.ccaID}, which has flat points, so the IHG row is ignored.`, {
+        line: row.line,
+        matric: row.matric,
+        ccaID: row.ccaID,
+      }),
+    )
+}
+
 export function ihgNonMemberWarnings(
   ihg: Loaded<IhgRow>,
   leaders: readonly CheckedLeader[],
+  flats: readonly CheckedFlat[] = [],
 ): Issue[] {
-  const members = new Set(leaders.flatMap((l) => l.rows.map((row) => `${row.matric}|${l.ccaID}`)))
+  const members = new Set([
+    ...leaders.flatMap((l) => l.rows.map((row) => `${row.matric}|${l.ccaID}`)),
+    ...flats.flatMap((f) => f.rows.map((row) => `${row.matric}|${f.ccaID}`)),
+  ])
   return ihg.result.rows
     .filter((row) => !members.has(`${row.matric}|${row.ccaID}`))
     .map((row) =>
@@ -169,6 +252,23 @@ function meanSdMessage(cca: CcaRow, n: number, mean: number, sd: number, range: 
   )
 }
 
+/** A flat CCA is not mean/SD checked and never counts as missing a file (spec 2e). */
+export function flatStats(cca: CcaRow, flat: CheckedFlat, config: ScenarioConfig): CcaStats {
+  const range = resolveRange(cca, config.meanSdDefault)
+  const report: PerCcaReport = {
+    ccaID: cca.ccaID,
+    name: cca.ccaName,
+    range,
+    fileName: flat.fileName,
+    n: flat.rows.length,
+    mean: null,
+    sd: null,
+    status: 'flat',
+    flatPoints: flat.flatPoints,
+  }
+  return { report, issue: null, override: null }
+}
+
 export interface CcaStats {
   readonly report: PerCcaReport
   readonly issue: Issue | null
@@ -183,7 +283,7 @@ export function ccaStats(
   overridden: boolean,
 ): CcaStats {
   const range = resolveRange(cca, config.meanSdDefault)
-  const base = { ccaID: cca.ccaID, name: cca.ccaName, range }
+  const base = { ccaID: cca.ccaID, name: cca.ccaName, range, flatPoints: null }
   if (!leader) {
     const report: PerCcaReport = { ...base, fileName: null, n: 0, mean: null, sd: null, status: 'missing_file' }
     return { report, issue: null, override: null }

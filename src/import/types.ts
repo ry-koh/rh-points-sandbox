@@ -2,13 +2,14 @@ import type {
   CcaType,
   Gender,
   IhgPlacement,
+  JcrcStatus,
   MeanSdRange,
   PipelineInput,
   PlacementLevel,
   Role,
 } from '../engine'
 
-export type FileKind = 'leader' | 'residents' | 'ihg' | 'ccas'
+export type FileKind = 'leader' | 'residents' | 'ihg' | 'ccas' | 'flat'
 
 export interface SourceFile {
   readonly name: string
@@ -34,6 +35,12 @@ export type IssueCode =
   | 'BAD_YN'
   | 'BAD_GENDER'
   | 'BAD_AUX'
+  | 'BAD_JCRC'
+  | 'JCRC_AND_SEM2'
+  | 'BAD_FLAT_POINTS'
+  | 'FLAT_VALUE_MISMATCH'
+  | 'FLAT_AND_LEADER_FILE'
+  | 'DUPLICATE_FLAT_FILE'
   | 'UNKNOWN_CCA'
   | 'IHG_UNKNOWN_MATRIC'
   | 'IHG_UNKNOWN_CCA'
@@ -48,6 +55,7 @@ export type IssueCode =
   | 'AUX_ABOVE_CAP'
   | 'IHG_NON_MEMBER'
   | 'MANY_HALF_CCAS'
+  | 'IHG_ON_FINAL_CCA'
 
 export interface Issue {
   readonly severity: 'error' | 'warning'
@@ -98,6 +106,16 @@ export interface ResidentRow {
   readonly gender: Gender
   readonly sem2: boolean
   readonly aux: number
+  readonly jcrc: JcrcStatus
+}
+
+export interface FlatRow {
+  readonly line: number
+  readonly ccaID: string
+  readonly ccaName: string
+  readonly matric: string
+  readonly name: string
+  readonly flatPoints: number
 }
 
 export interface IhgRow {
@@ -128,7 +146,7 @@ export interface ParseResult<T> {
   readonly issues: readonly Issue[]
 }
 
-export type CcaStatus = 'ok' | 'out_of_range' | 'overridden' | 'missing_file'
+export type CcaStatus = 'ok' | 'out_of_range' | 'overridden' | 'missing_file' | 'flat'
 
 export interface PerCcaReport {
   readonly ccaID: string
@@ -139,6 +157,8 @@ export interface PerCcaReport {
   readonly sd: number | null
   readonly range: MeanSdRange
   readonly status: CcaStatus
+  /** The flat value of a flat CCA (status "flat"); null for every other CCA. */
+  readonly flatPoints: number | null
 }
 
 export interface OverrideRecord {

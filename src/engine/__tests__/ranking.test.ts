@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bandAt, bandBoundaries, rankDescending, spotBoundaries, straddleFlags } from '../ranking'
+import { bandAt, bandBoundaries, rankDescending, straddleFlags } from '../ranking'
 import { deepFreeze } from './helpers'
 
 interface Item {
@@ -102,11 +102,6 @@ describe('bandBoundaries', () => {
   it('has no boundary when G = 0 and H = 0', () => {
     expect(bandBoundaries(0, 0)).toEqual([])
   })
-
-  it('has a single spot/no spot boundary for sem-2', () => {
-    expect(spotBoundaries(3)).toEqual([{ after: 3, label: 'spot/no spot' }])
-    expect(spotBoundaries(0)).toEqual([])
-  })
 })
 
 describe('straddleFlags', () => {
@@ -151,8 +146,8 @@ describe('straddleFlags', () => {
     expect(straddleFlags(1, 3, bandBoundaries(10, 10))).toEqual([])
   })
 
-  it('flags the sem-2 spot boundary', () => {
-    const [flag] = straddleFlags(2, 3, spotBoundaries(2))
-    expect(flag?.text).toBe('TIE spot/no spot — 1 of 2 seats')
+  it('flags a green/white boundary when the grey band is empty (sem-2 with sem2Grey = 0)', () => {
+    const [flag] = straddleFlags(2, 3, bandBoundaries(2, 0))
+    expect(flag?.text).toBe('TIE green/white — 1 of 2 seats')
   })
 })

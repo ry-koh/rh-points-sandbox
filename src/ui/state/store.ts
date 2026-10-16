@@ -1,9 +1,13 @@
 import {
   DEFAULT_CONFIG,
+  type Discretion,
+  type EntryOptions,
+  type FinalOverride,
   type PenaltyKey,
   type PenaltyState,
   type PipelineResult,
   type ScenarioConfig,
+  type WheelResolution,
 } from '../../engine'
 import { validateImport, type ImportReport, type SourceFile } from '../../import'
 
@@ -25,6 +29,10 @@ export interface AppState {
   readonly files: readonly SourceFile[]
   readonly overrides: readonly string[]
   readonly config: ScenarioConfig
+  /** Final-points overrides, discretion and wheel resolutions: resident data, in memory only. */
+  readonly finalOverrides: readonly FinalOverride[]
+  readonly discretion: readonly Discretion[]
+  readonly resolutions: readonly WheelResolution[]
   readonly report: ImportReport
   readonly results: PipelineResult | null
   readonly computeError: string | null
@@ -51,11 +59,19 @@ function revalidate(state: Inputs): AppState {
     files: state.files,
     overrides: state.overrides,
     config: state.config,
+    finalOverrides: state.finalOverrides ?? [],
+    discretion: state.discretion ?? [],
+    resolutions: state.resolutions ?? [],
     report,
     results: report.canCompute ? (state.results ?? null) : null,
     computeError: null,
     finalised: state.finalised ?? null,
   }
+}
+
+/** The direct JCRC entries to hand to computeAll and the penalty functions. */
+export function entryOptions(state: Pick<AppState, 'finalOverrides' | 'discretion' | 'resolutions'>): EntryOptions {
+  return { overrides: state.finalOverrides, discretion: state.discretion, resolutions: state.resolutions }
 }
 
 export function initialState(config: ScenarioConfig = DEFAULT_CONFIG): AppState {

@@ -1,5 +1,13 @@
 import { HALF_PLACEMENT_FACTOR } from './defaults'
-import type { Cca, IhgEntry, Membership, MembershipResult, ScenarioConfig } from './types'
+import type {
+  Cca,
+  FinalNote,
+  FinalOverride,
+  IhgEntry,
+  Membership,
+  MembershipResult,
+  ScenarioConfig,
+} from './types'
 
 function isHalf(cca: Cca): boolean {
   return cca.type === '0.5x'
@@ -85,12 +93,52 @@ export function ihgPointsForCca(
     .reduce((sum, entry) => sum + config.ihgPoints[entry.placement], 0)
 }
 
+export const FLAT_TEXT = 'Flat points (set by JCRC)'
+
+/** A flat or overridden membership: exactly `note.value`, never multiplied, halved, merged or given IHG. */
+function finalResult(cca: Cca, note: FinalNote): MembershipResult {
+  return {
+    ccaID: cca.ccaID,
+    isHalf: false,
+    effBase: 0,
+    inMult: 1,
+    outMult: 1,
+    stayMult: 1,
+    bidMult: 1,
+    placement: 0,
+    ihgNet: 0,
+    stayNet: note.value,
+    bidNet: note.value,
+    final: note,
+  }
+}
+
+/** Precedence: final-points override > flat value > normal calculation (spec 4.1). */
+export function finalNoteOf(m: Membership, override: FinalOverride | undefined): FinalNote | null {
+  if (override) {
+    const reason = override.reason.trim()
+    return {
+      kind: 'override',
+      value: override.finalPoints,
+      reason,
+      text: `Final points set by JCRC: ${override.finalPoints} — ${reason}`,
+    }
+  }
+  if (m.flatPoints !== undefined) {
+    return { kind: 'flat', value: m.flatPoints, reason: null, text: FLAT_TEXT }
+  }
+  return null
+}
+
 export function computeMembership(
   m: Membership,
   cca: Cca,
   ihg: readonly IhgEntry[],
   config: ScenarioConfig,
+  override?: FinalOverride,
 ): MembershipResult {
+  const note = finalNoteOf(m, override)
+  if (note) return finalResult(cca, note)
   const base = effBase(m, cca, config)
   const inMult = incomingMult(m, config)
   const outMult = outgoingMult(m, cca, config)
@@ -110,5 +158,6 @@ export function computeMembership(
     ihgNet,
     stayNet: base * stay + placement + ihgNet,
     bidNet: base * bid + placement + ihgNet,
+    final: null,
   }
 }

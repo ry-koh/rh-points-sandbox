@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG, type ScenarioConfig } from '../../engine'
+import { DEFAULT_CONFIG, migrateConfig, type ScenarioConfig } from '../../engine'
 
 type Rec = Record<string, unknown>
 type ConfigKey = keyof ScenarioConfig
@@ -33,9 +33,11 @@ export const CONFIG_VALIDATORS: Readonly<Record<ConfigKey, (v: unknown) => boole
   stayingWeights: numArray,
   stayingWeightTail: oneOf(['halve']),
   mergeHalfCcas: isBool,
-  headcounts: numFields(['maleGreen', 'maleGrey', 'femaleGreen', 'femaleGrey', 'sem2Spots']),
+  headcounts: numFields(['maleGreen', 'maleGrey', 'femaleGreen', 'femaleGrey', 'sem2Green', 'sem2Grey']),
   sem2Mode: oneOf(['separate', 'merged']),
   sem2Factor: isNum,
+  jcrcFullYearOffset: isNum,
+  jcrcExchangeFactor: isNum,
 }
 
 export const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG) as ConfigKey[]
@@ -43,6 +45,12 @@ export const CONFIG_KEYS = Object.keys(DEFAULT_CONFIG) as ConfigKey[]
 /** Shape check for settings read back from storage: every §3 key with the right type. */
 export function isScenarioConfig(v: unknown): v is ScenarioConfig {
   return isRec(v) && CONFIG_KEYS.every((key) => CONFIG_VALIDATORS[key](v[key]))
+}
+
+/** Settings read back from storage: an older shape is migrated first (sem2Spots -> sem2Green). */
+export function readStoredConfig(v: unknown): ScenarioConfig | null {
+  const migrated = migrateConfig(v)
+  return isScenarioConfig(migrated) ? migrated : null
 }
 
 export type ConfigReadResult =
@@ -53,7 +61,8 @@ export type ConfigReadResult =
  * Builds a config from untrusted data: unknown keys are ignored, missing keys take the
  * defaults, and a present key with the wrong shape is an error.
  */
-export function readConfig(v: unknown): ConfigReadResult {
+export function readConfig(raw: unknown): ConfigReadResult {
+  const v = migrateConfig(raw)
   if (!isRec(v)) return { ok: false, error: 'The settings are missing or are not a list of named values.' }
   const bad = CONFIG_KEYS.filter((key) => key in v && !CONFIG_VALIDATORS[key](v[key]))
   if (bad.length > 0) {

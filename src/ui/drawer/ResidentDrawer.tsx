@@ -95,6 +95,12 @@ export function ResidentDrawer(props: ResidentDrawerProps) {
               <Total label="Staying" value={result.staying.points} />
               <Total label="Bidding" value={result.bidding.points} />
             </div>
+            {(result.jcrc || result.discretion) && (
+              <div className="mt-3 space-y-0.5 text-body text-muted">
+                {result.jcrc && <p>{result.jcrc.note}</p>}
+                {result.discretion && <p>{result.discretion.text}</p>}
+              </div>
+            )}
             <ul className="mt-3 space-y-1">
               {placements(lists, matric).map(({ list, row }) => (
                 <li key={list} className="flex flex-wrap items-center gap-2 text-body">

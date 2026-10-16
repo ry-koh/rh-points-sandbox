@@ -44,10 +44,15 @@ export const DEFAULT_CONFIG: ScenarioConfig = {
   stayingWeightTail: 'halve',
   mergeHalfCcas: true,
   // PLACEHOLDER: must be set before lists are final
-  headcounts: { maleGreen: 0, maleGrey: 0, femaleGreen: 0, femaleGrey: 0, sem2Spots: 0 },
+  headcounts: { maleGreen: 0, maleGrey: 0, femaleGreen: 0, femaleGrey: 0, sem2Green: 0, sem2Grey: 0 },
   sem2Mode: 'separate',
   sem2Factor: 2,
+  jcrcFullYearOffset: 1,
+  jcrcExchangeFactor: 0.75,
 }
+
+/** Longest reason accepted on an override or discretion entry (spec 6.2, 6.3). */
+export const MAX_REASON_LENGTH = 200
 
 /** Allowed base points for one member of a CCA (spec 2a). */
 export const BASE_POINTS_MIN = 0
@@ -55,3 +60,6 @@ export const BASE_POINTS_MAX = 20
 
 /** The only leader-export format version the sandbox accepts (spec 2a). */
 export const LEADER_FORMAT_VERSION = 1
+
+/** The only flat-points-file format version the sandbox accepts (spec 2e). */
+export const FLAT_FORMAT_VERSION = 1

@@ -3,7 +3,7 @@ import { useState, type Dispatch } from 'react'
 import { computeAll, createPenaltyState, type Lists } from '../../engine'
 import { Button, ConfirmDialog } from '../common/controls'
 import { ScenariosDialog } from '../scenarios/ScenariosDialog'
-import type { Action, AppState } from '../state/store'
+import { entryOptions, type Action, type AppState } from '../state/store'
 import type { ScenarioStore } from '../state/useScenarios'
 
 interface ResultsHeaderProps {
@@ -45,7 +45,7 @@ export function ResultsHeader({ state, lists, dispatch, scenarios }: ResultsHead
         onConfirm={() => {
           // Freeze cut-offs from lists computed now, never from results still waiting on the debounce.
           const input = state.report.input
-          if (input) dispatch({ type: 'finalise', penalty: createPenaltyState(computeAll(input, state.config).lists) })
+          if (input) dispatch({ type: 'finalise', penalty: createPenaltyState(computeAll(input, state.config, entryOptions(state)).lists) })
           setAsk(null)
         }}
       >

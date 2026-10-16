@@ -54,8 +54,6 @@ const STATUS_TONES: Readonly<Record<string, ChipTone>> = {
   grey: 'grey',
   white: 'outline',
   removed: 'removed',
-  spot: 'ok',
-  'no spot': 'outline',
 }
 
 export function StatusChip({ status }: { readonly status: string | null }) {

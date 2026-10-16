@@ -3,7 +3,7 @@ import { createPenaltyState } from '../penalty'
 import { computeAll } from '../pipeline'
 import { configWith, makeInput, type RowSpec } from './helpers'
 
-const config = configWith({ maleGreen: 1, maleGrey: 1, femaleGreen: 1, sem2Spots: 1 })
+const config = configWith({ maleGreen: 1, maleGrey: 1, femaleGreen: 1, sem2Green: 1 })
 
 const ROWS: RowSpec[] = [
   { id: 'M1', base: 14, incoming: 'head' },
@@ -49,7 +49,7 @@ describe('computeAll', () => {
   it('applies a penalty state by dropping the roles in it', () => {
     const base = createPenaltyState(output.lists)
     const state = { ...base, applied: [{ matric: 'M1', ccaID: 'X' }] }
-    const penalised = computeAll(input, config, state)
+    const penalised = computeAll(input, config, { penaltyState: state })
     expect(penalised.results[0]?.staying.points).toBe(8)
     expect(output.results[0]?.staying.points).toBeCloseTo(16.8, 9)
   })

@@ -6,6 +6,8 @@ export type IhgPlacement = '1st' | '2nd' | '3rd' | '3rd4th_no_match'
 export type OutgoingMode = 'tier' | 'manual'
 export type StackingMode = 'max' | 'additive' | 'multiplicative'
 export type Sem2Mode = 'separate' | 'merged'
+/** residents.csv `jcrc` column: not JCRC, JCRC full year, or JCRC exchange. */
+export type JcrcStatus = 'N' | 'FULL' | 'EXCHANGE'
 
 export interface Resident {
   readonly matric: string
@@ -13,6 +15,7 @@ export interface Resident {
   readonly gender: Gender
   readonly sem2: boolean
   readonly aux: number
+  readonly jcrc: JcrcStatus
 }
 
 export interface Cca {
@@ -37,6 +40,8 @@ export interface Membership {
   readonly incomingRole: Role
   /** Set only by the penalty action (spec section 6). */
   readonly roleDropped: boolean
+  /** Set only for a membership of a flat CCA: its exact, final value (spec 2e, 4.1). */
+  readonly flatPoints?: number
 }
 
 export interface IhgEntry {
@@ -62,7 +67,8 @@ export interface Headcounts {
   readonly maleGrey: number
   readonly femaleGreen: number
   readonly femaleGrey: number
-  readonly sem2Spots: number
+  readonly sem2Green: number
+  readonly sem2Grey: number
 }
 
 export interface ScenarioConfig {
@@ -86,6 +92,17 @@ export interface ScenarioConfig {
   readonly headcounts: Headcounts
   readonly sem2Mode: Sem2Mode
   readonly sem2Factor: number
+  readonly jcrcFullYearOffset: number
+  readonly jcrcExchangeFactor: number
+}
+
+/** A flat or overridden membership is final: exactly this value (spec 4.1). */
+export interface FinalNote {
+  readonly kind: 'flat' | 'override'
+  readonly value: number
+  readonly reason: string | null
+  /** Breakdown line, e.g. "Flat points (set by JCRC)". */
+  readonly text: string
 }
 
 /** Everything computed for one membership (resident, CCA). */
@@ -101,6 +118,8 @@ export interface MembershipResult {
   readonly ihgNet: number
   readonly stayNet: number
   readonly bidNet: number
+  /** Set when the membership is flat or overridden (nets are then exact). */
+  readonly final: FinalNote | null
 }
 
 /** A staying slot: one membership, or two merged 0.5x memberships. */
@@ -124,6 +143,8 @@ export interface StayingBreakdown {
   readonly usedGreedyPairing: boolean
   readonly auxPoints: number
   readonly flatIHG: number
+  /** JCRC discretion already included in `points` (0 when none). */
+  readonly discretion: number
 }
 
 export interface BiddingBreakdown {
@@ -131,6 +152,25 @@ export interface BiddingBreakdown {
   readonly contributions: readonly { readonly ccaID: string; readonly bidNet: number }[]
   readonly auxPoints: number
   readonly flatIHG: number
+  /** JCRC discretion already included in `points` (0 when none). */
+  readonly discretion: number
+}
+
+/** How a JCRC resident's value was reached (spec 4.6). It never names the resident holding H. */
+export interface JcrcBreakdown {
+  readonly mode: 'FULL' | 'EXCHANGE'
+  /** The highest final bidding among non-JCRC, non-sem-2 residents. */
+  readonly h: number
+  /** H + offset or H x factor, before the resident's own discretion. */
+  readonly value: number
+  readonly note: string
+}
+
+export interface AppliedDiscretion {
+  readonly stayingDelta: number
+  readonly biddingDelta: number
+  readonly reason: string
+  readonly text: string
 }
 
 export type WarningCode =
@@ -138,6 +178,7 @@ export type WarningCode =
   | 'AUX_ABOVE_CAP'
   | 'IHG_NON_MEMBER'
   | 'TOO_MANY_HALF_CCAS'
+  | 'IHG_ON_FINAL_CCA'
 
 export interface EngineWarning {
   readonly code: WarningCode
@@ -152,6 +193,9 @@ export interface ResidentResult {
   readonly staying: StayingBreakdown
   readonly bidding: BiddingBreakdown
   readonly warnings: readonly EngineWarning[]
+  /** Set for a JCRC resident, whose value comes from H instead of their CCAs. */
+  readonly jcrc: JcrcBreakdown | null
+  readonly discretion: AppliedDiscretion | null
 }
 
 /** Already-parsed data handed to the engine (no CSV handling here). */
@@ -163,7 +207,7 @@ export interface PipelineInput {
 }
 
 export type Band = 'green' | 'grey' | 'white'
-export type RowStatus = Band | 'removed' | 'spot' | 'no spot' | null
+export type RowStatus = Band | 'removed'
 
 /** Flag on a tie group that straddles a band boundary, e.g. "TIE green/grey — 1 of 2 seats". */
 export interface TieFlag {
@@ -171,6 +215,8 @@ export interface TieFlag {
   readonly k: number
   readonly n: number
   readonly text: string
+  /** True once a wheel resolution settled the group (spec 5.6); absent otherwise. */
+  readonly resolved?: boolean
 }
 
 export interface ListRow {
@@ -179,7 +225,7 @@ export interface ListRow {
   readonly matric: string
   readonly name: string
   readonly points: number
-  /** Staying list: band or removed. Bidding list: the staying status (null for inserted sem-2 rows). */
+  /** Staying lists and sem-2: band (or removed). Bidding lists: the staying band, or the sem-2 band for an inserted sem-2 row. */
   readonly status: RowStatus
   readonly tieFlags: readonly TieFlag[]
   readonly labels: readonly string[]
@@ -210,8 +256,54 @@ export type PenaltyResult =
   | { readonly ok: true; readonly state: PenaltyState }
   | { readonly ok: false; readonly error: string }
 
+/** The staying lists a wheel resolution can settle (spec 5.6). */
+export type WheelList = 'maleStaying' | 'femaleStaying' | 'sem2'
+
+/** The wheel's order of one boundary tie group's matrics (spec 5.6). */
+export interface WheelResolution {
+  readonly list: WheelList
+  readonly order: readonly string[]
+}
+
+/** A final-points override of one existing membership (spec 6.2). */
+export interface FinalOverride {
+  readonly matric: string
+  readonly ccaID: string
+  readonly finalPoints: number
+  readonly reason: string
+}
+
+/** JCRC discretion points for one resident, applied last (spec 6.3). */
+export interface Discretion {
+  readonly matric: string
+  readonly stayingDelta: number
+  readonly biddingDelta: number
+  readonly reason: string
+}
+
+export type EntryStatus = 'applied' | 'stale'
+
+export interface Checked<T> {
+  readonly entry: T
+  readonly status: EntryStatus
+}
+
+/** Direct JCRC entries passed to computeAll; all resident data, never persisted. */
+export interface EntryOptions {
+  readonly resolutions?: readonly WheelResolution[]
+  readonly overrides?: readonly FinalOverride[]
+  readonly discretion?: readonly Discretion[]
+}
+
+export interface ComputeOptions extends EntryOptions {
+  readonly penaltyState?: PenaltyState
+}
+
 export interface PipelineResult {
   readonly results: readonly ResidentResult[]
   readonly lists: Lists
   readonly warnings: readonly EngineWarning[]
+  readonly resolutions: readonly Checked<WheelResolution>[]
+  readonly overrides: readonly Checked<FinalOverride>[]
+  readonly discretion: readonly Checked<Discretion>[]
 }

@@ -1,13 +1,17 @@
 import type { Cca, Membership, PipelineInput, Resident, ScenarioConfig } from '../engine'
 import {
   checkCcaRows,
+  checkFlatFile,
   checkIhgRows,
   checkLeaderFile,
   checkOutgoing,
   checkResidentRows,
   ccaStats,
+  flatStats,
   ihgNonMemberWarnings,
+  ihgOnFlatWarnings,
   leaderWarnings,
+  type CheckedFlat,
   type CheckedLeader,
   type LeaderFile,
   type Loaded,
@@ -15,6 +19,7 @@ import {
 import { parseCsv } from './csv'
 import { FILE_COLUMNS, detectFileKind } from './detect'
 import { parseCcas } from './parseCcas'
+import { parseFlat } from './parseFlat'
 import { makeIssue } from './parseCommon'
 import { parseIhg } from './parseIhg'
 import { parseLeader } from './parseLeader'
@@ -46,11 +51,13 @@ const KIND_LABEL: Readonly<Record<FileKind, string>> = {
   residents: 'the residents list',
   ihg: 'the IHG list',
   ccas: 'the CCA settings list',
+  flat: 'the flat-points file',
 }
 
 function guessKindFromName(name: string): FileKind | null {
   const lower = name.toLowerCase()
   if (lower.startsWith('points_')) return 'leader'
+  if (lower.startsWith('flat_points_')) return 'flat'
   return (['residents', 'ihg', 'ccas'] as const).find((kind) => lower.startsWith(kind)) ?? null
 }
 
@@ -76,7 +83,7 @@ function classify(file: SourceFile, issues: Issue[]): Classified {
   const claimed = guessKindFromName(file.name)
   const text = claimed
     ? headerProblem(claimed, csv.header)
-    : 'this file is not a points file, residents list, IHG list or CCA settings list (its columns match none of them).'
+    : 'this file is not a points file, flat-points file, residents list, IHG list or CCA settings list (its columns match none of them).'
   issues.push(makeIssue(claimed ? 'BAD_HEADER' : 'UNRECOGNISED_FILE', file.name, text))
   return { file, csv, kind: null, claimed }
 }
@@ -93,6 +100,10 @@ function fileLevelIssues(classified: readonly Classified[]): Issue[] {
       const text = `${KIND_LABEL[kind]} was provided more than once; this extra copy is ignored.`
       issues.push(makeIssue('DUPLICATE_RESIDENTS_OR_CCAS_FILE', extra.file.name, text))
     }
+  }
+  for (const extra of classified.filter((c) => c.kind === 'flat').slice(1)) {
+    const text = `${KIND_LABEL.flat} was provided more than once; this extra copy is ignored.`
+    issues.push(makeIssue('DUPLICATE_FLAT_FILE', extra.file.name, text))
   }
   return issues
 }
@@ -131,10 +142,11 @@ function toEngineInput(
   residents: Loaded<ResidentRow>,
   ccas: Loaded<CcaRow>,
   leaders: readonly CheckedLeader[],
+  flats: readonly CheckedFlat[],
   ihg: readonly IhgRow[],
 ): PipelineInput {
   const residentList = residents.result.rows.map(
-    ({ matric, name, gender, sem2, aux }): Resident => ({ matric, name, gender, sem2, aux }),
+    ({ matric, name, gender, sem2, aux, jcrc }): Resident => ({ matric, name, gender, sem2, aux, jcrc }),
   )
   const ccaList = ccas.result.rows.map(({ line: _line, ...cca }): Cca => cca)
   const memberships = leaders.flatMap((leader) =>
@@ -150,10 +162,24 @@ function toEngineInput(
       }),
     ),
   )
+  const flatMemberships = flats.flatMap((flat) =>
+    flat.rows.map(
+      (row): Membership => ({
+        matric: row.matric,
+        ccaID: flat.ccaID,
+        basePoints: 0,
+        semesterOnly: false,
+        outgoingRole: 'none',
+        incomingRole: 'none',
+        roleDropped: false,
+        flatPoints: flat.flatPoints,
+      }),
+    ),
+  )
   return {
     residents: residentList,
     ccas: ccaList,
-    memberships,
+    memberships: [...memberships, ...flatMemberships],
     ihg: ihg.map(({ matric, ccaID, placement }) => ({ matric, ccaID, placement })),
   }
 }
@@ -174,6 +200,7 @@ export function validateImport(
   const ccas = loadFirst(classified, 'ccas', parseCcas, issues)
   const ihg = loadFirst(classified, 'ihg', parseIhg, issues)
   const leaderFiles = loadLeaders(classified, issues)
+  const flatFile = loadFirst(classified, 'flat', parseFlat, issues)
   if (residents) issues.push(...checkResidentRows(residents, config))
   if (ccas) issues.push(...checkCcaRows(ccas, config))
   const checked: CheckedLeader[] = []
@@ -182,14 +209,24 @@ export function validateImport(
     issues.push(...outcome.issues)
     if (outcome.checked) checked.push(outcome.checked)
   }
+  const flatOutcome = flatFile
+    ? checkFlatFile(flatFile, residents, ccas, new Set(leaderFiles.map((f) => f.ccaID)))
+    : null
+  if (flatOutcome) issues.push(...flatOutcome.issues)
+  const flats = flatOutcome?.checked ?? []
   const ihgOutcome = ihg ? checkIhgRows(ihg, residents, ccas) : null
   if (ihgOutcome) issues.push(...ihgOutcome.issues)
   if (ccas) issues.push(...checkOutgoing(ccas, checked, config), ...leaderWarnings(ccas, checked))
-  if (ihg && config.ihgInSportNet) issues.push(...ihgNonMemberWarnings(ihg, checked))
+  if (ihg && config.ihgInSportNet) {
+    issues.push(...ihgNonMemberWarnings(ihg, checked, flats), ...ihgOnFlatWarnings(ihg, flats))
+  }
   const wanted = new Set(overrides.map((o) => o.ccaID))
-  const stats = (ccas?.result.rows ?? []).map((cca) =>
-    ccaStats(cca, checked.find((l) => l.ccaID === cca.ccaID), config, wanted.has(cca.ccaID)),
-  )
+  const stats = (ccas?.result.rows ?? []).map((cca) => {
+    const flat = flats.find((f) => f.ccaID === cca.ccaID)
+    return flat
+      ? flatStats(cca, flat, config)
+      : ccaStats(cca, checked.find((l) => l.ccaID === cca.ccaID), config, wanted.has(cca.ccaID))
+  })
   for (const s of stats) {
     if (s.issue) issues.push(s.issue)
     if (s.report.status === 'missing_file') {
@@ -198,7 +235,7 @@ export function validateImport(
   }
   const canCompute = !issues.some((i) => i.severity === 'error' && i.overridden !== true)
   const input =
-    canCompute && residents && ccas ? toEngineInput(residents, ccas, checked, ihgOutcome?.rows ?? []) : undefined
+    canCompute && residents && ccas ? toEngineInput(residents, ccas, checked, flats, ihgOutcome?.rows ?? []) : undefined
   return {
     canCompute,
     issues,

@@ -47,6 +47,23 @@ describe('settings persistence', () => {
     expect(loadSettings(memoryStore({ [SETTINGS_KEY]: '[1,2]' }))).toBe(DEFAULT_CONFIG)
   })
 
+  it('migrates settings saved before the sem-2 headcounts were split (sem2Spots)', () => {
+    const { sem2Green: _g, sem2Grey: _y, ...headcounts } = DEFAULT_CONFIG.headcounts
+    const old: Record<string, unknown> = {
+      ...DEFAULT_CONFIG,
+      sem2Factor: 3,
+      headcounts: { ...headcounts, maleGreen: 40, sem2Spots: 12 },
+    }
+    delete old.jcrcFullYearOffset
+    delete old.jcrcExchangeFactor
+    const loaded = loadSettings(memoryStore({ [SETTINGS_KEY]: JSON.stringify(old) }))
+    expect(loaded.headcounts).toEqual({ ...DEFAULT_CONFIG.headcounts, maleGreen: 40, sem2Green: 12, sem2Grey: 0 })
+    expect(loaded.sem2Factor).toBe(3)
+    expect(loaded.jcrcFullYearOffset).toBe(DEFAULT_CONFIG.jcrcFullYearOffset)
+    expect(loaded.jcrcExchangeFactor).toBe(DEFAULT_CONFIG.jcrcExchangeFactor)
+    expect('sem2Spots' in loaded.headcounts).toBe(false)
+  })
+
   it('survives storage that throws', () => {
     expect(loadSettings(throwingStore)).toBe(DEFAULT_CONFIG)
     expect(saveSettings(DEFAULT_CONFIG, throwingStore)).toBe(false)

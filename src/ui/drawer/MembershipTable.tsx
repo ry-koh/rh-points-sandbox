@@ -24,7 +24,10 @@ const HEADERS: readonly [string, string][] = [
 
 /** One row per membership; every number comes from the engine's membership result. */
 export function MembershipTable({ result, inputs, penalty, onDropRole }: MembershipTableProps) {
-  if (result.memberships.length === 0) return <p className="text-body text-muted">No CCA files list this resident.</p>
+  if (result.memberships.length === 0) {
+    const why = result.jcrc ? 'A JCRC resident’s value does not come from CCAs.' : 'No CCA files list this resident.'
+    return <p className="text-body text-muted">{why}</p>
+  }
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-cap">
@@ -50,6 +53,7 @@ export function MembershipTable({ result, inputs, penalty, onDropRole }: Members
                   <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium text-body">{cca?.ccaName ?? m.ccaID}</span>
                   {dropped && <Chip tone="removed">role dropped</Chip>}
+                  {m.final && <span className="text-cap text-muted">{m.final.text}</span>}
                   {canDrop && (
                     <Button small variant="danger" onClick={() => onDropRole({ matric: result.matric, ccaID: m.ccaID })}>
                       Drop incoming role

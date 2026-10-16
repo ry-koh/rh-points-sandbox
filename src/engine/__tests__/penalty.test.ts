@@ -5,7 +5,7 @@ import type { ListRow, PenaltyKey, PenaltyState, PipelineInput } from '../types'
 import { configWith, deepFreeze, makeInput, type RowSpec } from './helpers'
 
 const INFORMATIONAL = 'informational — rooms may already be picked'
-const config = configWith({ maleGreen: 2, maleGrey: 2, sem2Spots: 1 })
+const config = configWith({ maleGreen: 2, maleGrey: 2, sem2Green: 1 })
 
 // Male staying (one slot per CCA, weights 1): M1 33, M2 18, M3 17, M4 15.6, M5 14.4, M6 10.
 // Green M1 M2 | grey M3 M4 | white M5 M6. Frozen cut-off = 18 (M2). Every dropped role: base -> 8.
@@ -31,7 +31,7 @@ function apply(from: PenaltyState, matric: string, data: PipelineInput = input):
 }
 
 const maleStaying = (state: PenaltyState): ListRow[] =>
-  [...computeAll(input, config, state).lists.maleStaying]
+  [...computeAll(input, config, { penaltyState: state }).lists.maleStaying]
 const statusOf = (rows: readonly ListRow[], id: string): string | null | undefined =>
   rows.find((r) => r.matric === id)?.status
 const order = (rows: readonly ListRow[]): string[] => rows.map((r) => r.matric)
@@ -75,7 +75,7 @@ describe('green resident', () => {
     const result = applyPenalty(data, cfg, start, key('P1'))
     expect(start.cutoffs.M).toBe(8)
     expect(result.ok && result.state.removed).toEqual([])
-    const rows = result.ok ? computeAll(data, cfg, result.state).lists.maleStaying : []
+    const rows = result.ok ? computeAll(data, cfg, { penaltyState: result.state }).lists.maleStaying : []
     expect(statusOf(rows, 'P1')).toBe('green')
     expect(rows.find((r) => r.matric === 'P1')?.points).toBe(8)
   })
@@ -133,11 +133,11 @@ describe('sem-2 residents', () => {
   const state = apply(initial, 'S1')
 
   it('only recompute and re-sort the sem-2 list', () => {
-    const before = computeAll(input, config, initial).lists.sem2
-    const after = computeAll(input, config, state).lists.sem2
+    const before = computeAll(input, config, { penaltyState: initial }).lists.sem2
+    const after = computeAll(input, config, { penaltyState: state }).lists.sem2
     expect(order(before)).toEqual(['S1', 'S2'])
     expect(order(after)).toEqual(['S2', 'S1'])
-    expect(after.map((r) => r.status)).toEqual(['spot', 'no spot'])
+    expect(after.map((r) => r.status)).toEqual(['green', 'white'])
   })
 
   it('never remove anyone and leave the male staying list untouched', () => {
@@ -149,7 +149,7 @@ describe('sem-2 residents', () => {
 
 describe('bidding rows', () => {
   it('mark a resident with a dropped role as informational on every bidding list', () => {
-    const lists = computeAll(input, config, apply(apply(initial, 'M2'), 'S1')).lists
+    const lists = computeAll(input, config, { penaltyState: apply(apply(initial, 'M2'), 'S1') }).lists
     const labelsOf = (rows: readonly ListRow[], id: string): readonly string[] =>
       rows.find((r) => r.matric === id)?.labels ?? []
     expect(labelsOf(lists.maleBidding, 'M2')).toContain(INFORMATIONAL)
@@ -159,7 +159,7 @@ describe('bidding rows', () => {
   })
 
   it('keep a removed resident on the bidding list with status removed', () => {
-    const lists = computeAll(input, config, apply(initial, 'M2')).lists
+    const lists = computeAll(input, config, { penaltyState: apply(initial, 'M2') }).lists
     expect(statusOf(lists.maleBidding, 'M2')).toBe('removed')
   })
 })

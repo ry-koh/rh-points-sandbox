@@ -10,6 +10,7 @@ import type {
   Resident,
   ScenarioConfig,
 } from './types'
+import type { EntryOptions } from './types'
 
 function lowestGreenPoints(rows: readonly ListRow[]): number | null {
   const greens = rows.filter((row) => row.status === 'green')
@@ -53,14 +54,15 @@ function fallsBelowCutoff(
   state: PenaltyState,
   nextApplied: readonly PenaltyKey[],
   resident: Resident,
+  options: EntryOptions,
 ): boolean {
   const cutoff = state.cutoffs[resident.gender]
   const alreadyRemoved = state.removed.includes(resident.matric)
   if (resident.sem2 || cutoff === null || alreadyRemoved) return false
-  const { lists } = computeAll(input, config, state)
+  const { lists } = computeAll(input, config, { ...options, penaltyState: state })
   const stayingRows = resident.gender === 'M' ? lists.maleStaying : lists.femaleStaying
   if (!wasGreen(stayingRows, resident.matric)) return false
-  const after = computeAll(input, config, { ...state, applied: nextApplied })
+  const after = computeAll(input, config, { ...options, penaltyState: { ...state, applied: nextApplied } })
   const points = after.results.find((r) => r.matric === resident.matric)?.staying.points
   return points !== undefined && roundForCompare(points) < roundForCompare(cutoff)
 }
@@ -70,6 +72,7 @@ export function applyPenalty(
   config: ScenarioConfig,
   state: PenaltyState,
   key: PenaltyKey,
+  options: EntryOptions = {},
 ): PenaltyResult {
   const error = validate(input, key)
   if (error !== null) return { ok: false, error }
@@ -77,7 +80,7 @@ export function applyPenalty(
   const resident = input.residents.find((r) => r.matric === key.matric)
   if (!resident) return { ok: false, error: `Unknown resident ${key.matric}` }
   const applied = [...state.applied, key]
-  const removed = fallsBelowCutoff(input, config, state, applied, resident)
+  const removed = fallsBelowCutoff(input, config, state, applied, resident, options)
     ? [...state.removed, key.matric]
     : state.removed
   return { ok: true, state: { ...state, applied, removed } }
@@ -89,6 +92,7 @@ export function removePenalty(
   config: ScenarioConfig,
   state: PenaltyState,
   key: PenaltyKey,
+  options: EntryOptions = {},
 ): PenaltyResult {
   if (!isApplied(state, key)) {
     return { ok: false, error: `No penalty applied to ${key.matric} in ${key.ccaID}` }
@@ -96,7 +100,7 @@ export function removePenalty(
   const remaining = state.applied.filter((a) => penaltyKeyOf(a) !== penaltyKeyOf(key))
   let current: PenaltyState = { cutoffs: state.cutoffs, applied: [], removed: [] }
   for (const next of remaining) {
-    const result = applyPenalty(input, config, current, next)
+    const result = applyPenalty(input, config, current, next, options)
     if (!result.ok) return result
     current = result.state
   }

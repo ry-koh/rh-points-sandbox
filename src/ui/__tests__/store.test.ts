@@ -17,6 +17,13 @@ describe('app reducer', () => {
     expect(state.results).toBeNull()
   })
 
+  it('starts with no final-points overrides, discretion or wheel resolutions', () => {
+    const state = initialState()
+    expect(state.finalOverrides).toEqual([])
+    expect(state.discretion).toEqual([])
+    expect(state.resolutions).toEqual([])
+  })
+
   it('validates as soon as files are added', () => {
     const state = withFiles()
     expect(state.report.canCompute).toBe(true)

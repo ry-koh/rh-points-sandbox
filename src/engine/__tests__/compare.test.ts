@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ABSENT, NO_STATUS, compareLists, compareRuns } from '../compare'
 import { computeAll } from '../pipeline'
-import type { ListRow } from '../types'
+import type { ListRow, RowStatus } from '../types'
 import { configWith, deepFreeze, makeInput } from './helpers'
 
 const input = makeInput([
@@ -72,8 +72,9 @@ describe('compareLists', () => {
     expect(r?.changed).toBe(false)
   })
 
-  it('shows a missing status as "none"', () => {
-    const [r] = compareLists([row('X', 1, 10, null)], [row('X', 1, 10, null)]).rows
+  it('shows a missing status as "none" (defensive: rows always carry a status now)', () => {
+    const none = null as unknown as RowStatus
+    const [r] = compareLists([row('X', 1, 10, none)], [row('X', 1, 10, none)]).rows
     expect(r?.statusA).toBe(NO_STATUS)
   })
 

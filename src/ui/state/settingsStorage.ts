@@ -1,5 +1,5 @@
 import { DEFAULT_CONFIG, type ScenarioConfig } from '../../engine'
-import { isScenarioConfig } from './configShape'
+import { readStoredConfig } from './configShape'
 import { readScenarioList, type Scenario } from './scenarios'
 
 // The ONLY module allowed to touch browser storage. It keeps the current settings and
@@ -40,8 +40,7 @@ function writeJson(store: SettingsStore | null, key: string, value: unknown): bo
 }
 
 export function loadSettings(store: SettingsStore | null = browserStore()): ScenarioConfig {
-  const parsed = readJson(store, SETTINGS_KEY)
-  return isScenarioConfig(parsed) ? parsed : DEFAULT_CONFIG
+  return readStoredConfig(readJson(store, SETTINGS_KEY)) ?? DEFAULT_CONFIG
 }
 
 export function saveSettings(config: ScenarioConfig, store: SettingsStore | null = browserStore()): boolean {

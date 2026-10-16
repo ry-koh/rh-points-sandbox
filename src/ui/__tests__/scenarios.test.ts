@@ -51,6 +51,29 @@ describe('scenario files', () => {
     expect(!parsed.ok && parsed.error).toMatch(/not a scenario file/)
   })
 
+  it('migrates an old scenario file: sem2Spots becomes sem2Green with sem2Grey 0', () => {
+    const old = {
+      version: 1,
+      name: 'Old',
+      config: { sem2Factor: 3, headcounts: { maleGreen: 40, maleGrey: 10, femaleGreen: 42, femaleGrey: 10, sem2Spots: 15 } },
+    }
+    const parsed = parseScenarioFile(JSON.stringify(old), 'x')
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    expect(parsed.file.config.headcounts).toEqual({
+      maleGreen: 40, maleGrey: 10, femaleGreen: 42, femaleGrey: 10, sem2Green: 15, sem2Grey: 0,
+    })
+    expect(parsed.file.config.sem2Factor).toBe(3)
+    expect(parsed.file.config.jcrcExchangeFactor).toBe(DEFAULT_CONFIG.jcrcExchangeFactor)
+  })
+
+  it('migrates old scenarios kept in storage too', () => {
+    const store = memoryStore()
+    const old = [{ id: 'a', name: 'Old', config: { headcounts: { maleGreen: 1, maleGrey: 1, femaleGreen: 1, femaleGrey: 1, sem2Spots: 4 } } }]
+    store.data[SCENARIOS_KEY] = JSON.stringify(old)
+    expect(loadScenarios(store)[0]?.config.headcounts).toMatchObject({ sem2Green: 4, sem2Grey: 0 })
+  })
+
   it('rejects other versions and non-objects', () => {
     expect(parseScenarioFile(JSON.stringify({ version: 2, config }), 'x').ok).toBe(false)
     expect(parseScenarioFile('[1,2,3]', 'x').ok).toBe(false)

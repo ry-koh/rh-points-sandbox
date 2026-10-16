@@ -7,6 +7,7 @@ import {
   HalfCcaFields,
   HeadcountsFields,
   IhgFields,
+  JcrcFields,
   MeanSdFields,
   PlacementFields,
   Sem2Fields,
@@ -33,6 +34,7 @@ export const SECTIONS: readonly SectionDef[] = [
   { id: 'aux', title: 'AUX', keys: ['auxTable', 'auxCap'], Body: AuxFields },
   { id: 'ihg', title: 'IHG', keys: ['ihgPoints', 'ihgInSportNet'], Body: IhgFields },
   { id: 'sem2', title: 'Sem-2', keys: ['sem2Mode', 'sem2Factor'], Body: Sem2Fields },
+  { id: 'jcrc', title: 'JCRC residents', keys: ['jcrcFullYearOffset', 'jcrcExchangeFactor'], Body: JcrcFields },
   { id: 'meanSd', title: 'Mean/SD defaults', keys: ['meanSdDefault'], Body: MeanSdFields },
 ]
 

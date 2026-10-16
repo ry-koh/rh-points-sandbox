@@ -8,6 +8,7 @@ const STATUS: Readonly<Record<CcaStatus, { tone: ChipTone; label: string }>> = {
   out_of_range: { tone: 'error', label: 'out of range' },
   overridden: { tone: 'gold', label: 'overridden' },
   missing_file: { tone: 'grey', label: 'missing file' },
+  flat: { tone: 'gold', label: 'flat' },
 }
 
 const fmt = (n: number | null): string => (n === null ? '—' : n.toFixed(2))
@@ -30,7 +31,6 @@ function Th({ children, right = false }: { readonly children: string; readonly r
 }
 
 function Row({ cca, locked, onAsk }: { readonly cca: PerCcaReport; readonly locked: boolean; readonly onAsk: (cca: PerCcaReport) => void }) {
-  const { range } = cca
   const status = STATUS[cca.status]
   return (
     <tr className="border-b border-rule hover:bg-ink/[0.03]">
@@ -42,20 +42,13 @@ function Row({ cca, locked, onAsk }: { readonly cca: PerCcaReport; readonly lock
         {cca.fileName ?? '—'}
       </td>
       <td className="num py-2 pr-4 text-right">{cca.n}</td>
-      <td className="num py-2 pr-4 text-right">{fmt(cca.mean)}</td>
-      <td className="num py-2 pr-4 text-cap text-muted">
-        {range.meanMin}–{range.meanMax}
-      </td>
-      <td className="py-2 pr-4">
-        <RangeBar label="Mean" value={cca.mean} min={range.meanMin} max={range.meanMax} />
-      </td>
-      <td className="num py-2 pr-4 text-right">{fmt(cca.sd)}</td>
-      <td className="num py-2 pr-4 text-cap text-muted">
-        {range.sdMin}–{range.sdMax}
-      </td>
-      <td className="py-2 pr-4">
-        <RangeBar label="SD" value={cca.sd} min={range.sdMin} max={range.sdMax} />
-      </td>
+      {cca.status === 'flat' ? (
+        <td colSpan={6} className="py-2 pr-4 text-muted">
+          Flat · <span className="num">{cca.flatPoints ?? 0}</span> pts <span className="text-cap">(no mean/SD check)</span>
+        </td>
+      ) : (
+        <MeanSdCells cca={cca} />
+      )}
       <td className="py-2 pr-4">
         <Chip tone={status.tone}>{status.label}</Chip>
       </td>
@@ -72,6 +65,28 @@ function Row({ cca, locked, onAsk }: { readonly cca: PerCcaReport; readonly lock
         )}
       </td>
     </tr>
+  )
+}
+
+function MeanSdCells({ cca }: { readonly cca: PerCcaReport }) {
+  const { range } = cca
+  return (
+    <>
+      <td className="num py-2 pr-4 text-right">{fmt(cca.mean)}</td>
+      <td className="num py-2 pr-4 text-cap text-muted">
+        {range.meanMin}–{range.meanMax}
+      </td>
+      <td className="py-2 pr-4">
+        <RangeBar label="Mean" value={cca.mean} min={range.meanMin} max={range.meanMax} />
+      </td>
+      <td className="num py-2 pr-4 text-right">{fmt(cca.sd)}</td>
+      <td className="num py-2 pr-4 text-cap text-muted">
+        {range.sdMin}–{range.sdMax}
+      </td>
+      <td className="py-2 pr-4">
+        <RangeBar label="SD" value={cca.sd} min={range.sdMin} max={range.sdMax} />
+      </td>
+    </>
   )
 }
 

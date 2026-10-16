@@ -14,7 +14,8 @@ const TIERS = ['Unsatisfactory', 'Pass', 'Low Bronze', 'High Bronze', 'Low Silve
 const PLACEMENTS = ['pass', 'bronze', 'silver', 'gold']
 
 const LEADER_COLS = ['formatVersion', 'ccaID', 'ccaName', 'matric', 'name', 'basePoints', 'semesterOnly', 'outgoingRole', 'incomingRole', 'exportedAt']
-const RESIDENT_COLS = ['matric', 'name', 'gender', 'sem2', 'aux']
+const RESIDENT_COLS = ['matric', 'name', 'gender', 'sem2', 'aux', 'jcrc']
+const FLAT_COLS = ['formatVersion', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints', 'exportedAt']
 const IHG_COLS = ['matric', 'ccaID', 'placement']
 const CCA_COLS = ['ccaID', 'ccaName', 'type', 'placement', 'outgoingTier', 'outgoingMultiplier', 'meanMin', 'meanMax', 'sdMin', 'sdMax']
 
@@ -69,6 +70,12 @@ const RESIDENT_COUNT = 80
 const ZERO_CCA_RESIDENTS = [30, 31, 70, 71]
 const TIE_GROUP = [1, 2, 3, 4]
 const MULTI_RESIDENT = 5
+// JCRC residents: 2 male and 1 female full year, 1 (female) exchange. Their CCA data is ignored.
+const JCRC = { 34: 'FULL', 35: 'FULL', 60: 'FULL', 61: 'EXCHANGE' }
+// One flat CCA (no leader file): ~8 members, one value for all of them.
+const FLAT_CCA_ID = 'C13'
+const FLAT_VALUE = 9
+const FLAT_MEMBERS = [10, 11, 12, 13, 14, 15, 16, 17]
 const WAIVERS = {
   C03: { meanMin: 14, meanMax: 17, sdMin: 1, sdMax: 3, mu: 15.5, sigma: 1.6 },
   C07: { meanMin: 7, meanMax: 10, sdMin: 2, sdMax: 6, mu: 8.5, sigma: 3.5 },
@@ -81,7 +88,7 @@ function makeResidents() {
     const male = n <= 36 || (n > 72 && n <= 76)
     const special = { [MULTI_RESIDENT]: 11, 20: 12 }[n]
     const aux = TIE_GROUP.includes(n) ? 5 : (special ?? randInt(0, 10))
-    return { matric: matricOf(n), name: nameOf(n), gender: male ? 'M' : 'F', sem2: sem2 ? 'Y' : 'N', aux }
+    return { matric: matricOf(n), name: nameOf(n), gender: male ? 'M' : 'F', sem2: sem2 ? 'Y' : 'N', aux, jcrc: JCRC[n] ?? 'N' }
   })
 }
 
@@ -177,6 +184,21 @@ function toLeaderCsv(cca, rows) {
   return toCsv(LEADER_COLS, out)
 }
 
+function makeFlatCca(ccaID = FLAT_CCA_ID) {
+  return {
+    ccaID, ccaName: `Test Flat CCA ${ccaID.slice(1)}`, type: '1x', placement: 'gold',
+    outgoingTier: '', outgoingMultiplier: '', meanMin: '', meanMax: '', sdMin: '', sdMax: '',
+  }
+}
+
+function flatRows(ccaID, value, members) {
+  const cca = makeFlatCca(ccaID)
+  return members.map((n) => ({
+    formatVersion: 1, ccaID, ccaName: cca.ccaName, matric: matricOf(n), name: nameOf(n),
+    flatPoints: value, exportedAt: EXPORTED_AT,
+  }))
+}
+
 function makeIhg(byCca) {
   const picks = [['C01', '1st'], ['C02', '2nd'], ['C04', '3rd'], ['C05', '3rd4th_no_match'], ['C06', '2nd'], ['C08', '1st']]
   return picks.map(([id, placement], i) => ({ matric: matricOf(byCca[id][i % byCca[id].length].n), ccaID: id, placement }))
@@ -195,9 +217,10 @@ function writeValid() {
     if (rows.some((r) => r.outgoingRole !== 'none')) cca.outgoingTier = TIERS[(i * 3) % TIERS.length]
   })
   write(dir, 'residents.csv', toCsv(RESIDENT_COLS, residents))
-  write(dir, 'ccas.csv', toCsv(CCA_COLS, ccas))
+  write(dir, 'ccas.csv', toCsv(CCA_COLS, [...ccas, makeFlatCca()]))
   ccas.forEach((cca, i) => write(dir, `points_${cca.ccaID}_20270401.csv`, toLeaderCsv(cca, rowsByCca[i])))
   write(dir, 'ihg.csv', toCsv(IHG_COLS, makeIhg(byCca)))
+  write(dir, 'flat_points_20270401.csv', toCsv(FLAT_COLS, flatRows(FLAT_CCA_ID, FLAT_VALUE, FLAT_MEMBERS)))
 }
 
 // ---------- broken samples ----------
@@ -205,7 +228,7 @@ const BASE_SCORES = [8, 10, 12, 14, 16, 18]
 
 function baseScenario() {
   const residents = Array.from({ length: 10 }, (_, i) => ({
-    matric: matricOf(i + 1), name: nameOf(i + 1), gender: i % 2 === 0 ? 'M' : 'F', sem2: 'N', aux: 5,
+    matric: matricOf(i + 1), name: nameOf(i + 1), gender: i % 2 === 0 ? 'M' : 'F', sem2: 'N', aux: 5, jcrc: 'N',
   }))
   const blank = { outgoingTier: '', outgoingMultiplier: '', meanMin: '', meanMax: '', sdMin: '', sdMax: '' }
   const ccas = [
@@ -217,7 +240,13 @@ function baseScenario() {
       formatVersion: 1, ccaID: id, ccaName: `Test CCA ${id}`, matric: matricOf(i + 1), name: nameOf(i + 1),
       basePoints: score, semesterOnly: 'N', outgoingRole: 'none', incomingRole: 'none', exportedAt: EXPORTED_AT,
     }))
-  return { residents, ccas, leaders: { C1: leader('C1'), C2: leader('C2') }, ihg: null, extra: [], leader }
+  return { residents, ccas, leaders: { C1: leader('C1'), C2: leader('C2') }, ihg: null, flat: null, extra: [], leader }
+}
+
+/** Adds a flat CCA (C3, no leader file) to the scenario's ccas.csv with six flat members. */
+const withFlatCca = (s, value = 12) => {
+  s.ccas.push(makeFlatCca('C3'))
+  s.flat = flatRows('C3', value, [1, 2, 3, 4, 5, 6])
 }
 
 const patchLast = (rows, patch) => rows.map((r, i) => (i === rows.length - 1 ? { ...r, ...patch } : r))
@@ -251,6 +280,21 @@ const BROKEN_CASES = [
   ['missing-outgoing-multiplier', ['MISSING_OUTGOING_MULTIPLIER'], (s) => (s.leaders.C1 = patchLast(s.leaders.C1, { outgoingRole: 'head' }))],
   ['duplicate-cca', ['DUPLICATE_CCA'], (s) => s.ccas.push({ ...s.ccas[0] })],
   ['bad-range', ['BAD_RANGE'], (s) => (s.ccas[0] = { ...s.ccas[0], meanMin: 'low' })],
+  ['bad-jcrc', ['BAD_JCRC'], (s) => (s.residents[9] = { ...s.residents[9], jcrc: 'maybe' })],
+  ['jcrc-and-sem2', ['JCRC_AND_SEM2'], (s) => (s.residents[9] = { ...s.residents[9], jcrc: 'FULL', sem2: 'Y' })],
+  ['bad-flat-points', ['BAD_FLAT_POINTS'], (s) => {
+    withFlatCca(s)
+    s.flat = patchLast(s.flat, { flatPoints: -5 })
+  }],
+  ['flat-value-mismatch', ['FLAT_VALUE_MISMATCH'], (s) => {
+    withFlatCca(s)
+    s.flat = patchLast(s.flat, { flatPoints: 13 })
+  }],
+  ['flat-and-leader-file', ['FLAT_AND_LEADER_FILE'], (s) => (s.flat = flatRows('C1', 12, [1, 2, 3, 4, 5, 6]))],
+  ['duplicate-flat-file', ['DUPLICATE_FLAT_FILE'], (s) => {
+    withFlatCca(s)
+    s.extra.push({ name: 'flat_points_20270402.csv', text: toCsv(FLAT_COLS, s.flat) })
+  }],
   ['mean-sd-out-of-range', ['MEAN_SD_OUT_OF_RANGE'], (s) => (s.leaders.C1 = s.leader('C1', [20, 20, 20, 20, 20, 20]))],
 ]
 
@@ -264,6 +308,7 @@ function writeBroken([folder, codes, edit]) {
   if (s.ccas) files.push(['ccas.csv', toCsv(CCA_COLS, s.ccas)])
   for (const [id, rows] of Object.entries(s.leaders)) files.push([`points_${id}_20270401.csv`, toCsv(LEADER_COLS, rows)])
   if (s.ihg) files.push(['ihg.csv', toCsv(IHG_COLS, s.ihg)])
+  if (s.flat) files.push(['flat_points_20270401.csv', toCsv(FLAT_COLS, s.flat)])
   for (const extra of s.extra) files.push([extra.name, extra.text])
   for (const [name, text] of files) write(dir, name, (s.textEdits[name] ?? ((t) => t))(text))
   write(dir, 'expected.json', `${JSON.stringify({ codes }, null, 2)}\n`)

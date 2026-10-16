@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import {
   applyPenalty,
   computeAll,
+  type EntryOptions,
   type Lists,
   type PenaltyKey,
   type PenaltyState,
@@ -19,6 +20,8 @@ interface PenaltyDialogProps {
   readonly input: PipelineInput
   readonly config: ScenarioConfig
   readonly penalty: PenaltyState
+  /** Final-points overrides, discretion and wheel resolutions the lists were built with. */
+  readonly entries: EntryOptions
   readonly lists: Lists
   readonly onCancel: () => void
   readonly onConfirm: (penalty: PenaltyState, entry: PenaltyLogEntry) => void
@@ -30,12 +33,12 @@ type Preview =
 
 /** Runs the penalty on a copy of the state so the user sees the effect before committing. */
 function preview(props: PenaltyDialogProps, target: PenaltyKey): Preview {
-  const { input, config, penalty, lists } = props
-  const applied = applyPenalty(input, config, penalty, target)
+  const { input, config, penalty, entries, lists } = props
+  const applied = applyPenalty(input, config, penalty, target, entries)
   if (!applied.ok) return { ok: false, error: applied.error }
   const resident = input.residents.find((r) => r.matric === target.matric)
-  const before = computeAll(input, config, penalty)
-  const after = computeAll(input, config, applied.state)
+  const before = computeAll(input, config, { ...entries, penaltyState: penalty })
+  const after = computeAll(input, config, { ...entries, penaltyState: applied.state })
   const was = before.results.find((r) => r.matric === target.matric)
   const now = after.results.find((r) => r.matric === target.matric)
   if (!resident || !was || !now) return { ok: false, error: 'This resident is not in the imported data.' }
@@ -67,11 +70,11 @@ function Change({ label, values, note }: { readonly label: string; readonly valu
 }
 
 export function PenaltyDialog(props: PenaltyDialogProps) {
-  const { target, input, config, penalty, lists, onCancel, onConfirm } = props
+  const { target, input, config, penalty, entries, lists, onCancel, onConfirm } = props
   const result = useMemo(
-    () => (target ? preview({ target, input, config, penalty, lists, onCancel, onConfirm }, target) : null),
+    () => (target ? preview({ target, input, config, penalty, entries, lists, onCancel, onConfirm }, target) : null),
     // The preview depends only on the target and the data; callbacks are not inputs.
-    [target, input, config, penalty, lists],
+    [target, input, config, penalty, entries, lists],
   )
   return (
     <ConfirmDialog

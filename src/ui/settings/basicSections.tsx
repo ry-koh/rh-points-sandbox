@@ -20,7 +20,8 @@ export function HeadcountsFields({ config, update }: SectionProps) {
           maleGrey: 'Male grey',
           femaleGreen: 'Female green',
           femaleGrey: 'Female grey',
-          sem2Spots: 'Sem-2 spots',
+          sem2Green: 'Sem-2 green (both genders)',
+          sem2Grey: 'Sem-2 grey (both genders)',
         }}
       />
     </>
@@ -133,6 +134,31 @@ export function Sem2Fields({ config, update }: SectionProps) {
         onChange={(v) => update('sem2Factor', v)}
         min={0}
         slider={MULTIPLIER_SLIDER}
+      />
+    </>
+  )
+}
+
+export function JcrcFields({ config, update }: SectionProps) {
+  return (
+    <>
+      <p className="pb-1 text-cap text-muted">
+        JCRC residents take H, the highest other bidding points, in both lists.
+      </p>
+      <NumberField
+        label="Full year: H plus"
+        value={config.jcrcFullYearOffset}
+        defaultValue={D.jcrcFullYearOffset}
+        onChange={(v) => update('jcrcFullYearOffset', v)}
+        step={0.5}
+      />
+      <NumberField
+        label="Exchange: H times"
+        value={config.jcrcExchangeFactor}
+        defaultValue={D.jcrcExchangeFactor}
+        onChange={(v) => update('jcrcExchangeFactor', v)}
+        min={0}
+        slider={{ min: 0, max: 2, step: 0.05 }}
       />
     </>
   )

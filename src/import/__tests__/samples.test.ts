@@ -7,7 +7,8 @@ import type { SourceFile } from '../types'
 // Vitest runs from the project root, so sample paths are relative to it.
 const VALID_DIR = 'samples/valid'
 const BROKEN_DIR = 'samples/broken'
-const SPOTS = 4
+const SEM2_GREEN = 3
+const SEM2_GREY = 3
 const GREY = 4
 
 function loadCsvFiles(dir: string): SourceFile[] {
@@ -35,7 +36,14 @@ function configAroundTie(input: PipelineInput): ScenarioConfig {
   if (start === null) throw new Error('valid samples must contain a male tie group')
   return {
     ...DEFAULT_CONFIG,
-    headcounts: { maleGreen: start, maleGrey: GREY, femaleGreen: 6, femaleGrey: GREY, sem2Spots: SPOTS },
+    headcounts: {
+      maleGreen: start,
+      maleGrey: GREY,
+      femaleGreen: 6,
+      femaleGrey: GREY,
+      sem2Green: SEM2_GREEN,
+      sem2Grey: SEM2_GREY,
+    },
   }
 }
 
@@ -48,10 +56,25 @@ describe('samples/valid', () => {
     expect(report.canCompute).toBe(true)
   })
 
-  it('has 80 residents and 12 CCAs, one file each', () => {
+  it('has 80 residents and 13 CCAs: 12 with a points file each and one flat CCA', () => {
     expect(report.input?.residents).toHaveLength(80)
-    expect(report.input?.ccas).toHaveLength(12)
-    expect(report.perCca.every((cca) => cca.status === 'ok')).toBe(true)
+    expect(report.input?.ccas).toHaveLength(13)
+    expect(report.perCca.filter((cca) => cca.status === 'ok')).toHaveLength(12)
+    expect(report.perCca.filter((cca) => cca.status === 'flat')).toHaveLength(1)
+  })
+
+  it('has 2 male and 1 female full-year JCRC residents and 1 exchange resident', () => {
+    const jcrc = (report.input?.residents ?? []).filter((r) => r.jcrc !== 'N')
+    expect(jcrc.filter((r) => r.jcrc === 'FULL' && r.gender === 'M')).toHaveLength(2)
+    expect(jcrc.filter((r) => r.jcrc === 'FULL' && r.gender === 'F')).toHaveLength(1)
+    expect(jcrc.filter((r) => r.jcrc === 'EXCHANGE')).toHaveLength(1)
+  })
+
+  it('has one flat CCA with about eight members and no leader file', () => {
+    const flat = report.perCca.find((cca) => cca.status === 'flat')
+    expect(flat?.n).toBe(8)
+    expect(flat?.flatPoints).toBe(9)
+    expect(files.some((f) => f.name.startsWith('flat_points_'))).toBe(true)
   })
 
   it('runs through the engine into five non-empty lists with ties and a merged half-CCA', () => {
@@ -59,6 +82,7 @@ describe('samples/valid', () => {
     const config = configAroundTie(report.input)
     const { lists, results } = computeAll(report.input, config)
     for (const list of Object.values(lists)) expect(list.length).toBeGreaterThan(0)
+    expect(new Set(lists.sem2.map((row) => row.status))).toEqual(new Set(['green', 'grey', 'white']))
     const flagged = Object.values(lists).flat().some((row) => row.tieFlags.length > 0)
     expect(flagged).toBe(true)
     expect(results.some((r) => r.staying.mergedPairs.length > 0)).toBe(true)

@@ -6,12 +6,13 @@ export const FILE_COLUMNS: Readonly<Record<FileKind, readonly string[]>> = {
     'formatVersion', 'ccaID', 'ccaName', 'matric', 'name',
     'basePoints', 'semesterOnly', 'outgoingRole', 'incomingRole', 'exportedAt',
   ],
-  residents: ['matric', 'name', 'gender', 'sem2', 'aux'],
+  residents: ['matric', 'name', 'gender', 'sem2', 'aux', 'jcrc'],
   ihg: ['matric', 'ccaID', 'placement'],
   ccas: [
     'ccaID', 'ccaName', 'type', 'placement', 'outgoingTier', 'outgoingMultiplier',
     'meanMin', 'meanMax', 'sdMin', 'sdMax',
   ],
+  flat: ['formatVersion', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints', 'exportedAt'],
 }
 
 const KINDS = Object.keys(FILE_COLUMNS) as FileKind[]

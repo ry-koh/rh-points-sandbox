@@ -5,6 +5,7 @@ import type {
   BiddingBreakdown,
   Cca,
   EngineWarning,
+  FinalOverride,
   IhgEntry,
   Membership,
   MembershipResult,
@@ -56,6 +57,7 @@ function buildStaying(
     usedGreedyPairing: choice.greedy,
     auxPoints: aux,
     flatIHG,
+    discretion: 0,
   }
 }
 
@@ -66,7 +68,7 @@ function buildBidding(
 ): BiddingBreakdown {
   const contributions = results.map((r) => ({ ccaID: r.ccaID, bidNet: r.bidNet }))
   const netTotal = contributions.reduce((sum, c) => sum + c.bidNet, 0)
-  return { points: netTotal + aux + flatIHG, contributions, auxPoints: aux, flatIHG }
+  return { points: netTotal + aux + flatIHG, contributions, auxPoints: aux, flatIHG, discretion: 0 }
 }
 
 function warn(
@@ -83,6 +85,7 @@ function collectWarnings(
   memberships: readonly Membership[],
   ccas: Readonly<Record<string, Cca>>,
   nonMemberIhg: readonly IhgEntry[],
+  ignoredIhg: readonly IhgEntry[],
   config: ScenarioConfig,
 ): EngineWarning[] {
   const { matric } = resident
@@ -102,7 +105,10 @@ function collectWarnings(
     halfCount > MAX_EXHAUSTIVE_HALVES
       ? [warn('TOO_MANY_HALF_CCAS', matric, null, `${halfCount} half-CCA memberships; paired greedily`)]
       : []
-  return [...semesterOnHalf, ...auxWarning, ...nonMember, ...tooMany]
+  const onFinal = ignoredIhg.map((entry) =>
+    warn('IHG_ON_FINAL_CCA', matric, entry.ccaID, 'IHG for a flat or overridden membership is ignored'),
+  )
+  return [...semesterOnHalf, ...auxWarning, ...nonMember, ...tooMany, ...onFinal]
 }
 
 function lookupCca(ccas: Readonly<Record<string, Cca>>, ccaID: string): Cca {
@@ -117,10 +123,17 @@ export function computeResident(
   ccas: Readonly<Record<string, Cca>>,
   ihg: readonly IhgEntry[],
   config: ScenarioConfig,
+  overrides: readonly FinalOverride[] = [],
 ): ResidentResult {
   const own = memberships.filter((m) => m.matric === resident.matric)
   const ownIhg = ihg.filter((entry) => entry.matric === resident.matric)
-  const results = own.map((m) => computeMembership(m, lookupCca(ccas, m.ccaID), ownIhg, config))
+  const overrideOf = (ccaID: string): FinalOverride | undefined =>
+    overrides.find((o) => o.matric === resident.matric && o.ccaID === ccaID)
+  const results = own.map((m) =>
+    computeMembership(m, lookupCca(ccas, m.ccaID), ownIhg, config, overrideOf(m.ccaID)),
+  )
+  const finalIds = new Set(results.filter((r) => r.final !== null).map((r) => r.ccaID))
+  const ignoredIhg = config.ihgInSportNet ? ownIhg.filter((entry) => finalIds.has(entry.ccaID)) : []
   const flatEntries = flatIhgEntries(ownIhg, new Set(own.map((m) => m.ccaID)), config)
   const aux = auxPoints(resident.aux, config)
   const flatIHG = sumIhg(flatEntries, config)
@@ -130,6 +143,8 @@ export function computeResident(
     memberships: results,
     staying: buildStaying(results, aux, flatIHG, config),
     bidding: buildBidding(results, aux, flatIHG),
-    warnings: collectWarnings(resident, own, ccas, nonMemberIhg, config),
+    warnings: collectWarnings(resident, own, ccas, nonMemberIhg, ignoredIhg, config),
+    jcrc: null,
+    discretion: null,
   }
 }

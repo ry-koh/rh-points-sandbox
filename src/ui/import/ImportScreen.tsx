@@ -75,6 +75,7 @@ export function ImportScreen({ state, dispatch, blockedReason, settingsCause, on
       </div>
       <CcaTable
         rows={report.perCca}
+        waivers={new Set(Object.keys(report.settings?.waivers ?? {}))}
         locked={locked}
         onToggleOverride={(ccaID) => dispatch({ type: 'toggleOverride', ccaID })}
       />

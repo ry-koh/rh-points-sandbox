@@ -1,6 +1,7 @@
 import { Lock } from 'lucide-react'
 import { useState, type ComponentType } from 'react'
 import { DEFAULT_CONFIG, type ScenarioConfig } from '../../engine'
+import type { LoadedSettings } from '../../import'
 import { Button, ConfirmDialog } from '../common/controls'
 import {
   DroppedRoleFields,
@@ -15,6 +16,7 @@ import {
 import { differs } from './fields'
 import { SECTION_TITLES as S } from './labels'
 import { Section, type SectionProps } from './Section'
+import { SettingsFileRanges } from './SettingsFileRanges'
 import { AuxFields, LeaderFields, WeightsFields } from './tableSections'
 
 interface SectionDef {
@@ -45,12 +47,14 @@ const countChanged = (config: ScenarioConfig, keys: readonly (keyof ScenarioConf
 interface SettingsPanelProps {
   readonly config: ScenarioConfig
   readonly locked: boolean
+  /** While set, the default average/spread come from this file and are read-only. */
+  readonly settings: LoadedSettings | null
   readonly onChange: (config: ScenarioConfig) => void
   readonly openSections: ReadonlySet<string>
   readonly onOpenSectionsChange: (open: ReadonlySet<string>) => void
 }
 
-export function SettingsPanel({ config, locked, onChange, openSections, onOpenSectionsChange }: SettingsPanelProps) {
+export function SettingsPanel({ config, locked, settings, onChange, openSections, onOpenSectionsChange }: SettingsPanelProps) {
   const [confirmReset, setConfirmReset] = useState(false)
   const update: SectionProps['update'] = (key, value) => onChange({ ...config, [key]: value })
   const totalChanged = countChanged(config, Object.keys(DEFAULT_CONFIG) as (keyof ScenarioConfig)[])
@@ -82,13 +86,17 @@ export function SettingsPanel({ config, locked, onChange, openSections, onOpenSe
             key={id}
             title={title}
             open={openSections.has(id)}
-            changed={countChanged(config, keys)}
+            changed={id === 'meanSd' && settings ? 0 : countChanged(config, keys)}
             onToggle={() => toggle(id)}
             prominent={id === 'headcounts'}
           >
-            <fieldset disabled={locked} className={locked ? 'opacity-70' : ''}>
-              <Body config={config} update={update} />
-            </fieldset>
+            {id === 'meanSd' && settings ? (
+              <SettingsFileRanges settings={settings} />
+            ) : (
+              <fieldset disabled={locked} className={locked ? 'opacity-70' : ''}>
+                <Body config={config} update={update} />
+              </fieldset>
+            )}
           </Section>
         ))}
       </div>

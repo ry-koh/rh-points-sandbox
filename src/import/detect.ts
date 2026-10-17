@@ -13,6 +13,9 @@ export const FILE_COLUMNS: Readonly<Record<FileKind, readonly string[]>> = {
     'meanMin', 'meanMax', 'sdMin', 'sdMax',
   ],
   flat: ['formatVersion', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints', 'exportedAt'],
+  settings: [
+    'formatVersion', 'scope', 'ccaID', 'ccaName', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note', 'exportedAt',
+  ],
 }
 
 const KINDS = Object.keys(FILE_COLUMNS) as FileKind[]

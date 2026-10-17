@@ -7,6 +7,7 @@ const LEADER = [
 ]
 const RESIDENTS = ['matric', 'name', 'gender', 'sem2', 'aux', 'jcrc']
 const FLAT = ['formatVersion', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints', 'exportedAt']
+const SETTINGS = ['formatVersion', 'scope', 'ccaID', 'ccaName', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note', 'exportedAt']
 const IHG = ['matric', 'ccaID', 'placement']
 const CCAS = [
   'ccaID', 'ccaName', 'type', 'placement', 'outgoingTier', 'outgoingMultiplier',
@@ -22,6 +23,7 @@ describe('detectFileKind', () => {
     ['ihg', IHG],
     ['ccas', CCAS],
     ['flat', FLAT],
+    ['settings', SETTINGS],
   ] as const)('recognises the %s header', (kind, header) => {
     expect(detectFileKind(header)).toBe(kind)
   })

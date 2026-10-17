@@ -109,3 +109,41 @@ describe('RH-app flat-points export', () => {
     expect(netOf('A9910103X', '9002')).toMatchObject({ stayNet: 7.5, bidNet: 7.5 })
   })
 })
+
+// Contract test for the points settings file: samples/app-export/settings/points_settings_20270401.csv
+// is byte-for-byte what RH-app's buildSettingsCsv writes (src/lib/points/settingsCsv.ts there; its
+// test holds the same fixture): CRLF with a trailing CRLF, one default row, one waiver row with a
+// quoted CCA name and the waiver's effective range.
+const SETTINGS = 'points_settings_20270401.csv'
+const settingsRead = (name: string): SourceFile => ({ name, text: readFileSync(`${DIR}/settings/${name}`, 'utf8') })
+const settingsFiles = [settingsRead(SETTINGS), settingsRead('points_9101_20270401.csv'), settingsRead('residents.csv'), settingsRead('ccas.csv')]
+
+describe('RH-app points settings export', () => {
+  const text = settingsFiles[0]!.text
+  const report = validateImport(settingsFiles, DEFAULT_CONFIG, [])
+
+  it('is exactly the bytes the app writes', () => {
+    expect(text).toBe(
+      'formatVersion,scope,ccaID,ccaName,meanMin,meanMax,sdMin,sdMax,note,exportedAt\r\n' +
+        '1,default,,,10,14,2,5,,2027-04-01T09:30:00.000Z\r\n' +
+        '1,waiver,9101,"Hall Choir, Senior",12,15,1.5,5,Small CCA (<10 members),2027-04-01T09:30:00.000Z\r\n',
+    )
+  })
+
+  it('is detected as a settings file', () => {
+    expect(detectFileKind(parseCsv(text).header)).toBe('settings')
+  })
+
+  it('has no errors', () => {
+    expect(report.issues.filter((i) => i.severity === 'error')).toEqual([])
+    expect(report.canCompute).toBe(true)
+  })
+
+  it('judges 9101 by the waiver range, which the default range would fail', () => {
+    expect(report.perCca).toEqual([
+      expect.objectContaining({ ccaID: '9101', status: 'ok', range: { meanMin: 12, meanMax: 15, sdMin: 1.5, sdMax: 5 } }),
+    ])
+    const without = validateImport(settingsFiles.filter((f) => f.name !== SETTINGS), DEFAULT_CONFIG, [])
+    expect(without.perCca[0]).toMatchObject({ status: 'out_of_range' })
+  })
+})

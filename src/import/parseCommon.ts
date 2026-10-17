@@ -19,6 +19,8 @@ const WARNING_CODES: ReadonlySet<IssueCode> = new Set<IssueCode>([
   'IHG_NON_MEMBER',
   'MANY_HALF_CCAS',
   'IHG_ON_FINAL_CCA',
+  'CCAS_RANGE_IGNORED',
+  'SETTINGS_UNKNOWN_CCA',
 ])
 
 type IssueDetails = Partial<Pick<Issue, 'line' | 'column' | 'ccaID' | 'matric'>>
@@ -126,6 +128,15 @@ export class RowReader {
     const ok = NON_NEGATIVE_NUMBER.test(raw)
     if (!ok) this.fail(code, column, `${column} "${raw}" must be a number of 0 or more.`)
     return ok ? Number(raw) : 0
+  }
+
+  /** A number from `min` to `max` inclusive; blank, text or out of range fails the row. */
+  boundedNumber(column: string, code: IssueCode, min: number, max: number): number {
+    const raw = this.text(column)
+    const value = DECIMAL_NUMBER.test(raw) ? Number(raw) : Number.NaN
+    const inRange = value >= min && value <= max
+    if (!inRange) this.fail(code, column, `${column} "${raw}" must be a number from ${min} to ${max}.`)
+    return inRange ? value : 0
   }
 
   oneOf<T extends string>(column: string, allowed: readonly T[], code: IssueCode = 'BAD_ENUM'): T {

@@ -2,3 +2,4 @@
 # endings, trailing CRLF), so git must not convert its line endings.
 samples/app-export/*.csv -text
 samples/app-export/flat/*.csv -text
+samples/app-export/settings/*.csv -text

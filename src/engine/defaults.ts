@@ -63,3 +63,10 @@ export const LEADER_FORMAT_VERSION = 1
 
 /** The only flat-points-file format version the sandbox accepts (spec 2e). */
 export const FLAT_FORMAT_VERSION = 1
+
+/** The only points-settings-file format version the sandbox accepts (spec 2g). */
+export const SETTINGS_FORMAT_VERSION = 1
+
+/** Largest allowed mean, and largest allowed SD, in a points settings file (spec 2g). */
+export const MEAN_RANGE_LIMIT = 20
+export const SD_RANGE_LIMIT = 10

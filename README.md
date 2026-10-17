@@ -31,11 +31,14 @@ Drop all files at once on the Import screen. A file with the same name replaces 
 |---|---|---|
 | `points_<ccaID>_<YYYYMMDD>.csv` | each CCA leader (RH app) | formatVersion, ccaID, ccaName, matric, name, basePoints, semesterOnly, outgoingRole, incomingRole, exportedAt |
 | `flat_points_<YYYYMMDD>.csv` (optional) | JCRC (RH app) | formatVersion, ccaID, ccaName, matric, name, flatPoints, exportedAt |
+| `points_settings_<YYYYMMDD>.csv` | JCRC (RH app, "Export settings file") | formatVersion, scope, ccaID, ccaName, meanMin, meanMax, sdMin, sdMax, note, exportedAt |
 | `residents.csv` | JCRC | matric, name (preferred name, as published), gender, sem2, aux, jcrc (N / FULL / EXCHANGE) |
 | `ccas.csv` | JCRC | ccaID, ccaName, type, placement, outgoingTier, outgoingMultiplier, meanMin, meanMax, sdMin, sdMax |
 | `ihg.csv` (optional) | JCRC / Sports | matric, ccaID, placement |
 
 Exact formats and every rule are in the [points spec](docs/points-spec.md).
+
+**Load JCRC's points settings file.** Export it from the RH app (/admin/points, "Export settings file") and drop it with the leader files. While it is loaded, the average and spread checks use only its ranges (the default plus each waiver), the range settings here become read-only, and ranges in `ccas.csv` are ignored. You can explore without it, but **Finalise lists stays locked until it is loaded**.
 
 ## Workflow
 

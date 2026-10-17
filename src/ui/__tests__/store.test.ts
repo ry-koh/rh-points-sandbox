@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, computeAll, createPenaltyState } from '../../engine'
-import { leaderFileName, leaderRows, scenario } from '../../import/__tests__/fixtures'
+import { leaderFileName, leaderRows, scenario, withSettings } from '../../import/__tests__/fixtures'
 import { initialState, reducer, type AppState } from '../state/store'
 
 const failingC1 = scenario({
@@ -68,7 +68,7 @@ describe('app reducer', () => {
 
   describe('finalise and penalties', () => {
     const ready = (): AppState => {
-      const state = withFiles()
+      const state = withFiles(withSettings(scenario()))
       const input = state.report.input
       if (!input) throw new Error('expected input')
       return reducer(state, { type: 'setResults', results: computeAll(input, state.config), error: null })

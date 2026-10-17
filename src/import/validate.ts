@@ -1,4 +1,4 @@
-import type { Cca, Membership, PipelineInput, Resident, ScenarioConfig } from '../engine'
+import type { Cca, MeanSdRange, Membership, PipelineInput, Resident, ScenarioConfig } from '../engine'
 import {
   checkCcaRows,
   checkFlatFile,
@@ -24,16 +24,19 @@ import { makeIssue } from './parseCommon'
 import { parseIhg } from './parseIhg'
 import { parseLeader } from './parseLeader'
 import { parseResidents } from './parseResidents'
+import { parseSettings } from './parseSettings'
 import type {
   CcaRow,
   FileKind,
   ImportReport,
   Issue,
   IhgRow,
+  LoadedSettings,
   OverrideRequest,
   ParsedCsv,
   ParseResult,
   ResidentRow,
+  SettingsRow,
   SourceFile,
 } from './types'
 
@@ -52,10 +55,12 @@ const KIND_LABEL: Readonly<Record<FileKind, string>> = {
   ihg: 'the IHG list',
   ccas: 'the CCA settings list',
   flat: 'the flat-points file',
+  settings: "JCRC's points settings file",
 }
 
 function guessKindFromName(name: string): FileKind | null {
   const lower = name.toLowerCase()
+  if (lower.startsWith('points_settings_')) return 'settings'
   if (lower.startsWith('points_')) return 'leader'
   if (lower.startsWith('flat_points_')) return 'flat'
   return (['residents', 'ihg', 'ccas'] as const).find((kind) => lower.startsWith(kind)) ?? null
@@ -83,7 +88,7 @@ function classify(file: SourceFile, issues: Issue[]): Classified {
   const claimed = guessKindFromName(file.name)
   const text = claimed
     ? headerProblem(claimed, csv.header)
-    : 'this file is not a points file, flat-points file, residents list, IHG list or CCA settings list (its columns match none of them).'
+    : 'this file is not a points file, flat-points file, settings file, residents list, IHG list or CCA settings list (its columns match none of them).'
   issues.push(makeIssue(claimed ? 'BAD_HEADER' : 'UNRECOGNISED_FILE', file.name, text))
   return { file, csv, kind: null, claimed }
 }
@@ -105,6 +110,10 @@ function fileLevelIssues(classified: readonly Classified[]): Issue[] {
     const text = `${KIND_LABEL.flat} was provided more than once; this extra copy is ignored.`
     issues.push(makeIssue('DUPLICATE_FLAT_FILE', extra.file.name, text))
   }
+  for (const extra of classified.filter((c) => c.kind === 'settings').slice(1)) {
+    const text = `${KIND_LABEL.settings} was provided more than once; this extra copy is ignored.`
+    issues.push(makeIssue('DUPLICATE_SETTINGS_FILE', extra.file.name, text))
+  }
   return issues
 }
 
@@ -119,6 +128,50 @@ function loadFirst<T>(
   const result = parse(found.file.name, found.csv)
   issues.push(...result.issues)
   return { fileName: found.file.name, result }
+}
+
+/** The settings file is usable when it has exactly one clean default row. Its waivers are by ccaID. */
+function readSettings(settings: Loaded<SettingsRow> | null): LoadedSettings | null {
+  if (!settings) return null
+  const rows = settings.result.rows
+  const defaults = rows.filter((r) => r.scope === 'default')
+  const broken = settings.result.issues.some((i) => i.code === 'BAD_SETTINGS_FILE')
+  const [fallback] = defaults
+  if (broken || defaults.length !== 1 || !fallback) return null
+  const waivers = Object.fromEntries(rows.filter((r) => r.scope === 'waiver').map((r) => [r.ccaID, r.range]))
+  return { fileName: settings.fileName, exportedAt: fallback.exportedAt, defaultRange: fallback.range, waivers }
+}
+
+const hasOwnRange = (cca: CcaRow): boolean =>
+  cca.meanMin !== null || cca.meanMax !== null || cca.sdMin !== null || cca.sdMax !== null
+
+/**
+ * With a settings file loaded, the only ranges are the file's (spec 2g, 7.1): each CCA row gets its
+ * waiver range or none (so it follows the file's default), ccas.csv ranges are dropped with one
+ * warning, and a waiver for a CCA ccas.csv does not list is ignored with a warning.
+ */
+function applySettings(
+  ccas: Loaded<CcaRow> | null,
+  settings: LoadedSettings,
+): { readonly ccas: Loaded<CcaRow> | null; readonly waivers: Readonly<Record<string, MeanSdRange>>; readonly issues: Issue[] } {
+  if (!ccas) return { ccas, waivers: settings.waivers, issues: [] }
+  const known = new Set(ccas.result.seenKeys)
+  const issues: Issue[] = []
+  const waivers: Record<string, MeanSdRange> = {}
+  for (const [ccaID, range] of Object.entries(settings.waivers)) {
+    if (known.has(ccaID)) waivers[ccaID] = range
+    else {
+      const text = `${ccaID} has a waiver in the settings file but is not listed in ${ccas.fileName}; the waiver is ignored.`
+      issues.push(makeIssue('SETTINGS_UNKNOWN_CCA', settings.fileName, text, { ccaID }))
+    }
+  }
+  const ignored = ccas.result.rows.filter(hasOwnRange).map((c) => c.ccaID)
+  if (ignored.length > 0) {
+    const text = `mean/SD ranges for ${ignored.join(', ')} are ignored because JCRC's points settings file is loaded.`
+    issues.push(makeIssue('CCAS_RANGE_IGNORED', ccas.fileName, text))
+  }
+  const rows = ccas.result.rows.map((cca) => ({ ...cca, ...(waivers[cca.ccaID] ?? { meanMin: null, meanMax: null, sdMin: null, sdMax: null }) }))
+  return { ccas: { fileName: ccas.fileName, result: { ...ccas.result, rows } }, waivers, issues }
 }
 
 const ccaIdFromFileName = (name: string): string => /^points_(.+)_\d{8}\.csv$/i.exec(name)?.[1] ?? ''
@@ -197,7 +250,14 @@ export function validateImport(
   const classified = files.map((file) => classify(file, issues))
   issues.push(...fileLevelIssues(classified))
   const residents = loadFirst(classified, 'residents', parseResidents, issues)
-  const ccas = loadFirst(classified, 'ccas', parseCcas, issues)
+  const loadedCcas = loadFirst(classified, 'ccas', parseCcas, issues)
+  const settingsFile = loadFirst(classified, 'settings', parseSettings, issues)
+  const settings = readSettings(settingsFile)
+  const applied = settings ? applySettings(loadedCcas, settings) : null
+  if (applied) issues.push(...applied.issues)
+  const ccas = applied ? applied.ccas : loadedCcas
+  // While a settings file is loaded, its default replaces the sandbox's own for every check.
+  const checkConfig: ScenarioConfig = settings ? { ...config, meanSdDefault: settings.defaultRange } : config
   const ihg = loadFirst(classified, 'ihg', parseIhg, issues)
   const leaderFiles = loadLeaders(classified, issues)
   const flatFile = loadFirst(classified, 'flat', parseFlat, issues)
@@ -223,8 +283,8 @@ export function validateImport(
   const stats = (ccas?.result.rows ?? []).map((cca) => {
     const flat = flats.find((f) => f.ccaID === cca.ccaID)
     return flat
-      ? flatStats(cca, flat, config)
-      : ccaStats(cca, checked.find((l) => l.ccaID === cca.ccaID), config, wanted.has(cca.ccaID))
+      ? flatStats(cca, flat, checkConfig)
+      : ccaStats(cca, checked.find((l) => l.ccaID === cca.ccaID), checkConfig, wanted.has(cca.ccaID))
   })
   for (const s of stats) {
     if (s.issue) issues.push(s.issue)
@@ -235,8 +295,10 @@ export function validateImport(
   const canCompute = !issues.some((i) => i.severity === 'error' && i.overridden !== true)
   const input =
     canCompute && residents && ccas ? toEngineInput(residents, ccas, checked, flats, ihgOutcome?.rows ?? []) : undefined
+  const reportSettings: LoadedSettings | null = settings && applied ? { ...settings, waivers: applied.waivers } : settings
   return {
     canCompute,
+    settings: reportSettings,
     issues,
     perCca: stats.map((s) => s.report),
     overrides: stats.flatMap((s) => (s.override ? [s.override] : [])),

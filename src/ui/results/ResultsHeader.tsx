@@ -3,7 +3,7 @@ import { useState, type Dispatch } from 'react'
 import { computeAll, createPenaltyState, type Lists } from '../../engine'
 import { Button, ConfirmDialog } from '../common/controls'
 import { ScenariosDialog } from '../scenarios/ScenariosDialog'
-import { entryOptions, type Action, type AppState } from '../state/store'
+import { entryOptions, finaliseBlock, type Action, type AppState } from '../state/store'
 import type { ScenarioStore } from '../state/useScenarios'
 
 interface ResultsHeaderProps {
@@ -21,18 +21,24 @@ export function ResultsHeader({ state, lists, dispatch, scenarios }: ResultsHead
   const [scenariosOpen, setScenariosOpen] = useState(false)
   const penalties = state.finalised?.log.length ?? 0
   const finalised = state.finalised !== null
+  const block = finaliseBlock(state)
   return (
     <div className="flex items-center gap-2 border-b border-rule px-6 py-2">
       <Button small onClick={() => setScenariosOpen(true)}>
         <Bookmark aria-hidden size={13} /> Scenarios · <span className="num">{scenarios.scenarios.length}</span>
       </Button>
+      {!finalised && !state.report.settings && (
+        <p className="text-cap text-muted" role="note">
+          Using the sandbox’s own ranges. Load JCRC’s points settings file before finalising.
+        </p>
+      )}
       <div className="ml-auto">
         {finalised ? (
           <Button small onClick={() => setAsk('unlock')}>
             <LockOpen aria-hidden size={13} /> Unlock
           </Button>
         ) : (
-          <Button small variant="primary" disabled={!lists} onClick={() => setAsk('finalise')}>
+          <Button small variant="primary" disabled={!lists || block !== null} title={block ?? undefined} onClick={() => setAsk('finalise')}>
             <Lock aria-hidden size={13} /> Finalise lists
           </Button>
         )}

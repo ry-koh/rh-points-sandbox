@@ -93,6 +93,7 @@ export function ResultsScreen(props: ResultsScreenProps) {
       <SettingsPanel
         config={config}
         locked={finalised !== null}
+        settings={report.settings}
         onChange={(next) => dispatch({ type: 'setConfig', config: next })}
         openSections={openSections}
         onOpenSectionsChange={onOpenSectionsChange}

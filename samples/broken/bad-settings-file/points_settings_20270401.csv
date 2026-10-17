@@ -1,0 +1,4 @@
+formatVersion,scope,ccaID,ccaName,meanMin,meanMax,sdMin,sdMax,note,exportedAt
+1,default,,,10,14,2,5,,2027-04-01T00:00:00Z
+1,default,,,10,14,2,5,,2027-04-01T00:00:00Z
+1,waiver,C1,Test CCA One,12,15,1.5,5,Small CCA,2027-04-01T00:00:00Z

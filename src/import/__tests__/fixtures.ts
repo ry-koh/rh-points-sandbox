@@ -138,3 +138,30 @@ export function scenario(overrides: Partial<Scenario> = {}): SourceFile[] {
   if (s.flat) files.push({ name: FLAT_FILE_NAME, text: toCsv(FLAT_COLS, s.flat) })
   return [...files, ...s.extra]
 }
+
+export const SETTINGS_COLS = [
+  'formatVersion', 'scope', 'ccaID', 'ccaName', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note', 'exportedAt',
+]
+export const SETTINGS_FILE_NAME = 'points_settings_20270401.csv'
+const SETTINGS_EXPORTED_AT = '2027-04-01T09:30:00.000Z'
+
+/** The `default` row of a points settings file: 10-14 / 2-5, like the app's built-in default. */
+export const settingsDefaultRow = (patch: Row = {}): Row => ({
+  formatVersion: '1', scope: 'default', ccaID: '', ccaName: '', meanMin: '10', meanMax: '14', sdMin: '2', sdMax: '5', note: '', exportedAt: SETTINGS_EXPORTED_AT, ...patch,
+})
+
+/** A `waiver` row: 12-15 / 1.5-5 unless patched. */
+export const settingsWaiverRow = (ccaID: string, patch: Row = {}): Row => ({
+  formatVersion: '1', scope: 'waiver', ccaID, ccaName: `Test CCA ${ccaID}`, meanMin: '12', meanMax: '15', sdMin: '1.5', sdMax: '5', note: 'Small CCA', exportedAt: SETTINGS_EXPORTED_AT, ...patch,
+})
+
+export const settingsFile = (rows: readonly Row[] = [settingsDefaultRow()], name = SETTINGS_FILE_NAME): SourceFile => ({
+  name,
+  text: toCsv(SETTINGS_COLS, rows),
+})
+
+/** The same files plus a valid settings file (default only), so the lists can be finalised. */
+export const withSettings = (files: readonly SourceFile[], rows: readonly Row[] = [settingsDefaultRow()]): SourceFile[] => [
+  ...files,
+  settingsFile(rows),
+]

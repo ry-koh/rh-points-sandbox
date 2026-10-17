@@ -15,6 +15,8 @@ const fmt = (n: number | null): string => (n === null ? '—' : n.toFixed(2))
 
 interface CcaTableProps {
   readonly rows: readonly PerCcaReport[]
+  /** ccaIDs that have a waiver in JCRC's settings file (empty when none is loaded). */
+  readonly waivers: ReadonlySet<string>
   readonly locked: boolean
   readonly onToggleOverride: (ccaID: string) => void
 }
@@ -30,7 +32,17 @@ function Th({ children, right = false }: { readonly children: string; readonly r
   )
 }
 
-function Row({ cca, locked, onAsk }: { readonly cca: PerCcaReport; readonly locked: boolean; readonly onAsk: (cca: PerCcaReport) => void }) {
+function Row({
+  cca,
+  waived,
+  locked,
+  onAsk,
+}: {
+  readonly cca: PerCcaReport
+  readonly waived: boolean
+  readonly locked: boolean
+  readonly onAsk: (cca: PerCcaReport) => void
+}) {
   const status = STATUS[cca.status]
   return (
     <tr className="border-b border-rule hover:bg-ink/[0.03]">
@@ -47,7 +59,7 @@ function Row({ cca, locked, onAsk }: { readonly cca: PerCcaReport; readonly lock
           Flat · <span className="num">{cca.flatPoints ?? 0}</span> pts <span className="text-cap">(no mean/SD check)</span>
         </td>
       ) : (
-        <MeanSdCells cca={cca} />
+        <MeanSdCells cca={cca} waived={waived} />
       )}
       <td className="py-2 pr-4">
         <Chip tone={status.tone}>{status.label}</Chip>
@@ -68,13 +80,18 @@ function Row({ cca, locked, onAsk }: { readonly cca: PerCcaReport; readonly lock
   )
 }
 
-function MeanSdCells({ cca }: { readonly cca: PerCcaReport }) {
+function MeanSdCells({ cca, waived }: { readonly cca: PerCcaReport; readonly waived: boolean }) {
   const { range } = cca
   return (
     <>
       <td className="num py-2 pr-4 text-right">{fmt(cca.mean)}</td>
       <td className="num py-2 pr-4 text-cap text-muted">
         {range.meanMin}–{range.meanMax}
+        {waived && (
+          <span className="ml-1.5 font-sans">
+            <Chip tone="outline">waiver</Chip>
+          </span>
+        )}
       </td>
       <td className="py-2 pr-4">
         <RangeBar label="Mean" value={cca.mean} min={range.meanMin} max={range.meanMax} />
@@ -90,7 +107,7 @@ function MeanSdCells({ cca }: { readonly cca: PerCcaReport }) {
   )
 }
 
-export function CcaTable({ rows, locked, onToggleOverride }: CcaTableProps) {
+export function CcaTable({ rows, waivers, locked, onToggleOverride }: CcaTableProps) {
   const [asking, setAsking] = useState<PerCcaReport | null>(null)
   if (rows.length === 0) return null
   const undo = asking?.status === 'overridden'
@@ -122,7 +139,7 @@ export function CcaTable({ rows, locked, onToggleOverride }: CcaTableProps) {
           </thead>
           <tbody>
             {rows.map((cca) => (
-              <Row key={cca.ccaID} cca={cca} locked={locked} onAsk={setAsking} />
+              <Row key={cca.ccaID} cca={cca} waived={waivers.has(cca.ccaID)} locked={locked} onAsk={setAsking} />
             ))}
           </tbody>
         </table>

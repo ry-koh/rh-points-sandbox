@@ -14,6 +14,9 @@ import {
 } from '../../engine'
 import { validateImport, type ImportReport, type SourceFile } from '../../import'
 
+/** Why Finalise is refused until JCRC's points settings file is loaded (spec 2g). */
+export const SETTINGS_REQUIRED_REASON = "Load JCRC's points settings file before finalising."
+
 /** One applied penalty as shown in the Penalties panel. */
 export interface PenaltyLogEntry {
   readonly key: PenaltyKey
@@ -98,6 +101,25 @@ function revalidate(state: Inputs): AppState {
   }
 }
 
+/**
+ * Why the lists cannot be finalised yet, or null when they can. Finalising needs a usable JCRC
+ * settings file (so every range check used JCRC's own ranges) and an import without errors.
+ */
+export function finaliseBlock(state: Pick<AppState, 'report'>): string | null {
+  if (!state.report.settings) return SETTINGS_REQUIRED_REASON
+  if (!state.report.canCompute) return 'Fix the import errors before finalising.'
+  return null
+}
+
+/**
+ * The config the app works with: the user's config, except that while a settings file is loaded
+ * its default range is THE default range. A scenario load or edit cannot change that.
+ */
+export function effectiveConfig(state: Pick<AppState, 'config' | 'report'>): ScenarioConfig {
+  const settings = state.report.settings
+  return settings ? { ...state.config, meanSdDefault: settings.defaultRange } : state.config
+}
+
 /** The direct JCRC entries to hand to computeAll and the penalty functions. */
 export function entryOptions(state: Pick<AppState, 'finalOverrides' | 'discretion' | 'resolutions'>): EntryOptions {
   return { overrides: state.finalOverrides, discretion: state.discretion, resolutions: state.resolutions }
@@ -165,7 +187,7 @@ function wheelChange(state: AppState, action: Action): AppState {
 function penaltyChange(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'finalise':
-      return state.finalised || !state.report.canCompute ? state : { ...state, finalised: { penalty: action.penalty, log: [] } }
+      return state.finalised || finaliseBlock(state) !== null ? state : { ...state, finalised: { penalty: action.penalty, log: [] } }
     case 'applyPenalty':
       if (!state.finalised) return state
       return { ...state, finalised: { penalty: action.penalty, log: [...state.finalised.log, action.entry] } }

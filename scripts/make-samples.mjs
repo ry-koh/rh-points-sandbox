@@ -18,6 +18,7 @@ const RESIDENT_COLS = ['matric', 'name', 'gender', 'sem2', 'aux', 'jcrc']
 const FLAT_COLS = ['formatVersion', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints', 'exportedAt']
 const IHG_COLS = ['matric', 'ccaID', 'placement']
 const CCA_COLS = ['ccaID', 'ccaName', 'type', 'placement', 'outgoingTier', 'outgoingMultiplier', 'meanMin', 'meanMax', 'sdMin', 'sdMax']
+const SETTINGS_COLS = ['formatVersion', 'scope', 'ccaID', 'ccaName', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note', 'exportedAt']
 
 // ---------- helpers ----------
 function mulberry32(seed) {
@@ -184,6 +185,18 @@ function toLeaderCsv(cca, rows) {
   return toCsv(LEADER_COLS, out)
 }
 
+/** JCRC's points settings file (spec 2g): the default row, then one waiver row per waived CCA. */
+function settingsRows(waivers) {
+  const row = (scope, ccaID, ccaName, range, note) => ({
+    formatVersion: 1, scope, ccaID, ccaName, meanMin: range.meanMin, meanMax: range.meanMax,
+    sdMin: range.sdMin, sdMax: range.sdMax, note, exportedAt: EXPORTED_AT,
+  })
+  return [
+    row('default', '', '', DEFAULT_RANGE, ''),
+    ...waivers.map(({ ccaID, ccaName, range }) => row('waiver', ccaID, ccaName, range, 'Small CCA')),
+  ]
+}
+
 function makeFlatCca(ccaID = FLAT_CCA_ID) {
   return {
     ccaID, ccaName: `Test Flat CCA ${ccaID.slice(1)}`, type: '1x', placement: 'gold',
@@ -221,6 +234,11 @@ function writeValid() {
   ccas.forEach((cca, i) => write(dir, `points_${cca.ccaID}_20270401.csv`, toLeaderCsv(cca, rowsByCca[i])))
   write(dir, 'ihg.csv', toCsv(IHG_COLS, makeIhg(byCca)))
   write(dir, 'flat_points_20270401.csv', toCsv(FLAT_COLS, flatRows(FLAT_CCA_ID, FLAT_VALUE, FLAT_MEMBERS)))
+  // The waivers in ccas.csv, as JCRC's settings file carries them (the file's ranges win).
+  const waivers = ccas
+    .filter((cca) => WAIVERS[cca.ccaID])
+    .map((cca) => ({ ccaID: cca.ccaID, ccaName: cca.ccaName, range: { ...DEFAULT_RANGE, ...WAIVERS[cca.ccaID] } }))
+  write(dir, 'points_settings_20270401.csv', toCsv(SETTINGS_COLS, settingsRows(waivers)))
 }
 
 // ---------- broken samples ----------
@@ -240,7 +258,7 @@ function baseScenario() {
       formatVersion: 1, ccaID: id, ccaName: `Test CCA ${id}`, matric: matricOf(i + 1), name: nameOf(i + 1),
       basePoints: score, semesterOnly: 'N', outgoingRole: 'none', incomingRole: 'none', exportedAt: EXPORTED_AT,
     }))
-  return { residents, ccas, leaders: { C1: leader('C1'), C2: leader('C2') }, ihg: null, flat: null, extra: [], leader }
+  return { residents, ccas, leaders: { C1: leader('C1'), C2: leader('C2') }, ihg: null, flat: null, settings: null, extra: [], leader }
 }
 
 /** Adds a flat CCA (C3, no leader file) to the scenario's ccas.csv with six flat members. */
@@ -248,6 +266,9 @@ const withFlatCca = (s, value = 12) => {
   s.ccas.push(makeFlatCca('C3'))
   s.flat = flatRows('C3', value, [1, 2, 3, 4, 5, 6])
 }
+
+const SETTINGS_WAIVER = { ccaID: 'C1', ccaName: 'Test CCA One', range: { meanMin: 12, meanMax: 15, sdMin: 1.5, sdMax: 5 } }
+const withSettings = (s, rows = settingsRows([SETTINGS_WAIVER])) => (s.settings = rows)
 
 const patchLast = (rows, patch) => rows.map((r, i) => (i === rows.length - 1 ? { ...r, ...patch } : r))
 
@@ -295,6 +316,29 @@ const BROKEN_CASES = [
     withFlatCca(s)
     s.extra.push({ name: 'flat_points_20270402.csv', text: toCsv(FLAT_COLS, s.flat) })
   }],
+  ['bad-settings-file', ['BAD_SETTINGS_FILE'], (s) => {
+    const rows = settingsRows([SETTINGS_WAIVER])
+    withSettings(s, [rows[0], rows[0], rows[1]])
+  }],
+  ['bad-settings-range', ['BAD_RANGE'], (s) => {
+    const rows = settingsRows([SETTINGS_WAIVER])
+    withSettings(s, [rows[0], { ...rows[1], meanMin: 'low' }])
+  }],
+  ['duplicate-waiver', ['DUPLICATE_WAIVER'], (s) => {
+    const rows = settingsRows([SETTINGS_WAIVER])
+    withSettings(s, [...rows, rows[1]])
+  }],
+  ['duplicate-settings-file', ['DUPLICATE_SETTINGS_FILE'], (s) => {
+    withSettings(s)
+    s.extra.push({ name: 'points_settings_20270402.csv', text: toCsv(SETTINGS_COLS, s.settings) })
+  }],
+  ['settings-unknown-cca', ['SETTINGS_UNKNOWN_CCA'], (s) => {
+    withSettings(s, settingsRows([SETTINGS_WAIVER, { ...SETTINGS_WAIVER, ccaID: 'C9', ccaName: 'Test CCA Nine' }]))
+  }],
+  ['ccas-range-ignored', ['CCAS_RANGE_IGNORED'], (s) => {
+    withSettings(s)
+    s.ccas[0] = { ...s.ccas[0], meanMin: 10, meanMax: 14, sdMin: 2, sdMax: 5 }
+  }],
   ['mean-sd-out-of-range', ['MEAN_SD_OUT_OF_RANGE'], (s) => (s.leaders.C1 = s.leader('C1', [20, 20, 20, 20, 20, 20]))],
 ]
 
@@ -309,6 +353,7 @@ function writeBroken([folder, codes, edit]) {
   for (const [id, rows] of Object.entries(s.leaders)) files.push([`points_${id}_20270401.csv`, toCsv(LEADER_COLS, rows)])
   if (s.ihg) files.push(['ihg.csv', toCsv(IHG_COLS, s.ihg)])
   if (s.flat) files.push(['flat_points_20270401.csv', toCsv(FLAT_COLS, s.flat)])
+  if (s.settings) files.push(['points_settings_20270401.csv', toCsv(SETTINGS_COLS, s.settings)])
   for (const extra of s.extra) files.push([extra.name, extra.text])
   for (const [name, text] of files) write(dir, name, (s.textEdits[name] ?? ((t) => t))(text))
   write(dir, 'expected.json', `${JSON.stringify({ codes }, null, 2)}\n`)

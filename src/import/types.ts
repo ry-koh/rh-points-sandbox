@@ -9,7 +9,7 @@ import type {
   Role,
 } from '../engine'
 
-export type FileKind = 'leader' | 'residents' | 'ihg' | 'ccas' | 'flat'
+export type FileKind = 'leader' | 'residents' | 'ihg' | 'ccas' | 'flat' | 'settings'
 
 export interface SourceFile {
   readonly name: string
@@ -41,6 +41,11 @@ export type IssueCode =
   | 'FLAT_VALUE_MISMATCH'
   | 'FLAT_AND_LEADER_FILE'
   | 'DUPLICATE_FLAT_FILE'
+  | 'BAD_SETTINGS_FILE'
+  | 'DUPLICATE_WAIVER'
+  | 'DUPLICATE_SETTINGS_FILE'
+  | 'CCAS_RANGE_IGNORED'
+  | 'SETTINGS_UNKNOWN_CCA'
   | 'UNKNOWN_CCA'
   | 'IHG_UNKNOWN_MATRIC'
   | 'IHG_UNKNOWN_CCA'
@@ -118,6 +123,15 @@ export interface FlatRow {
   readonly flatPoints: number
 }
 
+export interface SettingsRow {
+  readonly line: number
+  readonly scope: 'default' | 'waiver'
+  /** Blank on the default row. */
+  readonly ccaID: string
+  readonly exportedAt: string
+  readonly range: MeanSdRange
+}
+
 export interface IhgRow {
   readonly line: number
   readonly matric: string
@@ -170,8 +184,20 @@ export interface OverrideRecord {
   readonly range: MeanSdRange
 }
 
+/** The JCRC points settings file once it is loaded and usable (spec 2g). */
+export interface LoadedSettings {
+  readonly fileName: string
+  /** The default row's exportedAt text, as written by the app. */
+  readonly exportedAt: string
+  readonly defaultRange: MeanSdRange
+  /** The effective range of each waived CCA, by ccaID. */
+  readonly waivers: Readonly<Record<string, MeanSdRange>>
+}
+
 export interface ImportReport {
   readonly canCompute: boolean
+  /** Set while a usable settings file is loaded: its ranges are the only ones used. */
+  readonly settings: LoadedSettings | null
   readonly issues: readonly Issue[]
   readonly perCca: readonly PerCcaReport[]
   readonly overrides: readonly OverrideRecord[]

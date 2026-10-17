@@ -1,4 +1,4 @@
-# RH Hall Points Spec — v2.0
+# RH Hall Points Spec — v2.1
 
 Authoritative rules for the Raffles Hall AY26-27 points system. Where this document and the
 CLAUDE.md summary differ, this document wins. Every number below is a **config variable**
@@ -18,7 +18,8 @@ RH app (CCA leaders)  ->  CSV export  ->  email to portfolio head  ->  vetted
    Points are never sent to or stored on the RH-app server.
 2. The leader emails the CSV to their portfolio head, who vets it.
 3. JCRC loads all vetted CSVs plus its own files (residents, IHG, CCA settings, and the
-   optional flat-points file) into the offline sandbox, adjusts the scenario config, and gets
+   optional flat-points file, and the **points settings file** exported from the RH app, 2g)
+   into the offline sandbox, adjusts the scenario config, and gets
    five lists: **male staying, male bidding, female staying, female bidding, sem-2 staying**.
    Bidding lists are ordered colour first (green, grey, white), see 5.3.
 4. JCRC may then enter, directly in the sandbox, **final-points overrides** (6.2) and
@@ -87,6 +88,10 @@ A **blank range field means "use the default"** (`meanSdDefault`). That is how a
 stored: a waived CCA simply carries its own non-blank override values. Each of the four
 fields falls back independently.
 
+**While a points settings file (2g) is loaded, these four range columns are ignored**: the
+mean/SD ranges come only from the settings file, and the affected CCAs get one
+`CCAS_RANGE_IGNORED` warning.
+
 ### (e) flat-points file — produced by the RH app (JCRC), optional
 
 Filename: `flat_points_<YYYYMMDD>.csv`. UTF-8, CRLF line endings, RFC 4180 quoting. **One file
@@ -111,6 +116,43 @@ sandbox setting. A file is detected by its header (or, failing that, a `flat_poi
 name). The file is optional. A flat CCA's `type`, `placement` and outgoing columns in
 ccas.csv are ignored for the points (the CCA still needs a ccas.csv row). A flat CCA is
 **not** mean/SD checked and does **not** raise `NO_LEADER_FILE`.
+
+### (g) points settings file — produced by the RH app (JCRC)
+
+Filename: `points_settings_<YYYYMMDD>.csv`. UTF-8, CRLF line endings, RFC 4180 quoting.
+Config only: it holds no names of people, no matrics and no scores. Header exactly:
+
+```
+formatVersion,scope,ccaID,ccaName,meanMin,meanMax,sdMin,sdMax,note,exportedAt
+```
+
+| Column | Type / allowed values |
+|---|---|
+| `formatVersion` | integer, must equal `1` |
+| `scope` | `default` or `waiver` |
+| `ccaID` | blank on the `default` row; the waived CCA's id on a `waiver` row |
+| `ccaName` | blank on the `default` row; informational on a `waiver` row |
+| `meanMin`, `meanMax` | numbers, 0–20, `meanMin` ≤ `meanMax` |
+| `sdMin`, `sdMax` | numbers, 0–10, `sdMin` ≤ `sdMax` |
+| `note` | blank on the `default` row; the waiver's reason on a `waiver` row |
+| `exportedAt` | ISO 8601 timestamp (shown, not validated) |
+
+Exactly **one** `default` row, then zero or more `waiver` rows. Every range value is the
+**effective** range (a waiver's blank fields are already filled from the default by the RH
+app), so no fallback is applied when reading. A file is detected by its header (or, failing
+that, a `points_settings_` file name).
+
+**Effect.** While the file is loaded, the mean/SD check (7.1) of every leader file uses ONLY
+these ranges: the `default` row for a CCA with no waiver row, the waiver row's range for a
+waived CCA. The sandbox's own `meanSdDefault` setting is not used for the check and is shown
+read-only ("From JCRC settings file"); loading a scenario does not change it. Ranges in
+ccas.csv are ignored (`CCAS_RANGE_IGNORED`). A waiver row for a `ccaID` not in ccas.csv is
+ignored (`SETTINGS_UNKNOWN_CCA`). A waiver on a flat CCA is harmless: flat CCAs are not
+mean/SD checked.
+
+**Finalise lists is refused until the file is loaded**: "Load JCRC's points settings file
+before finalising." Before that, the sandbox may be used to explore with its own ranges and
+shows a note saying so. The file is optional for everything except finalising.
 
 ## 3. Scenario config (JSON)
 
@@ -488,6 +530,10 @@ Computed over the CCA's **full `basePoints`** — leaders included, semester-onl
 `1e-9`. The range is the CCA's override fields, else `meanSdDefault`; each of the four
 range fields falls back to `meanSdDefault` independently.
 
+**When a points settings file (2g) is loaded** the ranges come ONLY from it: the CCA's
+`waiver` row if it has one, else the `default` row. ccas.csv range columns and the sandbox's
+`meanSdDefault` are not used.
+
 ### 7.2 ERRORS
 
 Block results until each is fixed by re-importing a corrected file. **Mean/SD out of range is
@@ -515,6 +561,10 @@ re-importing a corrected file; override attempts for them are ignored.
 - flat-points file: `ccaID` not in ccas.csv, `ccaID` that also has a leader file, `flatPoints`
   not a number ≥ 0, rows of one `ccaID` with different `flatPoints`, more than one flat file,
   and the usual matric checks (bad, unknown, duplicate within one `ccaID`)
+- points settings file: not exactly one `default` row, a `scope` other than `default` /
+  `waiver`, a waiver row without a `ccaID`, a range value that is not a number or is outside
+  0–20 (mean) / 0–10 (SD) or has min above max, the same `ccaID` on two waiver rows, a wrong
+  `formatVersion`, and more than one settings file
 
 ### 7.3 WARNINGS
 
@@ -526,6 +576,8 @@ Shown, do not block.
 - IHG for a non-member when `ihgInSportNet` is on
 - more than 10 `0.5x` memberships for one resident
 - an IHG row for a flat or overridden membership (the row is always ignored)
+- ccas.csv range columns that are ignored because a points settings file is loaded
+- a settings-file waiver for a `ccaID` that is not in ccas.csv (the row is ignored)
 
 ### 7.4 Issue codes
 
@@ -540,7 +592,7 @@ raises one issue rather than a cascade. The IHG file is optional.
 | `UNRECOGNISED_FILE` | error | no | header matches no file kind and the file name gives no hint |
 | `CSV_SYNTAX` | error | no | unterminated quote, or a row whose cell count differs from the header |
 | `BAD_HEADER` | error | no | file name says leader (`points_*`) / flat (`flat_points_*`) / residents / ihg / ccas but the header columns are not exactly right (a residents.csv without the `jcrc` column lands here) |
-| `BAD_FORMAT_VERSION` | error | no | leader `formatVersion` is not `1` |
+| `BAD_FORMAT_VERSION` | error | no | leader, flat or settings `formatVersion` is not `1` |
 | `MIXED_CCA_ID` | error | no | one leader file contains more than one `ccaID` |
 | `DUPLICATE_CCA_FILE` | error | no | two leader files for the same `ccaID` |
 | `MISSING_RESIDENTS_FILE` | error | no | no residents.csv |
@@ -573,13 +625,18 @@ raises one issue rather than a cascade. The IHG file is optional.
 | `BAD_MANUAL_MULTIPLIER` | error | no | `outgoingMultiplier` not blank and not a positive number |
 | `MISSING_OUTGOING_MULTIPLIER` | error | no | a CCA has an outgoing leader but the field for the active `outgoingMode` is blank |
 | `DUPLICATE_CCA` | error | no | same `ccaID` twice in ccas.csv |
-| `BAD_RANGE` | error | no | a mean/SD range field in ccas.csv is not blank and not a number |
+| `BAD_RANGE` | error | no | a mean/SD range field in ccas.csv is not blank and not a number; or a settings-file range value is not a number, is outside 0–20 (mean) / 0–10 (SD), or has min above max |
+| `BAD_SETTINGS_FILE` | error | no | settings file without exactly one `default` row, with a `scope` other than `default` / `waiver`, or a waiver row without a `ccaID` |
+| `DUPLICATE_WAIVER` | error | no | the same `ccaID` on two waiver rows of the settings file (the later row is ignored) |
+| `DUPLICATE_SETTINGS_FILE` | error | no | more than one settings file (the extra copy is ignored) |
 | `MEAN_SD_OUT_OF_RANGE` | error | **yes** | mean or population SD outside the CCA's range (also raised for a leader file with no members) |
 | `NO_LEADER_FILE` | warning | – | a CCA in ccas.csv has no leader file and is not a flat CCA |
 | `SEMESTER_ONLY_ON_HALF_CCA` | warning | – | `semesterOnly` = `Y` on a `0.5x` CCA (ignored) |
 | `AUX_ABOVE_CAP` | warning | – | `aux` above `auxCap` |
 | `IHG_NON_MEMBER` | warning | – | IHG row for a CCA the resident is not in, only when `ihgInSportNet` is on |
 | `MANY_HALF_CCAS` | warning | – | a resident has more than 10 `0.5x` memberships |
+| `CCAS_RANGE_IGNORED` | warning | – | a settings file is loaded and ccas.csv has range values for one or more CCAs; they are ignored (the message lists the CCAs) |
+| `SETTINGS_UNKNOWN_CCA` | warning | – | a settings-file waiver names a `ccaID` not in ccas.csv; the row is ignored |
 | `IHG_ON_FINAL_CCA` | warning | – | an IHG row for a flat or overridden membership; the row is always ignored, whatever `ihgInSportNet` says |
 
 The five entry codes (`BAD_FINAL_POINTS` … `DISCRETION_UNKNOWN_RESIDENT`) are returned by the
@@ -833,6 +890,19 @@ E1's resident with `+2 staying / −1 bidding`:
 staying = 68.375 + 2 = 70.375
 bidding = 81.5   − 1 = 80.5
 ```
+
+### E21 — Points settings file (waiver ranges)
+
+Settings file (2g): `default` 10–14 / 2–5, and a `waiver` row for CCA 9101 with 12–15 /
+1.5–5. Leader file for 9101 has mean **14.5** and SD **1.6**.
+
+```
+under the default (10–14 / 2–5):  mean 14.5 > 14      → MEAN_SD_OUT_OF_RANGE
+under the waiver  (12–15 / 1.5–5): 12 ≤ 14.5 ≤ 15, 1.5 ≤ 1.6 ≤ 5 → ok
+```
+
+With the settings file loaded the CCA is `ok`; without it (sandbox's own default range) the
+same files raise `MEAN_SD_OUT_OF_RANGE` for 9101.
 
 ## 8b. Workspace file
 

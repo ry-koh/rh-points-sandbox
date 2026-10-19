@@ -15,6 +15,7 @@ import {
   type Loaded,
 } from './checks'
 import { parseCsv } from './csv'
+import { fnv1a32 } from './hash'
 import { FILE_COLUMNS, RETIRED_CCAS_COLUMNS, RETIRED_IHG_COLUMNS, detectFileKind, headerMatches } from './detect'
 import { buildIhgFromTicks } from './ihgTicks'
 import { parseBundle } from './parseBundle'
@@ -23,6 +24,7 @@ import { makeIssue } from './parseCommon'
 import { parseLeader } from './parseLeader'
 import { parseResidents } from './parseResidents'
 import { parseSettings } from './parseSettings'
+import { applyReviewEdits } from './review'
 import type {
   BundleCca,
   BundleCcaRow,
@@ -311,8 +313,13 @@ function bundleFlatGroups(
 
 const ccaIdFromFileName = (name: string): string => /^points_(.+)_\d{8}\.csv$/i.exec(name)?.[1] ?? ''
 
-function loadLeaders(classified: readonly Classified[], issues: Issue[]): LeaderFile[] {
+/** The leader files (one per CCA) and the hash of each one's text, by ccaID. */
+function loadLeaders(
+  classified: readonly Classified[],
+  issues: Issue[],
+): { readonly files: LeaderFile[]; readonly hashes: ReadonlyMap<string, string> } {
   const files: LeaderFile[] = []
+  const hashes = new Map<string, string>()
   for (const c of classified.filter((item) => item.kind === 'leader')) {
     const result = parseLeader(c.file.name, c.csv)
     issues.push(...result.issues)
@@ -321,9 +328,10 @@ function loadLeaders(classified: readonly Classified[], issues: Issue[]): Leader
       issues.push(makeIssue('DUPLICATE_CCA_FILE', c.file.name, `A second points file for ${ccaID} was provided; this one is ignored.`, { ccaID }))
     } else {
       files.push({ fileName: c.file.name, ccaID, result })
+      hashes.set(ccaID, fnv1a32(c.file.text))
     }
   }
-  return files
+  return { files, hashes }
 }
 
 function toEngineInput(
@@ -387,6 +395,7 @@ function perCcaReport(
   bundle: SplitBundle,
   leaders: readonly CheckedLeader[],
   tickedByCca: Readonly<Record<string, number>>,
+  hashes: ReadonlyMap<string, string>,
 ): PerCcaReport {
   const row = bundle.ccas.rows.find((c) => c.ccaID === cca.ccaID)
   const leader = leaders.find((l) => l.ccaID === cca.ccaID)
@@ -401,11 +410,14 @@ function perCcaReport(
     multiplierOverride: cca.multiplierOverride,
     outgoingLeaders: leader?.rows.filter((r) => r.outgoingRole !== 'none').length ?? 0,
     ihgTicked: tickedByCca[cca.ccaID] ?? 0,
+    fileHash: leader ? (hashes.get(cca.ccaID) ?? null) : null,
   }
 }
 
 /**
- * Parses and checks the dropped files with the values entered in the sandbox (the level table).
+ * Parses and checks the dropped files with the values entered in the sandbox (the level table,
+ * the review edits and the not-submitting marks). Edits are applied once, to the checked leader
+ * rows, so the mean/SD, the IHG ticks and the engine input all see the same scores.
  * Pure: the same files, config and sandbox values always give the same report. A mean or SD
  * outside the range is a warning, never an error.
  */
@@ -415,6 +427,8 @@ export function validateImport(
   sandbox: Partial<SandboxInput> = {},
 ): ImportReport {
   const ccaLevels = sandbox.ccaLevels ?? []
+  const edits = sandbox.edits ?? []
+  const notSubmitting = new Set(sandbox.notSubmitting ?? [])
   const issues: Issue[] = []
   const classified = files.map((file) => classify(file, issues))
   issues.push(...fileLevelIssues(classified))
@@ -432,15 +446,17 @@ export function validateImport(
   const ccas = bundle ? synthesiseCcas(bundle, applied?.waivers ?? {}, entries, issues) : null
   // While settings are loaded, their default replaces the sandbox's own for every check.
   const checkConfig: ScenarioConfig = settings ? { ...config, meanSdDefault: settings.defaultRange } : config
-  const leaderFiles = loadLeaders(classified, issues)
+  const { files: leaderFiles, hashes } = loadLeaders(classified, issues)
   if (bundle) issues.push(...levelNotSet(bundle, new Set(leaderFiles.map((f) => f.ccaID)), ccaLevels))
   if (residents) issues.push(...checkResidentRows(residents, config))
-  const checked: CheckedLeader[] = []
+  const fileRows: CheckedLeader[] = []
   for (const leader of leaderFiles) {
     const outcome = checkLeaderFile(leader, residents, ccas)
     issues.push(...outcome.issues)
-    if (outcome.checked) checked.push(outcome.checked)
+    if (outcome.checked) fileRows.push(outcome.checked)
   }
+  const reviewed = applyReviewEdits(fileRows, edits)
+  const checked = reviewed.checked
   const flatOutcome = flatFile
     ? checkFlatFile(flatFile, residents, ccas, new Set(leaderFiles.map((f) => f.ccaID)))
     : null
@@ -461,7 +477,7 @@ export function validateImport(
   })
   for (const { result: s } of stats) {
     if (s.issue) issues.push(s.issue)
-    if (s.report.status === 'missing_file') {
+    if (s.report.status === 'missing_file' && !notSubmitting.has(s.report.ccaID)) {
       issues.push(makeIssue('NO_LEADER_FILE', '', `${s.report.name} (${s.report.ccaID}) has no points file.`, { ccaID: s.report.ccaID }))
     }
   }
@@ -474,8 +490,9 @@ export function validateImport(
     bundle: loadedBundle(bundle),
     settings: reportSettings,
     issues,
-    perCca: bundle ? stats.map(({ cca, result }) => perCcaReport(result, cca, bundle, checked, ticks.tickedByCca)) : [],
+    perCca: bundle ? stats.map(({ cca, result }) => perCcaReport(result, cca, bundle, checked, ticks.tickedByCca, hashes)) : [],
     outOfRange: stats.flatMap(({ result }) => (result.outOfRange ? [result.outOfRange] : [])),
+    review: { edits: reviewed.edits, flatIds: flats.map((f) => f.ccaID) },
     ...(input ? { input } : {}),
   }
 }

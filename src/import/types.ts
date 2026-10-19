@@ -7,6 +7,7 @@ import type {
   PipelineInput,
   Role,
 } from '../engine'
+import type { CheckedReviewEdit, ReviewEdit } from './review'
 
 export type FileKind = 'leader' | 'residents' | 'flat' | 'settings' | 'bundle'
 
@@ -190,9 +191,13 @@ export interface CcaLevelEntry {
   readonly multiplierOverride: number | null
 }
 
-/** Values entered in the sandbox itself, not read from any file. */
+/** Values entered in the sandbox itself, not read from any file. Every field is optional at the call site. */
 export interface SandboxInput {
   readonly ccaLevels: readonly CcaLevelEntry[]
+  /** Reviewed scores from the Review step (spec 6.4). */
+  readonly edits: readonly ReviewEdit[]
+  /** ccaIDs marked "not submitting" on the checklist: no NO_LEADER_FILE for them (spec 6.5). */
+  readonly notSubmitting: readonly string[]
 }
 
 export interface ParseResult<T> {
@@ -232,6 +237,8 @@ export interface PerCcaReport extends BaseCcaReport {
   readonly outgoingLeaders: number
   /** Leader-file rows ticked for the sport's IHG points. */
   readonly ihgTicked: number
+  /** FNV-1a of the leader file's text (spec 6.5); null when the CCA has none. The bundle is never hashed. */
+  readonly fileHash: string | null
 }
 
 /** A CCA whose mean or SD is outside its allowed range: allowed, but listed on every export. */
@@ -263,5 +270,12 @@ export interface ImportReport {
   readonly issues: readonly Issue[]
   readonly perCca: readonly PerCcaReport[]
   readonly outOfRange: readonly OutOfRangeRecord[]
+  /** How each review edit was judged against the leader files, and the flat CCAs (not editable). */
+  readonly review: ReviewReport
   readonly input?: PipelineInput
+}
+
+export interface ReviewReport {
+  readonly edits: readonly CheckedReviewEdit[]
+  readonly flatIds: readonly string[]
 }

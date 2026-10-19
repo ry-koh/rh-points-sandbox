@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, MAX_EXHAUSTIVE_HALVES, computeAll, type ScenarioConfig } from '../../engine'
 import { RETIRED_CCAS_COLUMNS, RETIRED_IHG_COLUMNS } from '../detect'
+import { fnv1a32 } from '../hash'
+import type { ReviewEdit } from '../review'
 import { validateImport } from '../validate'
 import type { CcaLevelEntry, ImportReport, IssueCode, SandboxInput, SourceFile } from '../types'
 import { deepFreeze } from '../../engine/__tests__/helpers'
@@ -450,6 +452,74 @@ describe('levels and tweaks come from the sandbox table', () => {
   it('an entry for a flat CCA is ignored without an issue', () => {
     const report = run(scenario({ ccas: [...baseCcas(), flatCca()], flat: flatRows() }), DEFAULT_CONFIG, levelsWith(entry('C3', { level: 'Pass' })))
     expect(report.issues).toEqual([])
+  })
+})
+
+describe('review edits and not-submitting marks', () => {
+  const reviewEdit = (patch: Partial<ReviewEdit> = {}): ReviewEdit => ({
+    matric: matricOf(6), ccaID: 'C1', from: 18, to: 12, reason: '', at: '2027-04-02T10:00:00.000Z', ...patch,
+  })
+  const withEdits = (...edits: ReviewEdit[]): Partial<SandboxInput> => ({ ccaLevels: DEMO_LEVELS, edits })
+  const c1Score = (report: ImportReport, n: number) =>
+    report.input?.memberships.find((m) => m.ccaID === 'C1' && m.matric === matricOf(n))?.basePoints
+
+  it('an edit changes perCca.mean and input.memberships together', () => {
+    const before = run(scenario())
+    const after = run(scenario(), DEFAULT_CONFIG, withEdits(reviewEdit()))
+    expect(c1Score(before, 6)).toBe(18)
+    expect(c1Score(after, 6)).toBe(12)
+    expect(after.perCca[0]?.mean).toBeCloseTo((8 + 10 + 12 + 14 + 16 + 12) / 6, 9)
+    expect(after.perCca[0]?.mean).not.toBeCloseTo(before.perCca[0]?.mean ?? 0, 6)
+    expect(after.review.edits).toEqual([{ entry: reviewEdit(), status: 'applied', fileValue: 18 }])
+  })
+
+  it("an edit whose file value changed is reported, not applied", () => {
+    const corrected = scenario({ leaders: { C1: patchRow(c1, -1, { basePoints: '17' }), C2: leaderRows('C2') } })
+    const report = run(corrected, DEFAULT_CONFIG, withEdits(reviewEdit()))
+    expect(c1Score(report, 6)).toBe(17)
+    expect(report.review.edits).toEqual([{ entry: reviewEdit(), status: 'changed', fileValue: 17 }])
+  })
+
+  it('an edit for a membership that is gone is stale', () => {
+    const report = run(scenario({ leaders: { C2: leaderRows('C2') } }), DEFAULT_CONFIG, withEdits(reviewEdit()))
+    expect(report.review.edits.map((e) => e.status)).toEqual(['stale'])
+  })
+
+  it('an edit never changes a tick', () => {
+    const files = scenario({ ccas: sportC1(), leaders: { C1: ticked('C1', [5]), C2: leaderRows('C2') } })
+    const report = run(files, DEFAULT_CONFIG, withEdits(reviewEdit()))
+    expect(c1Score(report, 6)).toBe(12)
+    expect(report.input?.ihg).toEqual([{ matric: matricOf(6), ccaID: 'C1', placement: '1st' }])
+    expect(report.perCca[0]?.ihgTicked).toBe(1)
+  })
+
+  it('not-submitting suppresses NO_LEADER_FILE for that CCA only', () => {
+    const files = scenario({ ccas: [...baseCcas(), { ccaID: 'C4', ccaName: 'Test CCA Four', type: '1x' }], leaders: { C1: c1 } })
+    const sandbox = { ccaLevels: DEMO_LEVELS, notSubmitting: ['C2'] }
+    const noFile = (report: ImportReport) => report.issues.filter((i) => i.code === 'NO_LEADER_FILE').map((i) => i.ccaID)
+    expect(noFile(run(files))).toEqual(['C2', 'C4'])
+    expect(noFile(run(files, DEFAULT_CONFIG, sandbox))).toEqual(['C4'])
+  })
+
+  it("reports each CCA's leader-file hash, null without one, and the flat ids", () => {
+    const files = scenario({ ccas: [...baseCcas(), flatCca('C3')], flat: flatRows('C3'), leaders: { C1: c1 } })
+    const report = run(files)
+    const c1Text = files.find((f) => f.name === leaderFileName('C1'))?.text ?? ''
+    expect(report.perCca.map((c) => [c.ccaID, c.fileHash])).toEqual([['C1', fnv1a32(c1Text)], ['C2', null], ['C3', null]])
+    expect(report.review).toEqual({ edits: [], flatIds: ['C3'] })
+  })
+
+  it('a changed leader file changes the hash; a re-downloaded bundle does not', () => {
+    const hashOf = (files: readonly SourceFile[]) => run(files).perCca[0]?.fileHash
+    const base = scenario()
+    expect(hashOf(withText(base, leaderFileName('C1'), (t) => t.replace(',8,', ',9,')))).not.toBe(hashOf(base))
+    expect(hashOf(withText(base, 'points_bundle_20270401.csv', (t) => t.replaceAll('2027-04-01T09:30', '2027-04-05T09:30')))).toBe(hashOf(base))
+  })
+
+  it('a frozen sandbox input is not mutated', () => {
+    const sandbox = deepFreeze({ ccaLevels: DEMO_LEVELS, edits: [reviewEdit(), reviewEdit({ ccaID: 'C9' })], notSubmitting: ['C2'] })
+    expect(() => run(deepFreeze(scenario({ leaders: { C1: c1 } })), DEFAULT_CONFIG, sandbox)).not.toThrow()
+    expect(sandbox.edits[0]).toEqual(reviewEdit())
   })
 })
 

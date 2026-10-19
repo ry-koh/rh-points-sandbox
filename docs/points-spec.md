@@ -24,6 +24,13 @@
 - Spec text corrected to match the code: `IHG_ON_FINAL_CCA` is raised by the engine only (a flat
   CCA has no leader file, so a tick can never reach one); the engine guard stays.
 - The planned workspace version 2 (`ccaLevels`, `review`, `step`) is noted in 8b.
+- The guided workflow (1): **review edits** (6.4) change a member's base score before the
+  mean/SD check and the engine, and apply only while the leader file still has the score the
+  edit started from; the **checklist and vetting** (6.5) are built from the bundle's CCA list,
+  and a vetted mark is tied to the hash of the leader file it vetted. No reviewer is recorded.
+  A CCA marked "not submitting" raises no `NO_LEADER_FILE`. Review codes added (returned by
+  `validateReviewEdit`, not raised by import): `BAD_REVIEW_POINTS`, `REVIEW_UNKNOWN_MEMBERSHIP`,
+  `REVIEW_FLAT_CCA`, `REVIEW_NO_CHANGE`, and `MISSING_REASON` for a review reason that is too long.
 
 **Changes in v2.2**
 
@@ -54,14 +61,23 @@ RH app (CCA leaders)  ->  CSV export  ->  email to portfolio head  ->  vetted
    checks the CCA's mean/SD range in the browser and only then lets the leader export.
    Points are never sent to or stored on the RH-app server.
 2. The leader emails the CSV to their portfolio head, who vets it.
-3. JCRC loads all vetted CSVs plus the **RH-app bundle** (2d: the CCA list with each CCA's
-   type, sport flag, IHG result and cap, the mean/SD ranges and the flat members) and its own
-   residents list into the offline sandbox, adjusts the scenario config, and gets
-   five lists: **male staying, male bidding, female staying, female bidding, sem-2 staying**.
-   Bidding lists are ordered colour first (green, grey, white), see 5.3.
-4. JCRC may then enter, directly in the sandbox, **final-points overrides** (6.2) and
-   **discretion points** (6.3), settle boundary ties by **wheel resolutions** (5.6), and
-   produce the **published lists** (5.7). A **workspace file** (8b) saves all of it.
+3. JCRC works through the offline sandbox in six steps:
+   1. **Import**: the **RH-app bundle** (2d: the CCA list with each CCA's type, sport flag,
+      IHG result and cap, the mean/SD ranges and the flat members), the leader CSVs and JCRC's
+      residents list.
+   2. **Checklist** (6.5): every CCA in the bundle has its leader file, is flat, or is marked
+      "not submitting" (optional note). Review stays locked until nothing is missing.
+   3. **Review** (6.4): CCAs in alphabetical order. JCRC may change a member's base score
+      (whole number 0–20, optional reason; every change is logged), sees the mean/SD against
+      the range (out of range is allowed), picks the CCA's level (3b) and marks it vetted.
+   4. **Summary**: per resident, the inputs only (reviewed scores, roles, AUX, IHG ticks);
+      **discretion points** (6.3) are given here.
+   5. **Results**: the scenario config and the five lists, **male staying, male bidding,
+      female staying, female bidding, sem-2 staying** (bidding lists colour first, 5.3);
+      **final-points overrides** (6.2) and **wheel resolutions** (5.6).
+   6. **Publish**: the **published lists** (5.7).
+
+   A **workspace file** (8b) saves all of it at any step.
 
 The **matric number** is the join key across every file.
 
@@ -617,13 +633,73 @@ keep it. The breakdown reads `JCRC discretion: +2 staying / −1 bidding — <re
 - It is **stale** (ignored and reported) if the resident disappears after a re-import.
 - Discretion is resident data (workspace file only, 8b).
 
+### 6.4 Review edits
+
+On the Review step JCRC may change a member's base score. An edit is entered directly in the
+sandbox (no input file):
+
+```
+edit = { matric, ccaID, from, to, reason, at }
+```
+
+`from` is the leader file's `basePoints` when the edit was made, `to` the reviewed score, `at`
+the time. The reason is optional. **No reviewer is recorded** (no name, initials or `by` field
+on edits, log entries or marks).
+
+- `validateReviewEdit` returns `BAD_REVIEW_POINTS` (`to` not a whole number 0–20),
+  `MISSING_REASON` (reason over 200 characters; an empty reason is fine), `REVIEW_FLAT_CCA`
+  (a flat CCA: its value is set in the RH app), `REVIEW_UNKNOWN_MEMBERSHIP` (no such member in
+  that CCA's leader file) or `REVIEW_NO_CHANGE` (`to` equals `from`), checked in that order.
+- At most one per `(matric, ccaID)`: setting again **replaces** it. Every edit and every
+  removal is kept in a log (`kind` `edit` / `remove`, old → new, reason, time).
+- Each edit is judged against the loaded leader files on every import:
+  - **applied** while the file's value for that member still equals `from`: the member's
+    `basePoints` becomes `to`;
+  - **changed** when the file's value is no longer `from` (a corrected file arrived): the edit
+    is NOT applied and the file's value is used; it is shown on Review and when a workspace is
+    opened, until removed or set again;
+  - **stale** when the membership is gone (or a later edit for it replaces this one).
+- Precedence: an edit changes `basePoints` BEFORE everything else. The mean/SD check (7.1),
+  the IHG ticks and the engine (4) all see the same reviewed scores. A final-points override
+  (6.2) still wins at compute; the mean/SD uses the reviewed base, never the override.
+- An edit changes the score only. Semester-only, roles and IHG ticks are not editable in the
+  sandbox; a wrong tick or role needs a corrected leader file.
+- Edits are resident data (workspace file only, 8b).
+
+### 6.5 Checklist and vetting
+
+The checklist is the **bundle's CCA list** (2d), in review order: by name (case- and
+accent-insensitive, numbers in numeric order), then `ccaID`. Without a bundle it is empty. Each
+CCA has one status:
+
+| Status | When |
+|---|---|
+| `present` | its leader file is loaded (even if some rows have errors) |
+| `flat` | a flat CCA (2e); it never needs a file |
+| `not_submitting` | JCRC marked it "not submitting" (optional note) and no file is loaded |
+| `superseded` | marked "not submitting", but a file was loaded: the file wins; clear the mark |
+| `missing` | none of the above |
+
+The checklist is complete when it lists at least one CCA and none is `missing`. A "not
+submitting" mark suppresses that CCA's `NO_LEADER_FILE` warning and nothing else. A mark for a
+`ccaID` the bundle does not list is ignored. Each row also shows the CCA's type, sport flag,
+IHG result and cap (blank = "not set in RH-app"), level and flat value.
+
+**Vetting.** Each CCA can be marked vetted on Review. The mark stores the FNV-1a (32-bit, 8
+lowercase hex characters) hash of the CCA's **leader file text**, exactly as loaded, so CRLF
+and LF copies differ. The import report carries each CCA's current `fileHash` (null with no
+leader file; a CCA without one is vetted against the empty hash). A mark counts (`vetted`) while
+the hashes match; `file_changed` when the file changed or was removed; `gone` when the CCA is no
+longer in the report. The bundle is never hashed: downloading it again never un-vets a CCA.
+Unvetted CCAs block only Finalise. No reviewer is recorded on a mark.
+
 ## 7. Validation
 
 Run on import. The RH app uses the identical mean/SD check.
 
 ### 7.1 Mean/SD
 
-Computed over the CCA's **full `basePoints`** — leaders included, semester-only members
+Computed over the CCA's **full `basePoints`** (after review edits, 6.4) — leaders included, semester-only members
 **unhalved** — using the **population SD (÷N)**. Bounds are inclusive with tolerance
 `1e-9`. The range comes from the bundle's `settings` rows (2d): the CCA's `waiver` row if it
 has one, else the `default` row. `meanSdDefault` is used only while no usable bundle is loaded
@@ -669,7 +745,7 @@ Block results until each is fixed by re-importing a corrected file.
 Shown, do not block.
 
 - mean or SD outside the CCA's range (allowed; shown on Import and Review)
-- a CCA in the bundle with no leader file
+- a CCA in the bundle with no leader file, unless it is marked "not submitting" (6.5)
 - a non-flat CCA whose `type` is blank in the bundle (1x is assumed)
 - a non-flat CCA with a leader file and no level picked (bonus 0 and ×1 are assumed)
 - a level entry for a CCA that is not in the bundle (the entry is ignored)
@@ -725,10 +801,14 @@ leader files' ticks and the bundle (2c).
 | `FLAT_VALUE_MISMATCH` | error | rows of one flat `ccaID` carry different `flatPoints`, or a value other than its `cca` row's (or that row's is blank) |
 | `FLAT_AND_LEADER_FILE` | error | a `ccaID` has both flat points (member rows, or `flatPoints` on its `cca` row) and a leader file |
 | `BAD_FINAL_POINTS` | error | (override entry) `finalPoints` is not a finite number |
-| `MISSING_REASON` | error | (override or discretion entry) reason empty or over 200 characters |
+| `MISSING_REASON` | error | (override or discretion entry) reason empty or over 200 characters; (review edit) reason over 200 characters |
 | `OVERRIDE_UNKNOWN_MEMBERSHIP` | error | (override entry) no such membership |
 | `BAD_DISCRETION_POINTS` | error | (discretion entry) a delta is not a finite number |
 | `DISCRETION_UNKNOWN_RESIDENT` | error | (discretion entry) no such resident |
+| `BAD_REVIEW_POINTS` | error | (review edit, 6.4) `to` not a whole number 0–20 |
+| `REVIEW_FLAT_CCA` | error | (review edit) the CCA is flat |
+| `REVIEW_UNKNOWN_MEMBERSHIP` | error | (review edit) no such member in that CCA's leader file |
+| `REVIEW_NO_CHANGE` | error | (review edit) `to` equals `from` |
 | `IHG_OVER_CAP` | error | a sport's leader file has more `ihg` ticks than its `ihgCap`; that CCA gets no IHG entries |
 | `UNKNOWN_LEVEL` | error | (level entry, 3b) `level` not one of the `levels` |
 | `BAD_LEVEL_TWEAK` | error | (level entry, 3b) `bonusOverride` not a number ≥ 0, or `multiplierOverride` not a number > 0 |
@@ -739,7 +819,7 @@ leader files' ticks and the bundle (2c).
 | `DUPLICATE_WAIVER` | error | the same `ccaID` on two waiver rows of the settings file (the later row is ignored) |
 | `DUPLICATE_SETTINGS_FILE` | error | a standalone settings file beside the bundle, or more than one without a bundle (the extra copy is ignored) |
 | `MEAN_SD_OUT_OF_RANGE` | warning | mean or population SD outside the CCA's range (also raised for a leader file with no members) |
-| `NO_LEADER_FILE` | warning | a CCA in the bundle has no leader file and is not a flat CCA |
+| `NO_LEADER_FILE` | warning | a CCA in the bundle has no leader file, is not a flat CCA and is not marked "not submitting" (6.5) |
 | `TYPE_NOT_SET` | warning | a non-flat `cca` row with a blank `type` (1x is assumed) |
 | `LEVEL_NOT_SET` | warning | (3b) a non-flat CCA with a leader file and no level or tweak picked (bonus 0 and ×1 are assumed) |
 | `LEVEL_UNKNOWN_CCA` | warning | (3b) a level entry for a CCA not in the bundle; the entry is ignored |
@@ -758,6 +838,12 @@ engine's `validateOverride` / `validateDiscretion` when an entry is added; they 
 by file import. `IHG_ON_FINAL_CCA` is raised by the engine only (every flat or overridden
 membership that has an IHG row); file import cannot produce one, because a flat CCA has no
 leader file and so no ticks.
+
+The five review codes (`BAD_REVIEW_POINTS`, `MISSING_REASON`, `REVIEW_FLAT_CCA`,
+`REVIEW_UNKNOWN_MEMBERSHIP`, `REVIEW_NO_CHANGE`) are returned by `validateReviewEdit` when an
+edit is entered (6.4); they are not raised by file import, which reports each edit's status
+(`applied` / `changed` / `stale`) in `report.review` instead. `NO_LEADER_FILE` is not raised for
+a CCA marked "not submitting" on the checklist (6.5).
 
 `exportedAt` is not validated. Mean/SD is computed from every valid, non-duplicate leader row,
 whether or not the file has other errors.

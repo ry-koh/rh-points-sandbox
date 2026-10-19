@@ -7,7 +7,7 @@ import { ResidentDrawer } from '../drawer/ResidentDrawer'
 import { LIST_KEYS, LIST_TITLES, buildListCsv, downloadCsv, entryCounts, exportFileName, type ListKey } from '../export/exportCsv'
 import { PenaltiesStrip } from '../penalty/PenaltiesStrip'
 import { PenaltyDialog } from '../penalty/PenaltyDialog'
-import { SettingsPanel } from '../settings/SettingsPanel'
+import { SettingsPanel, levelUsageOf } from '../settings/SettingsPanel'
 import { entryOptions, type Action, type AppState, type PenaltyLogEntry } from '../state/store'
 import type { ScenarioStore } from '../state/useScenarios'
 import { AdjustmentsStrip } from './AdjustmentsStrip'
@@ -97,6 +97,8 @@ export function ResultsScreen(props: ResultsScreenProps) {
         onChange={(next) => dispatch({ type: 'setConfig', config: next })}
         openSections={openSections}
         onOpenSectionsChange={onOpenSectionsChange}
+        levelUsage={levelUsageOf(state.ccaLevels)}
+        levelChange={state.lastLevelChange}
       />
       <main className="flex min-h-0 min-w-0 flex-col">
         <ResultsHeader state={state} lists={lists} dispatch={dispatch} scenarios={scenarios} />

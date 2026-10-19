@@ -1,6 +1,7 @@
 import { Plus, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { DEFAULT_CONFIG, type Level } from '../../engine'
+import type { LevelChange } from '../state/store'
 import { ChangedMark, MULTIPLIER_SLIDER, NumberField, NumberInput, SegmentedField, differs } from './fields'
 import { INCOMING_LABELS, STACKING_OPTIONS, SETTINGS_TEXT as T } from './labels'
 import { ObjectFields } from './ObjectFields'
@@ -50,6 +51,15 @@ function TableHeader({ title, changed, onReset }: { readonly title: string; read
 interface LevelsTableProps extends SectionProps {
   /** How many CCAs use each level, by name; Remove is disabled while a level is in use (R44). */
   readonly usage?: Readonly<Record<string, number>>
+  /** The last level edit that cleared tweaks (D21). */
+  readonly change?: LevelChange | null
+}
+
+/** "2 tweaks on Gold were cleared so those CCAs follow the new value" (D21). */
+export function levelChangeText(change: LevelChange): string {
+  const n = change.clearedTweaks
+  const one = n === 1
+  return `${n} ${one ? 'tweak' : 'tweaks'} on ${change.level} ${one ? 'was' : 'were'} cleared so ${one ? 'that CCA follows' : 'those CCAs follow'} the new value`
 }
 
 const usedBy = (n: number): string => `used by ${n} ${n === 1 ? 'CCA' : 'CCAs'}`
@@ -107,15 +117,20 @@ function LevelNameInput({ index, levels, onCommit }: LevelNameInputProps) {
   )
 }
 
-export function LevelsTable({ config, update, usage }: LevelsTableProps) {
+export function LevelsTable({ config, update, usage, change = null }: LevelsTableProps) {
   const levels = config.levels
   const set = (next: readonly Level[]): void => update('levels', next)
-  const patch = (index: number, change: Partial<Level>): void =>
-    set(levels.map((level, i) => (i === index ? { ...level, ...change } : level)))
+  const patch = (index: number, delta: Partial<Level>): void =>
+    set(levels.map((level, i) => (i === index ? { ...level, ...delta } : level)))
   return (
     <div className="mr-[42px]">
       <TableHeader title={T.levels.label} changed={differs(levels, D.levels)} onReset={() => set(D.levels)} />
       <p className="text-cap text-muted">{T.levels.help}</p>
+      {change && (
+        <p role="status" className="mt-1.5 border-l-4 border-gold bg-gold-soft px-2 py-1 text-cap font-medium">
+          {levelChangeText(change)}.
+        </p>
+      )}
       <div className="mt-1 flex items-center gap-1.5 text-cap text-muted" aria-hidden>
         <span className="flex-1 px-1.5">Name</span>
         <span className="w-[76px]">Bonus (+)</span>

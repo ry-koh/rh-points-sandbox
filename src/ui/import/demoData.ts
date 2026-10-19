@@ -1,4 +1,4 @@
-import type { SourceFile } from '../../import'
+import type { CcaLevelEntry, SourceFile } from '../../import'
 
 /** True only in `npm run dev`; the production build drops the demo loader and its files. */
 export const DEMO_AVAILABLE: boolean = import.meta.env.DEV
@@ -17,6 +17,19 @@ export async function loadDemoFiles(): Promise<SourceFile[]> {
       })),
     )
     return entries.sort((a, b) => a.name.localeCompare(b.name))
+  }
+  return []
+}
+
+/** The demo's level for each CCA, from samples/valid/demo-levels.json (dev only). */
+export async function loadDemoLevels(): Promise<CcaLevelEntry[]> {
+  if (import.meta.env.DEV) {
+    const modules = import.meta.glob<string>('../../../samples/valid/demo-levels.json', {
+      query: '?raw',
+      import: 'default',
+    })
+    const [load] = Object.values(modules)
+    return load ? (JSON.parse(await load()) as CcaLevelEntry[]) : []
   }
   return []
 }

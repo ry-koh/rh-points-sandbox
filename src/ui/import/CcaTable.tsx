@@ -1,3 +1,4 @@
+import type { CcaType, IhgPlacement } from '../../engine'
 import type { CcaStatus, PerCcaReport } from '../../import'
 import { Chip, Eyebrow, type ChipTone } from '../common/controls'
 import { RangeBar } from './RangeBar'
@@ -10,6 +11,48 @@ const STATUS: Readonly<Record<CcaStatus, { tone: ChipTone; label: string }>> = {
 }
 
 const fmt = (n: number | null): string => (n === null ? '—' : n.toFixed(2))
+
+export const IHG_LABELS: Readonly<Record<IhgPlacement, string>> = {
+  '1st': '1st',
+  '2nd': '2nd',
+  '3rd': '3rd',
+  '3rd4th_no_match': '3rd–4th, no match',
+}
+
+interface NotSetFields {
+  readonly type: CcaType | null
+  readonly isSport: boolean
+  readonly ihgResult: IhgPlacement | null
+  readonly ihgCap: number | null
+  readonly flatPoints: number | null
+  readonly level: string | null
+  readonly fileName: string | null
+}
+
+/**
+ * What the RH app (type, a sport's IHG result and cap) or the sandbox (level) left unset for a CCA
+ * (D9). Flat CCAs need none of them; a CCA without a leader file needs no level.
+ */
+export function notSet(cca: NotSetFields): { readonly type: boolean; readonly ihg: boolean; readonly level: boolean } {
+  const flat = cca.flatPoints !== null
+  return {
+    type: !flat && cca.type === null,
+    ihg: !flat && cca.isSport && (cca.ihgResult === null || cca.ihgCap === null),
+    level: !flat && cca.fileName !== null && cca.level === null,
+  }
+}
+
+/** The amber "not set" chips for a CCA; nothing when everything is set. */
+export function NotSetChips({ cca }: { readonly cca: NotSetFields }) {
+  const missing = notSet(cca)
+  return (
+    <>
+      {missing.type && <Chip tone="warning">type not set</Chip>}
+      {missing.ihg && <Chip tone="warning">IHG not set</Chip>}
+      {missing.level && <Chip tone="warning">level needed</Chip>}
+    </>
+  )
+}
 
 interface CcaTableProps {
   readonly rows: readonly PerCcaReport[]
@@ -54,7 +97,10 @@ function Row({
         <MeanSdCells cca={cca} waived={waived} />
       )}
       <td className="py-2 pr-4">
-        <Chip tone={status.tone}>{status.label}</Chip>
+        <div className="flex flex-wrap gap-1">
+          <Chip tone={status.tone}>{status.label}</Chip>
+          <NotSetChips cca={cca} />
+        </div>
       </td>
     </tr>
   )

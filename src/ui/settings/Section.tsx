@@ -10,6 +10,8 @@ export interface SectionProps {
 }
 
 interface SectionShellProps {
+  /** Lets another screen scroll to this section. */
+  readonly id?: string
   readonly title: string
   readonly open: boolean
   readonly changed: number
@@ -19,10 +21,10 @@ interface SectionShellProps {
 }
 
 /** Collapsible settings group; the header shows how many values differ from the defaults. */
-export function Section({ title, open, changed, onToggle, prominent = false, children }: SectionShellProps) {
+export function Section({ id, title, open, changed, onToggle, prominent = false, children }: SectionShellProps) {
   const bodyId = useId()
   return (
-    <section className={`border-b border-rule ${prominent ? 'bg-gold-soft/40' : ''}`}>
+    <section id={id} className={`scroll-mt-2 border-b border-rule ${prominent ? 'bg-gold-soft/40' : ''}`}>
       <h3>
         <button
           type="button"

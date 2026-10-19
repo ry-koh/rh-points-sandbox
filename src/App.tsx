@@ -1,20 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { DEFAULT_CONFIG } from './engine'
 import { validateImport } from './import'
+import { ChecklistScreen } from './ui/checklist/ChecklistScreen'
 import { CompareScreen } from './ui/compare/CompareScreen'
 import { ImportScreen } from './ui/import/ImportScreen'
 import { PublishScreen } from './ui/publish/PublishScreen'
 import { ResultsScreen } from './ui/results/ResultsScreen'
+import { ReviewScreen } from './ui/review/ReviewScreen'
+import { levelUsageOf } from './ui/settings/SettingsPanel'
 import { blockReason } from './ui/shell/blockReason'
 import { TopBar, type Screen } from './ui/shell/TopBar'
+import { stepLocks } from './ui/state/stepLocks'
 import { useAppStore } from './ui/state/useAppStore'
 import { useScenarios } from './ui/state/useScenarios'
-import { sandboxInputOf } from './workspace'
+import { WORKFLOW_STEPS, sandboxInputOf } from './workspace'
 import { hasResidentData } from './ui/state/workspaceState'
 import { WorkspaceControls } from './ui/workspace/WorkspaceControls'
 
-/** Checklist, Review and Summary screens arrive in later phases. */
-const NOT_AVAILABLE_YET = 'Not available yet'
+/** The Summary screen arrives in the next phase (P9); until then the step stays locked. */
+const SUMMARY_PENDING = 'Summary arrives in the next step'
 
 export function App() {
   const { state, dispatch } = useAppStore()
@@ -45,17 +49,11 @@ export function App() {
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
   }, [warnOnLeave])
-  const resultsLock = settingsCause ? null : reason
-  const locks: Record<Screen, string | null> = {
-    import: null,
-    checklist: NOT_AVAILABLE_YET,
-    review: NOT_AVAILABLE_YET,
-    summary: NOT_AVAILABLE_YET,
-    results: resultsLock,
-    publish: resultsLock,
-    compare: reason !== null ? 'Load data that passes the checks first' : scenarios.scenarios.length === 0 ? 'Save a scenario first' : null,
-  }
-  const shown: Screen = locks[screen] === null ? screen : 'import'
+  const ruled = stepLocks(state, scenarios.scenarios.length, settingsCause)
+  const locks: Record<Screen, string | null> = { ...ruled, summary: ruled.summary ?? SUMMARY_PENDING }
+  // A locked step falls back to the first open one.
+  const shown: Screen = locks[screen] === null ? screen : (WORKFLOW_STEPS.find((step) => locks[step] === null) ?? 'import')
+  const levelUsage = useMemo(() => levelUsageOf(ccaLevels), [ccaLevels])
   const fullHeight = shown !== 'import'
 
   return (
@@ -75,6 +73,24 @@ export function App() {
           settingsCause={settingsCause}
           onViewResults={() => setScreen('results')}
         />
+      )}
+      {shown === 'checklist' && (
+        <ChecklistScreen state={state} dispatch={dispatch} reviewLock={locks.review} onContinue={() => setScreen('review')} />
+      )}
+      {shown === 'review' && (
+        <ReviewScreen
+          state={state}
+          dispatch={dispatch}
+          openSections={openSections}
+          onOpenSectionsChange={setOpenSections}
+          levelUsage={levelUsage}
+        />
+      )}
+      {shown === 'summary' && (
+        <main className="mx-auto w-full max-w-[1600px] px-6 pt-8">
+          <h1 className="text-display font-semibold tracking-tight">Summary</h1>
+          <p className="mt-2 text-ui text-muted">{SUMMARY_PENDING}.</p>
+        </main>
       )}
       {shown === 'results' && (
         <ResultsScreen

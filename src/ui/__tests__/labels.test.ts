@@ -23,6 +23,10 @@ describe('plain-English settings text', () => {
     expect(SETTINGS_TEXT.stackingMode.label).toBe('If someone is both outgoing and incoming in the same CCA')
     expect(SETTINGS_TEXT.stayingWeightTail.label).toBe('After the last one listed: keep halving')
     expect(SETTINGS_TEXT.jcrcExchangeFactor.label).toBe('On exchange: % of highest other bidding points')
+    expect(SECTION_TITLES.levels).toBe('CCA levels')
+    expect(SETTINGS_TEXT.levels.label).toBe('Levels')
+    expect(SETTINGS_TEXT.halfCcaPlacementHalved.label).toBe('Also halve the level bonus for half-year CCAs')
+    expect(SETTINGS_TEXT.halfCcaPlacementHalved.help).toBe('Off: a High Gold half-year CCA still gets +4. On: +2.')
   })
 
   it('shows How many stay first and puts every key in exactly one section', () => {
@@ -30,5 +34,7 @@ describe('plain-English settings text', () => {
     const keys = SECTIONS.flatMap((s) => s.keys)
     expect([...keys].sort()).toEqual([...KEYS].sort())
     expect(new Set(keys).size).toBe(keys.length)
+    expect(SECTIONS.find((s) => s.id === 'levels')?.keys).toEqual(['levels'])
+    expect(SECTIONS.find((s) => s.id === 'leaders')?.keys).toEqual(['incomingMultiplier', 'stackingMode'])
   })
 })

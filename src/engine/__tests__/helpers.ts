@@ -8,7 +8,6 @@ import type {
   JcrcStatus,
   Membership,
   PipelineInput,
-  PlacementLevel,
   Resident,
   Role,
   ScenarioConfig,
@@ -29,7 +28,7 @@ export function deepFreeze<T>(value: T): T {
 
 export function makeCca(
   ccaID: string,
-  placement: PlacementLevel = 'pass',
+  level: string | null = 'Pass',
   type: CcaType = '1x',
   overrides: Partial<Cca> = {},
 ): Cca {
@@ -37,9 +36,9 @@ export function makeCca(
     ccaID,
     ccaName: ccaID,
     type,
-    placement,
-    outgoingTier: null,
-    outgoingMultiplier: null,
+    level,
+    bonusOverride: null,
+    multiplierOverride: null,
     meanMin: null,
     meanMax: null,
     sdMin: null,
@@ -85,18 +84,18 @@ export function ccaMap(ccas: readonly Cca[]): Readonly<Record<string, Cca>> {
   return Object.fromEntries(ccas.map((cca) => [cca.ccaID, cca]))
 }
 
-/** The six CCAs of spec example E1 as [ccaID, base, placement]. */
-export const E1_ROWS: readonly (readonly [string, number, PlacementLevel])[] = [
-  ['Handball', 18, 'gold'],
-  ['Arts', 15, 'bronze'],
-  ['Welfare', 10, 'bronze'],
-  ['Unplugged', 9, 'silver'],
-  ['Rhebels', 8, 'gold'],
-  ['Social', 7, 'gold'],
+/** The six CCAs of spec example E1 as [ccaID, base, level]. */
+export const E1_ROWS: readonly (readonly [string, number, string])[] = [
+  ['Handball', 18, 'High Gold'],
+  ['Arts', 15, 'Low Bronze'],
+  ['Welfare', 10, 'Low Bronze'],
+  ['Unplugged', 9, 'Low Silver'],
+  ['Rhebels', 8, 'High Gold'],
+  ['Social', 7, 'High Gold'],
 ]
 
 export function e1Ccas(): readonly Cca[] {
-  return E1_ROWS.map(([id, , placement]) => makeCca(id, placement))
+  return E1_ROWS.map(([id, , level]) => makeCca(id, level))
 }
 
 export function e1Memberships(
@@ -111,10 +110,10 @@ export interface RowSpec {
   readonly id: string
   readonly gender?: Gender
   readonly sem2?: boolean
-  /** Base in CCA "X" (pass placement, so the staying/bidding net equals the base). */
+  /** Base in CCA "X" (level Pass, so the staying/bidding net equals the base). */
   readonly base?: number
   readonly incoming?: Role
-  /** Outgoing role in CCA "X" (bidding only; needs the CCA's outgoingMultiplier). */
+  /** Outgoing role in CCA "X" (bidding only; Pass gives x1 unless the CCA has a multiplierOverride). */
   readonly outgoing?: Role
   readonly name?: string
   readonly jcrc?: JcrcStatus
@@ -147,7 +146,7 @@ export function makeInput(rows: readonly RowSpec[], xOverrides: Partial<Cca> = {
         ]),
     ...(row.extra ?? []).map(([ccaID, base]) => makeMembership(ccaID, base, { matric: row.id })),
   ])
-  return { residents, ccas: [makeCca('X', 'pass', '1x', xOverrides), makeCca('Y')], memberships, ihg: [] }
+  return { residents, ccas: [makeCca('X', 'Pass', '1x', xOverrides), makeCca('Y')], memberships, ihg: [] }
 }
 
 export function configWith(

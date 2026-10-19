@@ -10,19 +10,16 @@ export interface SettingText {
 }
 
 const LEADER_HELP = 'Multiplies their score in that CCA. 15 × 1.2 = 18. Counts for staying and bidding.'
-const OUTGOING_HELP = 'Rewards outgoing Heads/Vice Heads for how well they led. Only affects room bidding.'
 const JCRC_HELP = "'Highest other' = the top bidding score among everyone who isn't JCRC or sem-2."
 const AUX_HELP = 'AUX are earned at JCRC events. 5 AUX = 0, each extra AUX = +2, each missing = −2 (by default).'
 
 export const SETTINGS_TEXT: Readonly<Record<keyof ScenarioConfig, SettingText>> = {
   headcounts: { label: 'How many stay', help: 'Everyone below green + grey is white and cannot stay.' },
-  placementBonus: {
-    label: 'CCA placement bonus',
-    help: 'Added once to every member of the CCA, never multiplied. e.g. Gold: score 14 → 18.',
+  levels: {
+    label: 'Levels',
+    help: 'Each CCA is given one level on the Review step. Members get the bonus added once (never multiplied); outgoing Heads / Vice Heads get the multiplier (bidding only).',
   },
   incomingMultiplier: { label: 'Incoming leader bonus (×)', help: LEADER_HELP },
-  outgoingMode: { label: 'Outgoing leader multiplier (bidding only)', help: OUTGOING_HELP },
-  outgoingTiers: { label: 'Tiers', help: 'Tier names must match the outgoingTier column in ccas.csv.' },
   stackingMode: {
     label: 'If someone is both outgoing and incoming in the same CCA',
     help: 'With ×1.2 and ×2.0: bigger = ×2.0, add = ×2.2, multiply = ×2.4.',
@@ -37,8 +34,8 @@ export const SETTINGS_TEXT: Readonly<Record<keyof ScenarioConfig, SettingText>> 
   },
   halfCcaBaseFactor: { label: 'Half-year CCA points (×)', help: "A leader's 16 counts as 8 at ×0.5." },
   halfCcaPlacementHalved: {
-    label: 'Also halve the Gold/Silver/Bronze bonus',
-    help: 'Off: a Gold half-year CCA still gets +4. On: +2.',
+    label: 'Also halve the level bonus for half-year CCAs',
+    help: 'Off: a High Gold half-year CCA still gets +4. On: +2.',
   },
   mergeHalfCcas: {
     label: 'Count two half-year CCAs as one',
@@ -78,7 +75,7 @@ export const SETTINGS_TEXT: Readonly<Record<keyof ScenarioConfig, SettingText>> 
 
 export const SECTION_TITLES = {
   headcounts: 'How many stay',
-  placement: 'CCA placement bonus',
+  levels: 'CCA levels',
   leaders: 'Leader bonuses',
   weights: 'How much each CCA counts for staying',
   half: 'Half-year CCAs (like RHag, Flag)',
@@ -100,13 +97,6 @@ export const HEADCOUNT_LABELS: Readonly<Record<keyof Headcounts, string>> = {
 }
 
 export const INCOMING_LABELS = { head: 'Incoming Head bonus (×)', vice_head: 'Incoming Vice Head bonus (×)' } as const
-
-export const PLACEMENT_LABELS = { pass: 'Pass', bronze: 'Bronze', silver: 'Silver', gold: 'Gold' } as const
-
-export const OUTGOING_MODE_OPTIONS = [
-  { value: 'tier', label: 'Set by tier' },
-  { value: 'manual', label: 'Set per CCA' },
-] as const
 
 export const STACKING_OPTIONS = [
   { value: 'max', label: 'Use the bigger one' },

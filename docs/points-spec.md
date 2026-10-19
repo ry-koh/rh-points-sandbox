@@ -91,8 +91,8 @@ A resident may have several rows; their IHG points are summed.
 | `ccaName` | string |
 | `type` | `1x` / `0.5x` |
 | `placement` | `pass` / `bronze` / `silver` / `gold` |
-| `outgoingTier` | blank, or a tier name from `outgoingTiers` |
-| `outgoingMultiplier` | blank, or a number > 0 |
+| `outgoingTier` | blank, or a level name from `levels` (the CCA's level; see 3) |
+| `outgoingMultiplier` | blank, or a number > 0 (the CCA's multiplier tweak) |
 | `meanMin`, `meanMax`, `sdMin`, `sdMax` | blank, or a number |
 
 A **blank range field means "use the default"** (`meanSdDefault`). That is how a waiver is
@@ -172,13 +172,11 @@ The scenario JSON holds **settings only, never resident data**.
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `meanSdDefault` | `{meanMin, meanMax, sdMin, sdMax}` | `{10, 14, 2, 5}` **PLACEHOLDER** | Hall-wide allowed mean/SD range, inclusive |
-| `placementBonus` | `{pass, bronze, silver, gold}` | `{0, 0.5, 1.5, 4}` | Flat points per placement level |
+| `levels` | `[{name, bonus, multiplier}]` | Unsatisfactory 0 / 0.8, Pass 0 / 1.0, Low Bronze 0.5 / 1.05, High Bronze 0.5 / 1.15, Low Silver 1.5 / 1.25, High Silver 1.5 / 1.5, Low Gold 4 / 1.75, High Gold 4 / 2.0 (bonus / multiplier) **PLACEHOLDER** | CCA levels, keyed by name (unique, non-blank). `bonus` is added once to every member's net (never multiplied); `multiplier` is the outgoing leaders' multiplier (bidding only) |
 | `halfCcaBaseFactor` | number | `0.5` | Base factor for `0.5x` CCAs |
-| `halfCcaPlacementHalved` | boolean | `false` | Halve the placement bonus for `0.5x` CCAs |
+| `halfCcaPlacementHalved` | boolean | `false` | Halve the level bonus for `0.5x` CCAs (the key name is kept for old files) |
 | `semesterOnlyFactor` | number | `0.5` | Base factor for semester-only members of `1x` CCAs |
 | `incomingMultiplier` | `{head, vice_head}` | `{1.2, 1.2}` | Multiplier for incoming roles (staying and bidding) |
-| `outgoingMode` | `"tier"` \| `"manual"` | `"tier"` | Where the outgoing multiplier comes from |
-| `outgoingTiers` | `[{name, multiplier}]` | Unsatisfactory 0.8, Pass 1.0, Low Bronze 1.05, High Bronze 1.15, Low Silver 1.25, High Silver 1.5, Low Gold 1.75, High Gold 2.0 **PLACEHOLDER** | Tier table for `"tier"` mode |
 | `stackingMode` | `"max"` \| `"additive"` \| `"multiplicative"` | `"max"` | How outgoing and incoming roles combine in the same CCA (bidding) |
 | `droppedRoleBase` | number | `8` | Base ceiling for a dropped incoming role |
 | `auxTable` | 11 numbers (AUX 0..10) | `[-10,-8,-6,-4,-2,0,2,4,6,8,10]` | AUX count to hall points |
@@ -194,12 +192,21 @@ The scenario JSON holds **settings only, never resident data**.
 | `jcrcFullYearOffset` | number | `1` | JCRC (full year) value is H + this (4.6) |
 | `jcrcExchangeFactor` | number | `0.75` | JCRC (exchange) value is H × this (4.6) |
 
-Per-CCA values live in ccas.csv (type, placement, outgoing tier/multiplier, range overrides).
-`outgoingMode` selects which of `outgoingTier` / `outgoingMultiplier` is read.
+Each CCA has one `level` (a name from `levels`, or none) and two optional tweaks,
+`bonusOverride` and `multiplierOverride`, that win over the level's numbers for that CCA only.
+Until ccas.csv is retired, it supplies them: `outgoingTier` names the level (else `placement`
+maps pass → Pass, bronze → Low Bronze, silver → Low Silver, gold → High Gold), and
+`outgoingMultiplier` is the multiplier tweak. Type and range overrides also come from ccas.csv.
 
 **Migration.** A config or scenario file saved under v1.x has `headcounts.sem2Spots`. When
 read, it becomes `sem2Green = sem2Spots` and `sem2Grey = 0`; the `jcrc*` keys take their
-defaults when missing.
+defaults when missing. A config saved before levels existed has `placementBonus`,
+`outgoingMode` and `outgoingTiers` instead of `levels`. When read, `levels` is built from them:
+one level per `outgoingTiers` row (name and multiplier kept) whose bonus is the old
+`placementBonus` value for the first metal word in its name (`gold` / `silver` / `bronze`,
+any case; otherwise `pass`). With no tiers, the default `levels` are used, their bonuses still
+taken from `placementBonus` when it is present. The three old keys are dropped; a config that
+already has `levels` is left as it is. The reader reports that `levels` was migrated.
 
 Overrides (6.2), discretion (6.3) and wheel resolutions (5.6) are **resident data**, not
 config. They are never part of the scenario JSON.
@@ -225,7 +232,7 @@ Notation: resident `r`, CCA `c`, membership `m = (r, c)` taken from the leader f
 
 - A membership with a **final-points override** (6.2) has `stayNet = bidNet = finalPoints`.
 - A membership of a **flat CCA** (2e) has `stayNet = bidNet = flatPoints`.
-- Both are **final**: exactly that value, with no placement bonus, no leader multipliers,
+- Both are **final**: exactly that value, with no level bonus, no leader multipliers,
   no semester-only or half-CCA factors and no IHG (even when `ihgInSportNet` is on). They are
   **never paired** by half-CCA merging, even in a `0.5x` CCA. They still occupy one slot in the
   staying ranking and take that slot's weight. An IHG row for such a membership is **always
@@ -252,8 +259,8 @@ effBase = base
 
 ```
 inMult  = incomingMultiplier[incomingRole]            if incomingRole != none else 1
-outMult = outgoing multiplier of c                    if outgoingRole != none else 1
-          # tier mode: outgoingTiers[c.outgoingTier]; manual mode: c.outgoingMultiplier
+outMult = c.multiplierOverride ?? levels[c.level].multiplier ?? 1
+                                                      if outgoingRole != none else 1
           # shared by every outgoing leader of c
 stayMult = inMult                                     # outgoing is never used for staying
 
@@ -265,10 +272,10 @@ else:
     bidMult = inMult if incomingRole != none, else outMult if outgoingRole != none, else 1
 ```
 
-**Placement and IHG**
+**Level bonus and IHG**
 
 ```
-placement = placementBonus[c.placement]
+bonus     = (c.bonusOverride ?? levels[c.level].bonus ?? 0)
             * (0.5 if c.type == "0.5x" and halfCcaPlacementHalved else 1)
 ihgNet    = ihgInSportNet ? sum(ihgPoints[row.placement] for ihg rows of r where row.ccaID == c.ccaID) : 0
 ```
@@ -276,9 +283,12 @@ ihgNet    = ihgInSportNet ? sum(ihgPoints[row.placement] for ihg rows of r where
 **Net per membership**
 
 ```
-stayNet = effBase * stayMult + placement + ihgNet
-bidNet  = effBase * bidMult  + placement + ihgNet
+stayNet = effBase * stayMult + bonus + ihgNet
+bidNet  = effBase * bidMult  + bonus + ihgNet
 ```
+
+A CCA with **no level** gets bonus 0 and ×1 (import flags it). A level name that is not in
+`levels` is an error: the engine refuses to compute (`CCA <id>: unknown level "<name>"`).
 
 ### 4.2 Per-resident values
 
@@ -559,12 +569,12 @@ Block results until each is fixed by re-importing a corrected file.
 - `ccaID` not in ccas.csv
 - two files for the same `ccaID`
 - wrong `formatVersion` or wrong header
-- an outgoing leader in a CCA whose outgoing tier/multiplier is blank for the active `outgoingMode`
+- an outgoing leader in a CCA whose `outgoingTier` and `outgoingMultiplier` are both blank
 - duplicate matric in residents.csv
 - bad `gender`, `sem2` or `aux` value
 - ihg.csv `matric` not in residents.csv
 - ihg.csv `ccaID` not in ccas.csv
-- an `outgoingTier` name in ccas.csv that is not in `outgoingTiers`
+- an `outgoingTier` name in ccas.csv that is not one of the `levels`
 - an `outgoingMultiplier` in ccas.csv that is not a positive number
 - residents.csv: `jcrc` not `N` / `FULL` / `EXCHANGE`, or `jcrc` other than `N` on a `sem2` = `Y` resident
 - flat-points file: `ccaID` not in ccas.csv, `ccaID` that also has a leader file, `flatPoints`
@@ -631,9 +641,9 @@ raises one issue rather than a cascade. The IHG file is optional.
 | `DISCRETION_UNKNOWN_RESIDENT` | error | (discretion entry) no such resident |
 | `IHG_UNKNOWN_MATRIC` | error | ihg.csv matric not in residents.csv |
 | `IHG_UNKNOWN_CCA` | error | ihg.csv `ccaID` not in ccas.csv |
-| `UNKNOWN_TIER` | error | `outgoingTier` not blank and not in `outgoingTiers` |
+| `UNKNOWN_TIER` | error | `outgoingTier` not blank and not one of the `levels` |
 | `BAD_MANUAL_MULTIPLIER` | error | `outgoingMultiplier` not blank and not a positive number |
-| `MISSING_OUTGOING_MULTIPLIER` | error | a CCA has an outgoing leader but the field for the active `outgoingMode` is blank |
+| `MISSING_OUTGOING_MULTIPLIER` | error | a CCA has an outgoing leader but both `outgoingTier` and `outgoingMultiplier` are blank |
 | `DUPLICATE_CCA` | error | same `ccaID` twice in ccas.csv |
 | `BAD_RANGE` | error | a mean/SD range field in ccas.csv is not blank and not a number; or a settings-file range value is not a number, is outside 0–20 (mean) / 0–10 (SD), or has min above max |
 | `BAD_SETTINGS_FILE` | error | settings file without exactly one `default` row, with a `scope` other than `default` / `waiver`, or a waiver row without a `ccaID` |
@@ -666,14 +676,14 @@ config. Every value below was independently recomputed; there were no mismatches
 
 Resident is a plain member of six `1x` CCAs.
 
-| CCA | base | placement | net = base + bonus |
+| CCA | base | level (bonus) | net = base + bonus |
 |---|---|---|---|
-| Handball | 18 | Gold (4) | 22 |
-| Arts & Graphics | 15 | Bronze (0.5) | 15.5 |
-| Welfare | 10 | Bronze (0.5) | 10.5 |
-| Unplugged | 9 | Silver (1.5) | 10.5 |
-| Rhebels | 8 | Gold (4) | 12 |
-| Social | 7 | Gold (4) | 11 |
+| Handball | 18 | High Gold (+4) | 22 |
+| Arts & Graphics | 15 | Low Bronze (+0.5) | 15.5 |
+| Welfare | 10 | Low Bronze (+0.5) | 10.5 |
+| Unplugged | 9 | Low Silver (+1.5) | 10.5 |
+| Rhebels | 8 | High Gold (+4) | 12 |
+| Social | 7 | High Gold (+4) | 11 |
 
 Sort by net: 22, 15.5, 12, 11, 10.5, 10.5. Weights 1, 1, 1, 1, 0.5, 0.25:
 
@@ -692,7 +702,7 @@ Unplugged 9, Rhebels 8, Social 7, then apply weights to their nets in that order
 ```
 
 It is wrong because the weights are meant to reward the resident's *best contributions*:
-Rhebels (net 12) and Social (net 11) beat Welfare and Unplugged (10.5) once placement is
+Rhebels (net 12) and Social (net 11) beat Welfare and Unplugged (10.5) once the level bonus is
 added, yet the base order pushes them into the discounted slots. 67.25 < 68.375 because a
 lower-value CCA sits in a full-weight slot. Ranking by net is the rule.
 
@@ -714,7 +724,7 @@ Handball: `18 * 1.2 + 4 = 25.6`. Nets: 25.6, 15.5, 12, 11, 10.5, 10.5.
 
 ### E4 — Bidding, outgoing Head of Handball at x2.0 (99.5)
 
-Handball: `18 * 2.0 + 4 = 40`.
+Outgoing Head of Handball at ×2.0 (High Gold). Handball: `18 * 2.0 + 4 = 40`.
 
 ```
 40 + 15.5 + 10.5 + 10.5 + 12 + 11 = 99.5
@@ -733,13 +743,13 @@ If the frozen green cut-off is above 58.375, the resident is removed.
 
 ### E6 — Half-CCA merging
 
-`1x` nets: 20, 15, 12, 9. `0.5x` memberships (placement not halved):
+`1x` nets: 20, 15, 12, 9. `0.5x` memberships (level bonus not halved):
 
-| CCA | base | effBase (x0.5) | placement | stayNet |
+| CCA | base | effBase (x0.5) | level (bonus) | stayNet |
 |---|---|---|---|---|
-| P | 16 | 8 | gold 4 | 12 |
-| Q | 12 | 6 | bronze 0.5 | 6.5 |
-| R | 10 | 5 | pass 0 | 5 |
+| P | 16 | 8 | High Gold (+4) | 12 |
+| Q | 12 | 6 | Low Bronze (+0.5) | 6.5 |
+| R | 10 | 5 | Pass (+0) | 5 |
 
 Weights 1, 1, 1, 1, 0.5, 0.25, 0.125 (position 7 is the tail: 0.25 / 2).
 
@@ -752,7 +762,7 @@ Weights 1, 1, 1, 1, 0.5, 0.25, 0.125 (position 7 is the tail: 0.25 / 2).
 
 Chosen pairing: **P+Q = 71.25**.
 
-### E7 — Semester-only member of a 1x Silver CCA, base 14
+### E7 — Semester-only member of a 1x Low Silver CCA, base 14
 
 Mean/SD check uses 14 (unhalved). For points: `effBase = 14 * 0.5 = 7`,
 `stayNet = 7 + 1.5 = 8.5`.
@@ -769,7 +779,7 @@ variance = 200.857 / 7 = 28.694, population SD = 5.357
 
 With defaults (mean 10–14, SD 2–5): mean passes; **SD 5.357 > 5 fails** → `MEAN_SD_OUT_OF_RANGE` warning; nothing blocks.
 
-### E9 — Stacking (base 18, Gold, incoming 1.2 + outgoing 2.0)
+### E9 — Stacking (base 18, High Gold, incoming 1.2 + outgoing 2.0)
 
 | stackingMode | bidMult | bidNet |
 |---|---|---|
@@ -873,8 +883,8 @@ The list is still sorted by the exact points (12.5 stays above 12.4999).
 
 ### E18 — Flat CCA
 
-A resident in four CCAs: Handball (base 18, Gold), Arts & Graphics (15, Bronze), Welfare (10,
-Bronze) and one **flat CCA with `flatPoints = 12`**. ccas.csv says the flat CCA is Gold and the
+A resident in four CCAs: Handball (base 18, High Gold), Arts & Graphics (15, Low Bronze), Welfare
+(10, Low Bronze) and one **flat CCA with `flatPoints = 12`**. The flat CCA's level is High Gold and the
 resident is an incoming Head there: both are ignored. Nets: 22, 15.5, 10.5 and a flat 12.
 
 ```
@@ -948,7 +958,7 @@ data and must be handled like the input files.
 PLACEHOLDER values to confirm:
 
 - `meanSdDefault` — {meanMin 10, meanMax 14, sdMin 2, sdMax 5}
-- `outgoingTiers` — tier names and multipliers (Unsatisfactory 0.8 … High Gold 2.0)
+- `levels` — level names, bonuses and multipliers (Unsatisfactory 0 / 0.8 … High Gold 4 / 2.0)
 - `headcounts` — maleGreen, maleGrey, femaleGreen, femaleGrey, sem2Green, sem2Grey (all 0 until set)
 - `jcrcFullYearOffset` (1) and `jcrcExchangeFactor` (0.75)
 
@@ -956,7 +966,7 @@ Rule decisions to confirm:
 
 - **`droppedRoleBase` rule** — `min(base, 8)` (current) versus setting the base to 8.
 - **`semesterOnly` on `0.5x` CCAs** — currently ignored with a warning (alternative: apply both factors).
-- **`halfCcaPlacementHalved`** — default `false`; confirm whether `0.5x` CCAs halve their placement bonus.
+- **`halfCcaPlacementHalved`** — default `false`; confirm whether `0.5x` CCAs halve their level bonus.
 - **Flat CCAs and halving or merging** — a flat CCA is never halved and never paired (it is
   final, 4.1). Confirm whether a flat `0.5x` CCA should ever be halved or merged.
 - **Sem-2 room-pick mode** — `"separate"` (default) versus `"merged"` with `sem2Factor` 2.

@@ -6,8 +6,8 @@ import {
   effBase,
   ihgPointsForCca,
   incomingMult,
+  levelBonus,
   outgoingMult,
-  placementPoints,
   stayMult,
 } from '../membership'
 import type { ScenarioConfig } from '../types'
@@ -18,23 +18,23 @@ const config = DEFAULT_CONFIG
 describe('effBase', () => {
   it('E7: semester-only on a 1x CCA halves the base', () => {
     const m = makeMembership('Silver1x', 14, { semesterOnly: true })
-    expect(effBase(m, makeCca('Silver1x', 'silver'), config)).toBe(7)
+    expect(effBase(m, makeCca('Silver1x', 'Low Silver'), config)).toBe(7)
   })
 
   it('E7: stayNet of that member is 8.5', () => {
     const m = makeMembership('Silver1x', 14, { semesterOnly: true })
-    const result = computeMembership(m, makeCca('Silver1x', 'silver'), [], config)
+    const result = computeMembership(m, makeCca('Silver1x', 'Low Silver'), [], config)
     expect(result.stayNet).toBe(8.5)
   })
 
   it('semester-only is ignored on a 0.5x CCA (only the half-CCA factor applies)', () => {
     const m = makeMembership('Half', 14, { semesterOnly: true })
-    expect(effBase(m, makeCca('Half', 'pass', '0.5x'), config)).toBe(7)
+    expect(effBase(m, makeCca('Half', 'Pass', '0.5x'), config)).toBe(7)
   })
 
   it('0.5x CCAs apply the half-CCA base factor', () => {
     const m = makeMembership('Half', 16)
-    expect(effBase(m, makeCca('Half', 'gold', '0.5x'), config)).toBe(8)
+    expect(effBase(m, makeCca('Half', 'High Gold', '0.5x'), config)).toBe(8)
   })
 
   it('dropped role caps the base at droppedRoleBase', () => {
@@ -49,7 +49,7 @@ describe('effBase', () => {
 })
 
 describe('multipliers', () => {
-  const highGold = makeCca('C', 'gold', '1x', { outgoingTier: 'High Gold' })
+  const highGold = makeCca('C', 'High Gold')
 
   it('incoming role uses the configured multiplier', () => {
     expect(incomingMult(makeMembership('C', 10, { incomingRole: 'head' }), config)).toBe(1.2)
@@ -65,36 +65,29 @@ describe('multipliers', () => {
     expect(incomingMult(m, config)).toBe(1)
   })
 
-  it('outgoing multiplier comes from the tier table in tier mode', () => {
+  it('outgoing multiplier comes from the level', () => {
     const m = makeMembership('C', 10, { outgoingRole: 'head' })
     expect(outgoingMult(m, highGold, config)).toBe(2)
   })
 
-  it('outgoing multiplier comes from the CCA value in manual mode', () => {
-    const manual: ScenarioConfig = { ...config, outgoingMode: 'manual' }
-    const cca = makeCca('C', 'pass', '1x', { outgoingMultiplier: 1.4, outgoingTier: 'High Gold' })
-    expect(outgoingMult(makeMembership('C', 10, { outgoingRole: 'head' }), cca, manual)).toBe(1.4)
+  it('a multiplierOverride wins over the level', () => {
+    const cca = makeCca('C', 'High Gold', '1x', { multiplierOverride: 1.4 })
+    expect(outgoingMult(makeMembership('C', 10, { outgoingRole: 'head' }), cca, config)).toBe(1.4)
   })
 
   it('no outgoing role gives 1 even when the CCA has a multiplier', () => {
     expect(outgoingMult(makeMembership('C', 10), highGold, config)).toBe(1)
   })
 
-  it('throws when an outgoing leader has no tier in tier mode', () => {
+  it('an outgoing leader of a CCA with no level gets x1', () => {
     const m = makeMembership('C', 10, { outgoingRole: 'head' })
-    expect(() => outgoingMult(m, makeCca('C'), config)).toThrow(/outgoing/i)
+    expect(outgoingMult(m, makeCca('C', null), config)).toBe(1)
   })
 
-  it('throws when the tier name is unknown', () => {
+  it('throws when the level name is unknown', () => {
     const m = makeMembership('C', 10, { outgoingRole: 'head' })
-    const cca = makeCca('C', 'pass', '1x', { outgoingTier: 'Platinum' })
-    expect(() => outgoingMult(m, cca, config)).toThrow(/Platinum/)
-  })
-
-  it('throws when manual mode has no multiplier', () => {
-    const manual: ScenarioConfig = { ...config, outgoingMode: 'manual' }
-    const m = makeMembership('C', 10, { outgoingRole: 'head' })
-    expect(() => outgoingMult(m, makeCca('C'), manual)).toThrow(/outgoing/i)
+    const cca = makeCca('C', 'Platinum')
+    expect(() => outgoingMult(m, cca, config)).toThrow(/unknown level "Platinum"/)
   })
 
   it('staying ignores the outgoing role', () => {
@@ -127,23 +120,35 @@ describe('multipliers', () => {
   })
 })
 
-describe('placementPoints', () => {
-  it('returns the configured bonus', () => {
-    expect(placementPoints(makeCca('C', 'silver'), config)).toBe(1.5)
+describe('levelBonus', () => {
+  it('returns the level bonus', () => {
+    expect(levelBonus(makeCca('C', 'Low Silver'), config)).toBe(1.5)
   })
 
   it('0.5x CCAs keep the full bonus by default', () => {
-    expect(placementPoints(makeCca('C', 'gold', '0.5x'), config)).toBe(4)
+    expect(levelBonus(makeCca('C', 'High Gold', '0.5x'), config)).toBe(4)
   })
 
   it('0.5x CCAs halve the bonus when halfCcaPlacementHalved is on', () => {
     const halved: ScenarioConfig = { ...config, halfCcaPlacementHalved: true }
-    expect(placementPoints(makeCca('C', 'gold', '0.5x'), halved)).toBe(2)
+    expect(levelBonus(makeCca('C', 'High Gold', '0.5x'), halved)).toBe(2)
   })
 
   it('1x CCAs are never halved', () => {
     const halved: ScenarioConfig = { ...config, halfCcaPlacementHalved: true }
-    expect(placementPoints(makeCca('C', 'gold'), halved)).toBe(4)
+    expect(levelBonus(makeCca('C', 'High Gold'), halved)).toBe(4)
+  })
+
+  it('a bonusOverride wins over the level', () => {
+    expect(levelBonus(makeCca('C', 'High Gold', '1x', { bonusOverride: 3 }), config)).toBe(3)
+  })
+
+  it('a CCA with no level gets bonus 0', () => {
+    expect(levelBonus(makeCca('C', null), config)).toBe(0)
+  })
+
+  it('throws when the level name is unknown', () => {
+    expect(() => levelBonus(makeCca('C', 'Platinum'), config)).toThrow(/CCA C: unknown level "Platinum"/)
   })
 })
 
@@ -177,14 +182,14 @@ describe('IHG in nets', () => {
 describe('computeMembership', () => {
   it('reports the intermediate values and half flag', () => {
     const m = makeMembership('C', 16, { incomingRole: 'head' })
-    const result = computeMembership(m, makeCca('C', 'gold', '0.5x'), [], config)
-    expect(result).toMatchObject({ ccaID: 'C', isHalf: true, effBase: 8, placement: 4 })
+    const result = computeMembership(m, makeCca('C', 'High Gold', '0.5x'), [], config)
+    expect(result).toMatchObject({ ccaID: 'C', isHalf: true, effBase: 8, levelBonus: 4 })
     expect(result.stayNet).toBeCloseTo(13.6, 9)
   })
 
   it('does not mutate frozen inputs', () => {
     const m = deepFreeze(makeMembership('C', 10, { incomingRole: 'head' }))
-    const cca = deepFreeze(makeCca('C', 'gold'))
+    const cca = deepFreeze(makeCca('C', 'High Gold'))
     const ihg = deepFreeze([makeIhg('C', '1st')])
     expect(() => computeMembership(m, cca, ihg, deepFreeze({ ...config }))).not.toThrow()
   })

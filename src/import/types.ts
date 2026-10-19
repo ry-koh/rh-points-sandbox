@@ -5,7 +5,6 @@ import type {
   JcrcStatus,
   MeanSdRange,
   PipelineInput,
-  PlacementLevel,
   Role,
 } from '../engine'
 
@@ -141,7 +140,8 @@ export interface CcaRow {
   readonly ccaID: string
   readonly ccaName: string
   readonly type: CcaType
-  readonly placement: PlacementLevel
+  /** ccas.csv's placement column (retired with the file in P5). */
+  readonly placement: 'pass' | 'bronze' | 'silver' | 'gold'
   readonly outgoingTier: string | null
   readonly outgoingMultiplier: number | null
   readonly meanMin: number | null

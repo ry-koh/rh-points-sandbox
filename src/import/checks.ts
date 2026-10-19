@@ -44,12 +44,13 @@ export interface CheckedFlat {
   readonly rows: readonly FlatRow[]
 }
 
+/** Shim until ccas.csv is retired (P5): `outgoingTier` names one of the levels in Settings. */
 export function checkCcaRows(ccas: Loaded<CcaRow>, config: ScenarioConfig): Issue[] {
-  const tierNames = new Set(config.outgoingTiers.map((tier) => tier.name))
+  const levelNames = new Set(config.levels.map((level) => level.name))
   return ccas.result.rows
-    .filter((cca) => cca.outgoingTier !== null && !tierNames.has(cca.outgoingTier))
+    .filter((cca) => cca.outgoingTier !== null && !levelNames.has(cca.outgoingTier))
     .map((cca) =>
-      makeIssue('UNKNOWN_TIER', ccas.fileName, `outgoingTier "${cca.outgoingTier}" is not one of the known tiers (${[...tierNames].join(', ')}).`, {
+      makeIssue('UNKNOWN_TIER', ccas.fileName, `outgoingTier "${cca.outgoingTier}" is not one of the levels in Settings (${[...levelNames].join(', ')}).`, {
         line: cca.line,
         column: 'outgoingTier',
         ccaID: cca.ccaID,
@@ -199,20 +200,15 @@ export function ihgNonMemberWarnings(
     )
 }
 
-/** Outgoing leaders need the tier (tier mode) or the multiplier (manual mode) to be filled in. */
-export function checkOutgoing(
-  ccas: Loaded<CcaRow>,
-  leaders: readonly CheckedLeader[],
-  config: ScenarioConfig,
-): Issue[] {
-  const field = config.outgoingMode === 'tier' ? 'outgoingTier' : 'outgoingMultiplier'
+/** Outgoing leaders need the CCA's outgoingTier (its level) or outgoingMultiplier to be filled in. */
+export function checkOutgoing(ccas: Loaded<CcaRow>, leaders: readonly CheckedLeader[]): Issue[] {
   return ccas.result.rows.flatMap((cca) => {
-    const blank = (config.outgoingMode === 'tier' ? cca.outgoingTier : cca.outgoingMultiplier) === null
+    const blank = cca.outgoingTier === null && cca.outgoingMultiplier === null
     const leader = leaders.find((l) => l.ccaID === cca.ccaID)
     const hasOutgoing = leader?.rows.some((row) => row.outgoingRole !== 'none') ?? false
     if (!blank || !hasOutgoing) return []
-    const text = `${cca.ccaID} has an outgoing leader, but ${field} is blank in ${ccas.fileName} (the outgoing mode is "${config.outgoingMode}").`
-    return [makeIssue('MISSING_OUTGOING_MULTIPLIER', ccas.fileName, text, { line: cca.line, column: field, ccaID: cca.ccaID })]
+    const text = `${cca.ccaID} has an outgoing leader, but both outgoingTier and outgoingMultiplier are blank in ${ccas.fileName}.`
+    return [makeIssue('MISSING_OUTGOING_MULTIPLIER', ccas.fileName, text, { line: cca.line, column: 'outgoingTier', ccaID: cca.ccaID })]
   })
 }
 

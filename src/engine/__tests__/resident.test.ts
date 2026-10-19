@@ -19,10 +19,7 @@ function e1Result(
   handball: Partial<Membership> = {},
   cfg: ScenarioConfig = config,
 ): ResidentResult {
-  const ccas = e1Ccas().map((cca) =>
-    cca.ccaID === 'Handball' ? { ...cca, outgoingTier: 'High Gold' } : cca,
-  )
-  return computeResident(makeResident(), e1Memberships(handball), ccaMap(ccas), [], cfg)
+  return computeResident(makeResident(), e1Memberships(handball), ccaMap(e1Ccas()), [], cfg)
 }
 
 describe('spec examples at resident level', () => {
@@ -78,8 +75,8 @@ describe('breakdown', () => {
   it('reports the merged halves and per-CCA bid contributions', () => {
     const fullCcas = [20, 15, 12, 9].map((base) => ({ id: `F${base}`, base }))
     const ccas = [
-      makeCca('P', 'gold', '0.5x'),
-      makeCca('Q', 'bronze', '0.5x'),
+      makeCca('P', 'High Gold', '0.5x'),
+      makeCca('Q', 'Low Bronze', '0.5x'),
       ...fullCcas.map(({ id }) => makeCca(id)),
     ]
     const result = computeResident(
@@ -157,7 +154,7 @@ describe('warnings', () => {
     const result = computeResident(
       makeResident(),
       [makeMembership('H', 10, { semesterOnly: true })],
-      ccaMap([makeCca('H', 'pass', '0.5x')]),
+      ccaMap([makeCca('H', 'Pass', '0.5x')]),
       [],
       config,
     )
@@ -180,7 +177,7 @@ describe('warnings', () => {
     const result = computeResident(
       makeResident(),
       ids.map((id) => makeMembership(id, 10)),
-      ccaMap(ids.map((id) => makeCca(id, 'pass', '0.5x'))),
+      ccaMap(ids.map((id) => makeCca(id, 'Pass', '0.5x'))),
       [],
       config,
     )

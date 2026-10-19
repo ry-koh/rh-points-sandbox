@@ -1,21 +1,37 @@
 import { Plus, X } from 'lucide-react'
-import { DEFAULT_CONFIG, type OutgoingTier } from '../../engine'
+import { DEFAULT_CONFIG, type Level } from '../../engine'
 import { ChangedMark, MULTIPLIER_SLIDER, NumberField, NumberInput, SegmentedField, differs } from './fields'
-import { INCOMING_LABELS, OUTGOING_MODE_OPTIONS, STACKING_OPTIONS, SETTINGS_TEXT as T } from './labels'
+import { INCOMING_LABELS, STACKING_OPTIONS, SETTINGS_TEXT as T } from './labels'
 import { ObjectFields } from './ObjectFields'
 import type { SectionProps } from './Section'
 
 const D = DEFAULT_CONFIG
 const DEFAULT_NEW_MULTIPLIER = 1
+const DEFAULT_NEW_BONUS = 0
+const BONUS_STEP = 0.5
 
 const ordinal = (n: number): string => {
   const suffix = n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'
   return `${n}${suffix}`
 }
 
-function IconButton({ label, onClick, children }: { readonly label: string; readonly onClick: () => void; readonly children: React.ReactNode }) {
+interface IconButtonProps {
+  readonly label: string
+  readonly onClick: () => void
+  readonly disabled?: boolean
+  readonly children: React.ReactNode
+}
+
+function IconButton({ label, onClick, disabled = false, children }: IconButtonProps) {
   return (
-    <button type="button" aria-label={label} title={label} onClick={onClick} className="motion rounded-[2px] p-1 text-muted hover:bg-error-bg hover:text-error">
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      disabled={disabled}
+      className="motion rounded-[2px] p-1 text-muted hover:bg-error-bg hover:text-error disabled:pointer-events-none disabled:opacity-40"
+    >
       {children}
     </button>
   )
@@ -30,38 +46,62 @@ function TableHeader({ title, changed, onReset }: { readonly title: string; read
   )
 }
 
-function TiersTable({ config, update }: SectionProps) {
-  const tiers = config.outgoingTiers
-  const set = (next: readonly OutgoingTier[]): void => update('outgoingTiers', next)
-  const patch = (index: number, change: Partial<OutgoingTier>): void =>
-    set(tiers.map((tier, i) => (i === index ? { ...tier, ...change } : tier)))
+interface LevelsTableProps extends SectionProps {
+  /** How many CCAs use each level, by name; Remove is disabled while a level is in use (R44). */
+  readonly usage?: Readonly<Record<string, number>>
+}
+
+const usedBy = (n: number): string => `used by ${n} ${n === 1 ? 'CCA' : 'CCAs'}`
+
+export function LevelsTable({ config, update, usage }: LevelsTableProps) {
+  const levels = config.levels
+  const set = (next: readonly Level[]): void => update('levels', next)
+  const patch = (index: number, change: Partial<Level>): void =>
+    set(levels.map((level, i) => (i === index ? { ...level, ...change } : level)))
   return (
     <div className="mr-[42px]">
-      <TableHeader title={T.outgoingTiers.label} changed={differs(tiers, D.outgoingTiers)} onReset={() => set(D.outgoingTiers)} />
-      <ul className="mt-1 divide-y divide-rule border-y border-rule">
-        {tiers.map((tier, i) => (
-          <li key={i} className="flex items-center gap-1.5 py-1">
-            <input
-              aria-label={`Tier ${i + 1} name`}
-              value={tier.name}
-              onChange={(event) => patch(i, { name: event.target.value })}
-              className="motion h-7 min-w-0 flex-1 rounded-[3px] border border-transparent bg-transparent px-1.5 text-body hover:border-ink/20"
-            />
-            <NumberInput label={`${tier.name} multiplier`} value={tier.multiplier} min={0} step={MULTIPLIER_SLIDER.step} onChange={(m) => patch(i, { multiplier: m })} className="w-[76px]" />
-            <IconButton label={`Remove ${tier.name}`} onClick={() => set(tiers.filter((_, j) => j !== i))}>
-              <X aria-hidden size={13} />
-            </IconButton>
-          </li>
-        ))}
+      <TableHeader title={T.levels.label} changed={differs(levels, D.levels)} onReset={() => set(D.levels)} />
+      <p className="text-cap text-muted">{T.levels.help}</p>
+      <div className="mt-1 flex items-center gap-1.5 text-cap text-muted" aria-hidden>
+        <span className="flex-1 px-1.5">Name</span>
+        <span className="w-[76px]">Bonus (+)</span>
+        <span className="w-[76px]">Outgoing (×)</span>
+        <span className="w-[21px]" />
+      </div>
+      <ul className="divide-y divide-rule border-y border-rule">
+        {levels.map((level, i) => {
+          const inUse = usage?.[level.name] ?? 0
+          return (
+            <li key={i} className="py-1">
+              <div className="flex items-center gap-1.5">
+                <input
+                  aria-label={`Level ${i + 1} name`}
+                  value={level.name}
+                  onChange={(event) => patch(i, { name: event.target.value })}
+                  className="motion h-7 min-w-0 flex-1 rounded-[3px] border border-transparent bg-transparent px-1.5 text-body hover:border-ink/20"
+                />
+                <NumberInput label={`${level.name} bonus`} value={level.bonus} min={0} step={BONUS_STEP} onChange={(b) => patch(i, { bonus: b })} className="w-[76px]" />
+                <NumberInput label={`${level.name} multiplier`} value={level.multiplier} min={0} step={MULTIPLIER_SLIDER.step} onChange={(m) => patch(i, { multiplier: m })} className="w-[76px]" />
+                <IconButton
+                  label={inUse > 0 ? `${level.name} is ${usedBy(inUse)}` : `Remove ${level.name}`}
+                  disabled={inUse > 0}
+                  onClick={() => set(levels.filter((_, j) => j !== i))}
+                >
+                  <X aria-hidden size={13} />
+                </IconButton>
+              </div>
+              {usage && <p className="num px-1.5 text-cap text-muted">{usedBy(inUse)}</p>}
+            </li>
+          )
+        })}
       </ul>
       <button
         type="button"
-        onClick={() => set([...tiers, { name: `New tier ${tiers.length + 1}`, multiplier: DEFAULT_NEW_MULTIPLIER }])}
+        onClick={() => set([...levels, { name: `New level ${levels.length + 1}`, bonus: DEFAULT_NEW_BONUS, multiplier: DEFAULT_NEW_MULTIPLIER }])}
         className="motion mt-1 flex items-center gap-1 rounded-[2px] px-1 py-0.5 text-cap font-medium text-raffles hover:bg-raffles/5"
       >
-        <Plus aria-hidden size={12} /> Add tier
+        <Plus aria-hidden size={12} /> Add level
       </button>
-      <p className="text-cap text-muted">{T.outgoingTiers.help}</p>
     </div>
   )
 }
@@ -78,17 +118,6 @@ export function LeaderFields({ config, update }: SectionProps) {
         labels={INCOMING_LABELS}
         help={T.incomingMultiplier.help}
       />
-      <SegmentedField
-        label={T.outgoingMode.label}
-        hint={T.outgoingMode.help}
-        value={config.outgoingMode}
-        defaultValue={D.outgoingMode}
-        onChange={(v) => update('outgoingMode', v)}
-        options={OUTGOING_MODE_OPTIONS}
-      />
-      <div className={config.outgoingMode === 'tier' ? '' : 'opacity-60'}>
-        <TiersTable config={config} update={update} />
-      </div>
       <SegmentedField
         label={T.stackingMode.label}
         hint={T.stackingMode.help}

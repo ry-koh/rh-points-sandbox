@@ -190,6 +190,24 @@ function loadLeaders(classified: readonly Classified[], issues: Issue[]): Leader
   return files
 }
 
+/** Shim until ccas.csv is retired (P5): the old placement names as the default level with their numbers. */
+const LEGACY_PLACEMENT_LEVEL: Readonly<Record<CcaRow['placement'], string>> = {
+  pass: 'Pass',
+  bronze: 'Low Bronze',
+  silver: 'Low Silver',
+  gold: 'High Gold',
+}
+
+/** Shim (P5): a ccas.csv row as an engine CCA; an outgoingTier names the level, outgoingMultiplier is a tweak. */
+function ccaFromRow({ line: _line, placement, outgoingTier, outgoingMultiplier, ...cca }: CcaRow): Cca {
+  return {
+    ...cca,
+    level: outgoingTier ?? LEGACY_PLACEMENT_LEVEL[placement],
+    bonusOverride: null,
+    multiplierOverride: outgoingMultiplier,
+  }
+}
+
 function toEngineInput(
   residents: Loaded<ResidentRow>,
   ccas: Loaded<CcaRow>,
@@ -200,7 +218,7 @@ function toEngineInput(
   const residentList = residents.result.rows.map(
     ({ matric, name, gender, sem2, aux, jcrc }): Resident => ({ matric, name, gender, sem2, aux, jcrc }),
   )
-  const ccaList = ccas.result.rows.map(({ line: _line, ...cca }): Cca => cca)
+  const ccaList = ccas.result.rows.map(ccaFromRow)
   const memberships = leaders.flatMap((leader) =>
     leader.rows.map(
       (row): Membership => ({
@@ -274,7 +292,7 @@ export function validateImport(
   const flats = flatOutcome?.checked ?? []
   const ihgOutcome = ihg ? checkIhgRows(ihg, residents, ccas) : null
   if (ihgOutcome) issues.push(...ihgOutcome.issues)
-  if (ccas) issues.push(...checkOutgoing(ccas, checked, config), ...leaderWarnings(ccas, checked))
+  if (ccas) issues.push(...checkOutgoing(ccas, checked), ...leaderWarnings(ccas, checked))
   if (ihg && config.ihgInSportNet) issues.push(...ihgNonMemberWarnings(ihg, checked, flats))
   if (ihg) issues.push(...ihgOnFlatWarnings(ihg, flats))
   const stats = (ccas?.result.rows ?? []).map((cca) => {

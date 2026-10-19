@@ -32,7 +32,7 @@ function mine(data: PipelineInput, config = cfg, options: Parameters<typeof comp
 }
 
 describe('E18: a flat CCA is final', () => {
-  const ccas = [makeCca('Handball', 'gold'), makeCca('Arts', 'bronze'), makeCca('Welfare', 'bronze'), makeCca('Flat', 'gold')]
+  const ccas = [makeCca('Handball', 'High Gold'), makeCca('Arts', 'Low Bronze'), makeCca('Welfare', 'Low Bronze'), makeCca('Flat', 'High Gold')]
   const base = [makeMembership('Handball', 18), makeMembership('Arts', 15), makeMembership('Welfare', 10)]
   // The flat CCA is ccas.csv Gold and the resident is an incoming Head there: both are ignored.
   const data = input(ccas, [...base, flat('Flat', 12, { incomingRole: 'head' })])
@@ -43,13 +43,13 @@ describe('E18: a flat CCA is final', () => {
     expect(result.bidding.points).toBe(60)
   })
 
-  it('has no placement, multiplier, halving or IHG on the flat membership', () => {
-    const half = [makeCca('Flat', 'gold', '0.5x')]
+  it('has no level bonus, multiplier, halving or IHG on the flat membership', () => {
+    const half = [makeCca('Flat', 'High Gold', '0.5x')]
     const { result } = mine(input(half, [flat('Flat', 12, { incomingRole: 'head', semesterOnly: true, outgoingRole: 'head' })]))
     const membership = result.memberships[0]
     expect(membership?.stayNet).toBe(12)
     expect(membership?.bidNet).toBe(12)
-    expect(membership?.placement).toBe(0)
+    expect(membership?.levelBonus).toBe(0)
     expect(membership?.isHalf).toBe(false)
   })
 
@@ -65,7 +65,7 @@ describe('E18: a flat CCA is final', () => {
   })
 
   it('is never paired by half-CCA merging, even in 0.5x CCAs', () => {
-    const halves = [makeCca('F1', 'pass', '0.5x'), makeCca('F2', 'pass', '0.5x')]
+    const halves = [makeCca('F1', 'Pass', '0.5x'), makeCca('F2', 'Pass', '0.5x')]
     const { result } = mine(input(halves, [flat('F1', 12), flat('F2', 6)]))
     expect(result.staying.mergedPairs).toEqual([])
     expect(result.staying.slots.map((s) => s.value)).toEqual([12, 6])
@@ -126,14 +126,14 @@ describe('E19: final-points overrides', () => {
     expect(result.memberships[0]?.final?.kind).toBe('override')
   })
 
-  it('has no placement, multiplier or halving on the overridden membership', () => {
-    const halved = input([makeCca('H', 'gold', '0.5x')], [makeMembership('H', 20, { incomingRole: 'head', semesterOnly: true })])
+  it('has no level bonus, multiplier or halving on the overridden membership', () => {
+    const halved = input([makeCca('H', 'High Gold', '0.5x')], [makeMembership('H', 20, { incomingRole: 'head', semesterOnly: true })])
     const { result } = mine(halved, cfg, { overrides: [{ matric: TEST_MATRIC, ccaID: 'H', finalPoints: 7, reason: 'r' }] })
-    expect(result.memberships[0]).toMatchObject({ stayNet: 7, bidNet: 7, placement: 0, isHalf: false })
+    expect(result.memberships[0]).toMatchObject({ stayNet: 7, bidNet: 7, levelBonus: 0, isHalf: false })
   })
 
   it('is excluded from half-CCA pairing but still ranked and weighted', () => {
-    const halves = [makeCca('P', 'pass', '0.5x'), makeCca('Q', 'pass', '0.5x'), makeCca('R', 'pass', '0.5x')]
+    const halves = [makeCca('P', 'Pass', '0.5x'), makeCca('Q', 'Pass', '0.5x'), makeCca('R', 'Pass', '0.5x')]
     const ms = [makeMembership('P', 20), makeMembership('Q', 20), makeMembership('R', 20)]
     const { result } = mine(input(halves, ms), cfg, {
       overrides: [{ matric: TEST_MATRIC, ccaID: 'P', finalPoints: 50, reason: 'r' }],
@@ -243,7 +243,7 @@ describe('E20: discretion points', () => {
 
   it('is kept through a penalty', () => {
     const memberships = [makeMembership('Handball', 18, { incomingRole: 'head' })]
-    const pen = input([makeCca('Handball', 'gold')], memberships)
+    const pen = input([makeCca('Handball', 'High Gold')], memberships)
     const config = configWith({ maleGreen: 1 })
     const options = { discretion: [entry] }
     const initial = createPenaltyState(computeAll(pen, config, options).lists)

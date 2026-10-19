@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG, migrateConfig, type ScenarioConfig } from '../../engine'
+import { DEFAULT_CONFIG, hasOldLevelKeys, migrateConfig, type ScenarioConfig } from '../../engine'
 
 type Rec = Record<string, unknown>
 type ConfigKey = keyof ScenarioConfig
@@ -11,19 +11,20 @@ const numFields = (keys: readonly string[]) => (v: unknown): boolean =>
 const numArray = (v: unknown): boolean => Array.isArray(v) && v.every(isNum)
 const oneOf = (options: readonly string[]) => (v: unknown): boolean =>
   typeof v === 'string' && options.includes(v)
-const tiers = (v: unknown): boolean =>
-  Array.isArray(v) && v.every((t) => isRec(t) && typeof t.name === 'string' && isNum(t.multiplier))
+/** Levels in a file or in storage: non-blank, unique names and finite numbers (R44). */
+const levels = (v: unknown): boolean =>
+  Array.isArray(v) &&
+  v.every((l) => isRec(l) && typeof l.name === 'string' && l.name.trim() !== '' && isNum(l.bonus) && isNum(l.multiplier)) &&
+  new Set(v.map((l: Rec) => l.name)).size === v.length
 
 /** One shape check per §3 key. */
 export const CONFIG_VALIDATORS: Readonly<Record<ConfigKey, (v: unknown) => boolean>> = {
   meanSdDefault: numFields(['meanMin', 'meanMax', 'sdMin', 'sdMax']),
-  placementBonus: numFields(['pass', 'bronze', 'silver', 'gold']),
+  levels,
   halfCcaBaseFactor: isNum,
   halfCcaPlacementHalved: isBool,
   semesterOnlyFactor: isNum,
   incomingMultiplier: numFields(['head', 'vice_head']),
-  outgoingMode: oneOf(['tier', 'manual']),
-  outgoingTiers: tiers,
   stackingMode: oneOf(['max', 'additive', 'multiplicative']),
   droppedRoleBase: isNum,
   auxTable: numArray,
@@ -54,7 +55,13 @@ export function readStoredConfig(v: unknown): ScenarioConfig | null {
 }
 
 export type ConfigReadResult =
-  | { readonly ok: true; readonly config: ScenarioConfig; readonly defaulted: readonly ConfigKey[] }
+  | {
+      readonly ok: true
+      readonly config: ScenarioConfig
+      readonly defaulted: readonly ConfigKey[]
+      /** Keys rebuilt from an older shape: `levels` from the old placement bonus and tiers (R43). */
+      readonly migrated: readonly ConfigKey[]
+    }
   | { readonly ok: false; readonly error: string }
 
 /**
@@ -72,5 +79,6 @@ export function readConfig(raw: unknown): ConfigReadResult {
   const config = Object.fromEntries(
     CONFIG_KEYS.map((key) => [key, key in v ? v[key] : DEFAULT_CONFIG[key]]),
   ) as unknown as ScenarioConfig
-  return { ok: true, config, defaulted }
+  const migrated: ConfigKey[] = hasOldLevelKeys(raw) ? ['levels'] : []
+  return { ok: true, config, defaulted, migrated }
 }

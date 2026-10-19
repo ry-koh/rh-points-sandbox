@@ -1,9 +1,7 @@
 export type Gender = 'M' | 'F'
 export type Role = 'none' | 'head' | 'vice_head'
 export type CcaType = '1x' | '0.5x'
-export type PlacementLevel = 'pass' | 'bronze' | 'silver' | 'gold'
 export type IhgPlacement = '1st' | '2nd' | '3rd' | '3rd4th_no_match'
-export type OutgoingMode = 'tier' | 'manual'
 export type StackingMode = 'max' | 'additive' | 'multiplicative'
 export type Sem2Mode = 'separate' | 'merged'
 /** residents.csv `jcrc` column: not JCRC, JCRC full year, or JCRC exchange. */
@@ -22,9 +20,11 @@ export interface Cca {
   readonly ccaID: string
   readonly ccaName: string
   readonly type: CcaType
-  readonly placement: PlacementLevel
-  readonly outgoingTier: string | null
-  readonly outgoingMultiplier: number | null
+  /** Name of one of `ScenarioConfig.levels`; null = no level (bonus 0, x1). */
+  readonly level: string | null
+  /** Per-CCA tweaks; each wins over its level's number when not null. */
+  readonly bonusOverride: number | null
+  readonly multiplierOverride: number | null
   readonly meanMin: number | null
   readonly meanMax: number | null
   readonly sdMin: number | null
@@ -50,8 +50,10 @@ export interface IhgEntry {
   readonly placement: IhgPlacement
 }
 
-export interface OutgoingTier {
+/** A CCA level: members' bonus (added) and outgoing leaders' multiplier (bidding). Keyed by name. */
+export interface Level {
   readonly name: string
+  readonly bonus: number
   readonly multiplier: number
 }
 
@@ -73,13 +75,12 @@ export interface Headcounts {
 
 export interface ScenarioConfig {
   readonly meanSdDefault: MeanSdRange
-  readonly placementBonus: Readonly<Record<PlacementLevel, number>>
+  readonly levels: readonly Level[]
   readonly halfCcaBaseFactor: number
+  /** Halve the LEVEL bonus for 0.5x CCAs (the key name is kept for old files). */
   readonly halfCcaPlacementHalved: boolean
   readonly semesterOnlyFactor: number
   readonly incomingMultiplier: Readonly<Record<'head' | 'vice_head', number>>
-  readonly outgoingMode: OutgoingMode
-  readonly outgoingTiers: readonly OutgoingTier[]
   readonly stackingMode: StackingMode
   readonly droppedRoleBase: number
   readonly auxTable: readonly number[]
@@ -114,7 +115,7 @@ export interface MembershipResult {
   readonly outMult: number
   readonly stayMult: number
   readonly bidMult: number
-  readonly placement: number
+  readonly levelBonus: number
   readonly ihgNet: number
   readonly stayNet: number
   readonly bidNet: number

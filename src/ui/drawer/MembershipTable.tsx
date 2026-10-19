@@ -21,7 +21,7 @@ interface MembershipTableProps {
 const HEADERS: readonly [string, string][] = [
   ['Type', ''], ['Base', 'Base points as exported'], ['Sem', 'Semester-only'],
   ['Eff.', 'Effective base'], ['Out / In', 'Outgoing / incoming role'], ['×Stay', 'Staying multiplier'],
-  ['×Bid', 'Bidding multiplier'], ['Place', 'Placement bonus'], ['IHG', 'IHG in this net'],
+  ['×Bid', 'Bidding multiplier'], ['Bonus', 'Level bonus (added once)'], ['IHG', 'IHG in this net'],
   ['Stay net', ''], ['Bid net', ''],
 ]
 
@@ -106,7 +106,7 @@ export function MembershipTable({ result, inputs, penalty, onDropRole, editing }
                   </td>
                   <td className="num py-1.5 pr-2">{mult(m.stayMult)}</td>
                   <td className="num py-1.5 pr-2">{mult(m.bidMult)}</td>
-                  <td className="num py-1.5 pr-2 text-right">{m.placement}</td>
+                  <td className="num py-1.5 pr-2 text-right">{m.levelBonus}</td>
                   <td className="num py-1.5 pr-2 text-right">{m.ihgNet}</td>
                   <td className="num py-1.5 pr-2 text-right font-medium">{pts(m.stayNet)}</td>
                   <td className="num py-1.5 text-right font-medium">{pts(m.bidNet)}</td>

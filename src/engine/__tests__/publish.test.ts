@@ -80,8 +80,8 @@ describe('numbering and exclusions', () => {
       { id: 'C', base: 70, outgoing: 'head' },
       { id: 'D', base: 60 },
     ]
-    const cfg = configWith({ maleGreen: 2, maleGrey: 1 }, { outgoingMode: 'manual' })
-    const { lists } = computeAll(makeInput(rows, { outgoingMultiplier: 2 }), cfg)
+    const cfg = configWith({ maleGreen: 2, maleGrey: 1 })
+    const { lists } = computeAll(makeInput(rows, { multiplierOverride: 2 }), cfg)
     const result = buildPublishedLists(lists)
     if (!result.ok) throw new Error('expected ok')
     expect(result.lists.maleBidding.rows.map((r) => r.no)).toEqual([1, 2, 3, 4])

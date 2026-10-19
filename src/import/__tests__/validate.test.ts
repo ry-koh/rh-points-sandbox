@@ -238,29 +238,35 @@ describe('out of range', () => {
   })
 })
 
-describe('outgoingMode', () => {
-  const tierOnly = scenario({
-    ccas: patchRow(baseCcas(), 0, { outgoingTier: 'High Gold' }),
-    leaders: { ...lastOf({ outgoingRole: 'head' }), C2: leaderRows('C2') },
-  })
-  const manualOnly = scenario({
-    ccas: patchRow(baseCcas(), 0, { outgoingMultiplier: '1.5' }),
-    leaders: { ...lastOf({ outgoingRole: 'head' }), C2: leaderRows('C2') },
-  })
-  const manual: ScenarioConfig = { ...DEFAULT_CONFIG, outgoingMode: 'manual' }
+describe('ccas.csv outgoing columns (shim until P5)', () => {
+  const leaders = { ...lastOf({ outgoingRole: 'head' }), C2: leaderRows('C2') }
+  const tierOnly = scenario({ ccas: patchRow(baseCcas(), 0, { outgoingTier: 'Low Gold' }), leaders })
+  const manualOnly = scenario({ ccas: patchRow(baseCcas(), 0, { outgoingMultiplier: '1.5' }), leaders })
+  const c1Of = (report: ImportReport) => report.input?.ccas.find((c) => c.ccaID === 'C1')
 
-  it('tier mode needs the tier, not the multiplier', () => {
-    expect(run(tierOnly).issues).toEqual([])
-    expect(codesOf(run(manualOnly))).toEqual(['MISSING_OUTGOING_MULTIPLIER'])
+  it("an outgoingTier in ccas.csv is the CCA's level", () => {
+    const report = run(tierOnly)
+    expect(report.issues).toEqual([])
+    expect(c1Of(report)).toMatchObject({ level: 'Low Gold', bonusOverride: null, multiplierOverride: null })
   })
 
-  it('switching to manual mode re-validates the columns', () => {
-    expect(codesOf(run(tierOnly, manual))).toEqual(['MISSING_OUTGOING_MULTIPLIER'])
-    expect(run(manualOnly, manual).issues).toEqual([])
+  it("an outgoingMultiplier in ccas.csv is the CCA's multiplier override", () => {
+    const report = run(manualOnly)
+    expect(report.issues).toEqual([])
+    expect(c1Of(report)).toMatchObject({ level: 'High Gold', multiplierOverride: 1.5 })
+  })
+
+  it('needs one of the two columns when the CCA has an outgoing leader', () => {
+    expect(codesOf(run(scenario({ leaders })))).toEqual(['MISSING_OUTGOING_MULTIPLIER'])
   })
 
   it('does not require outgoing values when nobody is an outgoing leader', () => {
-    expect(run(scenario(), manual).issues).toEqual([])
+    expect(run(scenario()).issues).toEqual([])
+  })
+
+  it('names the levels when outgoingTier is unknown', () => {
+    const report = run(scenario({ ccas: patchRow(baseCcas(), 0, { outgoingTier: 'Platinum' }) }))
+    expect(report.issues[0]?.message).toMatch(/not one of the levels in Settings/)
   })
 })
 

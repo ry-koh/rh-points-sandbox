@@ -10,14 +10,13 @@ import {
   IhgFields,
   JcrcFields,
   MeanSdFields,
-  PlacementFields,
   Sem2Fields,
 } from './basicSections'
 import { differs } from './fields'
 import { SECTION_TITLES as S } from './labels'
 import { Section, type SectionProps } from './Section'
 import { SettingsFileRanges } from './SettingsFileRanges'
-import { AuxFields, LeaderFields, WeightsFields } from './tableSections'
+import { AuxFields, LeaderFields, LevelsTable, WeightsFields } from './tableSections'
 
 interface SectionDef {
   readonly id: string
@@ -29,8 +28,8 @@ interface SectionDef {
 /** Every key of the scenario config (spec §3) appears in exactly one section. */
 export const SECTIONS: readonly SectionDef[] = [
   { id: 'headcounts', title: S.headcounts, keys: ['headcounts'], Body: HeadcountsFields },
-  { id: 'placement', title: S.placement, keys: ['placementBonus'], Body: PlacementFields },
-  { id: 'leaders', title: S.leaders, keys: ['incomingMultiplier', 'outgoingMode', 'outgoingTiers', 'stackingMode'], Body: LeaderFields },
+  { id: 'levels', title: S.levels, keys: ['levels'], Body: LevelsTable },
+  { id: 'leaders', title: S.leaders, keys: ['incomingMultiplier', 'stackingMode'], Body: LeaderFields },
   { id: 'weights', title: S.weights, keys: ['stayingWeights', 'stayingWeightTail'], Body: WeightsFields },
   { id: 'half', title: S.half, keys: ['halfCcaBaseFactor', 'halfCcaPlacementHalved', 'mergeHalfCcas', 'semesterOnlyFactor'], Body: HalfCcaFields },
   { id: 'dropped', title: S.dropped, keys: ['droppedRoleBase'], Body: DroppedRoleFields },
@@ -52,9 +51,11 @@ interface SettingsPanelProps {
   readonly onChange: (config: ScenarioConfig) => void
   readonly openSections: ReadonlySet<string>
   readonly onOpenSectionsChange: (open: ReadonlySet<string>) => void
+  /** How many CCAs use each level, by name; shown in the Levels table. */
+  readonly levelUsage?: Readonly<Record<string, number>>
 }
 
-export function SettingsPanel({ config, locked, settings, onChange, openSections, onOpenSectionsChange }: SettingsPanelProps) {
+export function SettingsPanel({ config, locked, settings, onChange, openSections, onOpenSectionsChange, levelUsage }: SettingsPanelProps) {
   const [confirmReset, setConfirmReset] = useState(false)
   const update: SectionProps['update'] = (key, value) => onChange({ ...config, [key]: value })
   const totalChanged = countChanged(config, Object.keys(DEFAULT_CONFIG) as (keyof ScenarioConfig)[])
@@ -94,7 +95,11 @@ export function SettingsPanel({ config, locked, settings, onChange, openSections
               <SettingsFileRanges settings={settings} />
             ) : (
               <fieldset disabled={locked} className={locked ? 'opacity-70' : ''}>
-                <Body config={config} update={update} />
+                {id === 'levels' ? (
+                  <LevelsTable config={config} update={update} usage={levelUsage} />
+                ) : (
+                  <Body config={config} update={update} />
+                )}
               </fieldset>
             )}
           </Section>

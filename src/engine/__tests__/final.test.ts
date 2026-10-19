@@ -34,7 +34,7 @@ function mine(data: PipelineInput, config = cfg, options: Parameters<typeof comp
 describe('E18: a flat CCA is final', () => {
   const ccas = [makeCca('Handball', 'High Gold'), makeCca('Arts', 'Low Bronze'), makeCca('Welfare', 'Low Bronze'), makeCca('Flat', 'High Gold')]
   const base = [makeMembership('Handball', 18), makeMembership('Arts', 15), makeMembership('Welfare', 10)]
-  // The flat CCA is ccas.csv Gold and the resident is an incoming Head there: both are ignored.
+  // The flat CCA is given the High Gold level and the resident is an incoming Head there: both are ignored.
   const data = input(ccas, [...base, flat('Flat', 12, { incomingRole: 'head' })])
 
   it('gives staying 60 and bidding 60', () => {

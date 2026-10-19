@@ -19,7 +19,18 @@ const reviewEdit = { matric: matricOf(1), ccaID: 'C1', from: 8, to: 9, reason: '
 const level = { ccaID: 'C1', level: 'High Gold', bonusOverride: null, multiplierOverride: null }
 const notSubmitting = { ccaID: 'C2', note: 'disbanded', at: AT }
 
-function finalised(state = loaded()): AppState {
+/** Fills in what Finalise needs: a level on every CCA with a file and a vetted mark on each. */
+function prepared(state: AppState): AppState {
+  const withLevels = state.report.perCca
+    .filter((c) => c.fileHash !== null && c.level === null)
+    .reduce((s, c) => reducer(s, { type: 'setCcaLevel', entry: { ccaID: c.ccaID, level: 'High Gold', bonusOverride: null, multiplierOverride: null } }), state)
+  return withLevels.report.perCca
+    .filter((c) => c.fileHash !== null && !withLevels.review.vetted.some((m) => m.ccaID === c.ccaID))
+    .reduce((s, c) => reducer(s, { type: 'setVetted', ccaID: c.ccaID, at: AT }), withLevels)
+}
+
+function finalised(start = loaded()): AppState {
+  const state = prepared(start)
   const input = state.report.input
   if (!input) throw new Error('expected input')
   return reducer(state, { type: 'finalise', penalty: createPenaltyState(computeAll(input, state.config, entryOptions(state)).lists) })
@@ -141,7 +152,8 @@ describe('unsaved-changes flag', () => {
       { type: 'setCcaLevel', entry: level },
       { type: 'setStep', step: 'results' },
     )
-    const workspace = toWorkspace(finalised(before), new Date(2027, 3, 1))
+    const done = finalised(before)
+    const workspace = toWorkspace(done, new Date(2027, 3, 1))
     expect(workspace.version).toBe(2)
     expect('meanSdOverrides' in workspace).toBe(false)
     const opened = reducer(run(initialState(), { type: 'setConfig', config: DEFAULT_CONFIG }), { type: 'loadWorkspace', workspace: fromRestored(restoreWorkspace(workspace)) })
@@ -150,9 +162,10 @@ describe('unsaved-changes flag', () => {
     expect(opened.finalOverrides).toEqual([override])
     expect(opened.discretion).toEqual([discretion])
     expect(opened.config).toEqual(config)
-    expect(opened.review).toEqual(before.review)
+    expect(opened.review).toEqual(done.review)
     expect(opened.review.edits).toEqual([reviewEdit])
-    expect(opened.ccaLevels).toEqual([level])
+    expect(opened.ccaLevels).toEqual(done.ccaLevels)
+    expect(opened.ccaLevels).toContainEqual(level)
     expect(opened.step).toBe('results')
     expect(opened.finalised?.penalty).toEqual(workspace.finalised)
     expect(opened.report.canCompute).toBe(true)

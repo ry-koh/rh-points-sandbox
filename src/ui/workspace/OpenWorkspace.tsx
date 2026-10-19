@@ -38,7 +38,7 @@ export function OpenWorkspace({ dirty, dispatch, children }: OpenWorkspaceProps)
     const result = await parseWorkspaceFile(text, pw)
     setBusy(false)
     if (result.ok) {
-      const restored = restoreWorkspace(result.workspace)
+      const restored = restoreWorkspace(result.workspace, result.notes)
       dispatch({ type: 'loadWorkspace', workspace: fromRestored(restored) })
       setPassword('')
       setStage({ kind: 'summary', restored })

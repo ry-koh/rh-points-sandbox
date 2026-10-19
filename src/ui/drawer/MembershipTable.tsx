@@ -38,13 +38,15 @@ interface HeaderProps {
 function CcaHeader({ matric, m, inputs, penalty, onDropRole, editing }: HeaderProps) {
   const [open, setOpen] = useState(false)
   const own = inputs.memberships.find((x) => x.ccaID === m.ccaID)
+  const cca = inputs.ccas.get(m.ccaID)
   const dropped = isDropped(penalty, matric, m.ccaID)
   const canDrop = onDropRole !== null && own !== undefined && own.incomingRole !== 'none' && !dropped && m.final === null
   const override = editing?.overrides.find((o) => o.matric === matric && o.ccaID === m.ccaID)
   return (
     <td colSpan={HEADERS.length} className="pt-2 pr-2">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-body font-medium">{inputs.ccas.get(m.ccaID)?.ccaName ?? m.ccaID}</span>
+        <span className="text-body font-medium">{cca?.ccaName ?? m.ccaID}</span>
+        {own?.flatPoints === undefined && <span className="text-cap text-muted">{cca?.level ?? 'no level'}</span>}
         {own?.flatPoints !== undefined && <Chip tone="gold">Flat (JCRC)</Chip>}
         {m.final?.kind === 'override' && <Chip tone="gold">Final: {m.final.value}</Chip>}
         {dropped && <Chip tone="removed">role dropped</Chip>}
@@ -91,6 +93,8 @@ export function MembershipTable({ result, inputs, penalty, onDropRole, editing }
           {result.memberships.map((m) => {
             const own = inputs.memberships.find((x) => x.ccaID === m.ccaID)
             const dropped = isDropped(penalty, result.matric, m.ccaID)
+            const cca = inputs.ccas.get(m.ccaID)
+            const tweaked = cca !== undefined && (cca.bonusOverride !== null || cca.multiplierOverride !== null)
             return (
               <Fragment key={m.ccaID}>
                 <tr className="border-t border-rule">
@@ -106,7 +110,10 @@ export function MembershipTable({ result, inputs, penalty, onDropRole, editing }
                   </td>
                   <td className="num py-1.5 pr-2">{mult(m.stayMult)}</td>
                   <td className="num py-1.5 pr-2">{mult(m.bidMult)}</td>
-                  <td className="num py-1.5 pr-2 text-right">{m.levelBonus}</td>
+                  <td className="num py-1.5 pr-2 text-right">
+                    {m.levelBonus}
+                    {tweaked && <span className="ml-1 text-muted" title="This CCA's bonus or multiplier is tweaked from its level">tweaked</span>}
+                  </td>
                   <td className="num py-1.5 pr-2 text-right">{m.ihgNet}</td>
                   <td className="num py-1.5 pr-2 text-right font-medium">{pts(m.stayNet)}</td>
                   <td className="num py-1.5 text-right font-medium">{pts(m.bidNet)}</td>

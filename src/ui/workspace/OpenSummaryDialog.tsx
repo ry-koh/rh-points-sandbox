@@ -21,7 +21,9 @@ function Line({ ok, children }: { readonly ok: boolean; readonly children: React
 /** What was just loaded, and anything in the file that no longer applies. */
 export function OpenSummaryDialog({ restored, onClose }: OpenSummaryDialogProps) {
   if (!restored) return <Modal open={false} title="Workspace opened" onClose={onClose} footer={null}>{null}</Modal>
-  const { workspace, report, stale } = restored
+  const { workspace, report, stale, notes } = restored
+  const ccaName = (ccaID: string): string => report.bundle?.ccas.find((c) => c.ccaID === ccaID)?.ccaName ?? ccaID
+  const reviewStale = stale.edits.length + stale.vetted.length + stale.ccaLevels.length
   const { errors, warnings } = countIssues(report)
   const staleCount = stale.overrides.length + stale.discretion.length + stale.resolutions.length
   return (
@@ -34,6 +36,8 @@ export function OpenSummaryDialog({ restored, onClose }: OpenSummaryDialogProps)
       footer={<Button type="submit" variant="primary">Continue</Button>}
     >
       <ul className="text-body">
+        {notes.map((note) => <Line key={note} ok={false}>{note}</Line>)}
+        {report.bundle === null && <Line ok={false}>Load the RH-app bundle: it is not in this workspace.</Line>}
         <Line ok>{plural(workspace.files.length, 'file')} loaded and checked again.</Line>
         <Line ok={errors === 0}>
           {errors === 0 ? 'The files pass every check' : `${plural(errors, 'import error')} to fix`}
@@ -51,6 +55,13 @@ export function OpenSummaryDialog({ restored, onClose }: OpenSummaryDialogProps)
           {stale.overrides.map((o) => <li key={`o-${o.matric}-${o.ccaID}`}>Final points {o.finalPoints} for {o.matric} in {o.ccaID}</li>)}
           {stale.discretion.map((d) => <li key={`d-${d.matric}`}>Discretion for {d.matric}</li>)}
           {stale.resolutions.map((r) => <li key={`r-${r.list}-${r.order.join()}`}>Wheel result on {r.list} for {plural(r.order.length, 'resident')}</li>)}
+        </ul>
+      )}
+      {reviewStale > 0 && (
+        <ul className="mt-1 ml-6 list-disc text-body text-muted">
+          {stale.edits.map((e) => <li key={`e-${e.entry.matric}-${e.entry.ccaID}-${e.entry.at}`}>Score edit for {e.entry.matric} in {e.entry.ccaID} no longer matches the file</li>)}
+          {stale.vetted.map((v) => <li key={`v-${v.ccaID}`}>{ccaName(v.ccaID)} was vetted on an older file</li>)}
+          {stale.ccaLevels.map((l) => <li key={`l-${l.ccaID}`}>{l.ccaID} has a level set but is not in the bundle</li>)}
         </ul>
       )}
       {staleCount > 0 && <p className="mt-2 text-cap text-muted">They are listed under Adjustments and Ties to resolve, where you can remove them.</p>}

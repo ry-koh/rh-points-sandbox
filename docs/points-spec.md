@@ -31,6 +31,14 @@
   A CCA marked "not submitting" raises no `NO_LEADER_FILE`. Review codes added (returned by
   `validateReviewEdit`, not raised by import): `BAD_REVIEW_POINTS`, `REVIEW_UNKNOWN_MEMBERSHIP`,
   `REVIEW_FLAT_CCA`, `REVIEW_NO_CHANGE`, and `MISSING_REASON` for a review reason that is too long.
+- **Finalise gate** (6.6): beside the bundle and an error-free import, Finalise now needs nothing
+  "not set" (a blank type, a sport without an IHG result or cap, a CCA without a level), a complete
+  checklist and every CCA that has a leader file vetted. One message names every item.
+- **Export header lines** (6.6): every list and comparison export adds `# review edits: N`,
+  `# levels: ...` and `# level tweaks: ...` after the out-of-range, override and discretion lines.
+  They never carry a score or a resident's name.
+- **Open workspace** (8b) lists the migration notes, a missing bundle and every stale score edit,
+  vetted mark and level entry. Save workspace says what it holds.
 
 **Changes in v2.2**
 
@@ -40,6 +48,8 @@
   `overridden` issue fields, the `overridden` CCA status and `report.overrides`). The import
   report lists the CCAs instead as `report.outOfRange`.
 - The §7.4 table loses its Overridable column.
+- Finalise lists needs the JCRC points settings file (2g) and an import without errors (the bundle
+  of v2.3 took over the settings file's job; the full gate is in 6.6).
 - Workspace files (8b) no longer carry `meanSdOverrides` (version 2); a v1 file that carries ids
   there still opens and the ids are dropped.
 
@@ -76,6 +86,9 @@ RH app (CCA leaders)  ->  CSV export  ->  email to portfolio head  ->  vetted
       female staying, female bidding, sem-2 staying** (bidding lists colour first, 5.3);
       **final-points overrides** (6.2) and **wheel resolutions** (5.6).
    6. **Publish**: the **published lists** (5.7).
+
+   **Finalise lists** (Results) is allowed only when the gate in 6.6 passes: nothing "not set",
+   a complete checklist, every CCA with a leader file vetted and an import without errors.
 
    A **workspace file** (8b) saves all of it at any step.
 
@@ -230,7 +243,7 @@ mean/SD checked.
 
 **Finalise lists is refused until the bundle is loaded**: "Load the RH-app bundle before
 finalising." While no usable `settings` rows are loaded, the sandbox uses its own ranges and
-shows a note saying so.
+shows a note saying so. The rest of the gate is in 6.6.
 
 ## 3. Scenario config (JSON)
 
@@ -694,6 +707,36 @@ no scores to review, are never vetted and never block Finalise. A mark counts (`
 the hashes match; `file_changed` when the file changed; `gone` when the CCA has no leader file
 or is no longer in the report. The bundle is never hashed: downloading it again never un-vets a CCA.
 Unvetted CCAs block only Finalise. No reviewer is recorded on a mark.
+
+### 6.6 Finalise gate and export header lines
+
+**The gate.** `finaliseBlock` returns the first reason that applies, in this order, or null:
+
+1. No usable bundle: "Load the RH-app bundle before finalising."
+2. Anything **not set**, as ONE message built from the groups that have items, for example
+   "Set these in the RH app and download the bundle again — type: RHag, Flag; IHG result or cap:
+   Touch Rugby (W). Pick a level on the Review step for: Soccer (M)." The groups: a blank `type`
+   on a non-flat CCA; a sport with a leader file and no IHG result or no cap; a CCA with a leader
+   file and no level. Flat and not-submitting CCAs never count; a CCA with no leader file counts
+   for type only.
+3. Checklist incomplete (6.5): "Complete the checklist before finalising."
+4. Unvetted: "Vet every CCA before finalising (n of N vetted)." N counts only CCAs with a leader
+   file (flat and not-submitting CCAs have nothing to vet); a vetted mark whose file changed does
+   not count.
+5. Import errors: "Fix the import errors before finalising."
+
+**Export header lines.** Every list export and the comparison export start with comment lines
+in this order: `# mean/SD out of range: ...`, `# final-points overrides: N`,
+`# discretion adjustments: N`, `# review edits: N` (applied edits only), `# levels: ...`,
+`# level tweaks: ...`, and, only while finalised, `# finalised: yes · penalties: N`.
+
+- `# levels:` is grouped by level in Settings order, CCAs by name inside each group (written as
+  `ccaID`), `not set` last, `none` when there are no CCAs, all on one line:
+  `# levels: Gold: C01, C04; High Silver: C02; not set: C09`. It covers CCAs with a leader file.
+- `# level tweaks:` lists each tweaked CCA, joined with ` | `, or `none`:
+  `# level tweaks: Soccer (C05): Gold, multiplier 1.31 (level 1.3)`; a bonus tweak reads
+  `bonus 2.5 (level 2)`.
+- No header line holds a score, a matric or a resident's name.
 
 ## 7. Validation
 

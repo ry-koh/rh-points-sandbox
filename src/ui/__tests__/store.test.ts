@@ -64,7 +64,8 @@ describe('app reducer', () => {
 
   describe('finalise and penalties', () => {
     const ready = (): AppState => {
-      const state = withFiles(scenario())
+      const base = reducer(withFiles(scenario()), { type: 'setCcaLevelsAll', list: DEMO_LEVELS })
+      const state = base.report.perCca.reduce((s, c) => reducer(s, { type: 'setVetted', ccaID: c.ccaID, at: '2027-04-02T10:00:00.000Z' }), base)
       const input = state.report.input
       if (!input) throw new Error('expected input')
       return reducer(state, { type: 'setResults', results: computeAll(input, state.config), error: null })

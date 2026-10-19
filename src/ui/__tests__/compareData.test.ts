@@ -1,10 +1,33 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_CONFIG } from '../../engine'
+import { DEFAULT_CONFIG, compareRuns } from '../../engine'
 import { matricOf, scenario } from '../../import/__tests__/fixtures'
-import { configDifferences, runSide } from '../compare/compareData'
+import { buildComparisonCsv, configDifferences, runSide } from '../compare/compareData'
+import { entryCounts } from '../export/exportCsv'
 
 const files = scenario()
 const config = { ...DEFAULT_CONFIG, headcounts: { ...DEFAULT_CONFIG.headcounts, maleGreen: 2 } }
+
+describe('the comparison CSV carries the review, levels and tweaks lines', () => {
+  it('after the entry lines, with the workspace levels and no resident in a header line', () => {
+    const side = runSide(files, config, {})
+    if (!side.ok) throw new Error('expected the side to run')
+    const perCca = [
+      { ccaID: 'C1', name: 'Test CCA One', fileName: 'a.csv', status: 'ok' as const, level: 'High Gold', bonusOverride: null, multiplierOverride: 1.31 },
+      { ccaID: 'C2', name: 'Test CCA Two', fileName: 'b.csv', status: 'ok' as const, level: null, bonusOverride: null, multiplierOverride: null },
+    ]
+    const levels = [{ name: 'High Gold', bonus: 4, multiplier: 1.3 }]
+    const counts = { ...entryCounts(null), reviewEdits: 3 }
+    const csv = buildComparisonCsv(compareRuns(side.run, side.run), [], { a: 'A', b: 'B' }, counts, { perCca, levels })
+    const header = csv.split('\n').filter((line) => line.startsWith('#'))
+    expect(header.slice(3)).toEqual([
+      '# review edits: 3',
+      '# levels: High Gold: C1; not set: C2',
+      '# level tweaks: Test CCA One (C1): High Gold, multiplier 1.31 (level 1.3)',
+      '# A: A · B: B',
+    ])
+    expect(header.join('\n')).not.toMatch(/A99\d{5}Z/)
+  })
+})
 
 describe('compare runs with the current adjustments', () => {
   it('applies final-points overrides and discretion on a side', () => {

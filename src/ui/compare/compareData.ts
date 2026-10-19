@@ -1,6 +1,6 @@
 import { computeAll, type Comparison, type EntryOptions, type Level, type PipelineResult, type ScenarioConfig } from '../../engine'
 import { validateImport, type SandboxInput, type SourceFile } from '../../import'
-import { LIST_KEYS, POINTS_DECIMALS, headerLines, toCsvLine } from '../export/exportCsv'
+import { LIST_KEYS, POINTS_DECIMALS, headerLines, toCsvLine, type EntryCounts, type LevelLineData } from '../export/exportCsv'
 import { CONFIG_KEYS } from '../state/configShape'
 import { blockReason } from '../shell/blockReason'
 
@@ -79,12 +79,14 @@ export function buildComparisonCsv(
   comparison: Comparison,
   outOfRange: readonly { readonly name: string }[],
   labels: { readonly a: string; readonly b: string },
+  counts?: EntryCounts,
+  levelData?: LevelLineData,
 ): string {
   const rows = LIST_KEYS.flatMap((list) =>
     comparison[list].rows.map((r) =>
       toCsvLine([list, r.matric, r.name, r.statusA, r.statusB, String(r.rankA ?? ''), String(r.rankB ?? ''), signed(r.rankDelta, 0), fixed(r.pointsA), fixed(r.pointsB), signed(r.pointsDelta, POINTS_DECIMALS)]),
     ),
   )
-  const lines = [...headerLines(outOfRange, null), `# A: ${labels.a} · B: ${labels.b}`, COMPARE_COLUMNS.join(','), ...rows]
+  const lines = [...headerLines(outOfRange, null, counts, levelData), `# A: ${labels.a} · B: ${labels.b}`, COMPARE_COLUMNS.join(','), ...rows]
   return `${lines.join('\n')}\n`
 }

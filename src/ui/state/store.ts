@@ -14,10 +14,13 @@ import {
   type WheelResolution,
 } from '../../engine'
 import {
+  checklistComplete,
+  checklistRows,
   renameLevelInEntries,
   reviewKey,
   upsertCcaLevel,
   validateImport,
+  vettedStatus,
   type CcaLevelEntry,
   type ImportReport,
   type NotSubmittingMark,
@@ -144,13 +147,52 @@ function revalidate(state: Inputs): AppState {
   }
 }
 
+const namesOf = (rows: readonly { readonly name: string }[]): string => rows.map((row) => row.name).join(', ')
+
 /**
- * Why the lists cannot be finalised yet, or null when they can. Finalising needs the RH-app bundle
- * with usable settings (so every range check used JCRC's own ranges) and an import without errors.
+ * The "not set" items that block Finalise (D9 extended), as one message, or null. Flat and
+ * not-submitting CCAs never count; IHG and level need a leader file, type does not.
  */
-export function finaliseBlock(state: Pick<AppState, 'report'>): string | null {
-  if (!state.report.settings) return BUNDLE_REQUIRED_REASON
-  if (!state.report.canCompute) return 'Fix the import errors before finalising.'
+function notSetReason(report: AppState['report'], review: AppState['review']): string | null {
+  const rows = checklistRows(report, review.notSubmitting).filter((r) => r.status !== 'flat' && r.status !== 'not_submitting')
+  const withFile = rows.filter((r) => r.fileName !== null)
+  const noType = rows.filter((r) => r.type === null)
+  const noIhg = withFile.filter((r) => r.isSport && (r.ihgResult === null || r.ihgCap === null))
+  const noLevel = withFile.filter((r) => r.level === null)
+  const fromApp = [
+    noType.length > 0 ? `type: ${namesOf(noType)}` : '',
+    noIhg.length > 0 ? `IHG result or cap: ${namesOf(noIhg)}` : '',
+  ].filter((part) => part !== '')
+  const parts = [
+    fromApp.length > 0 ? `Set these in the RH app and download the bundle again — ${fromApp.join('; ')}.` : '',
+    noLevel.length > 0 ? `Pick a level on the Review step for: ${namesOf(noLevel)}.` : '',
+  ].filter((part) => part !== '')
+  return parts.length > 0 ? parts.join(' ') : null
+}
+
+/** Only a CCA with a leader file can be vetted (D25); a mark on a changed file does not count. */
+function vettedCounts(report: AppState['report'], review: AppState['review']): { readonly vetted: number; readonly total: number } {
+  const withFile = report.perCca.filter((c) => c.fileHash !== null && c.status !== 'flat')
+  const vetted = withFile.filter((c) => {
+    const mark = review.vetted.find((m) => m.ccaID === c.ccaID)
+    return mark !== undefined && vettedStatus(mark, report.perCca) === 'vetted'
+  })
+  return { vetted: vetted.length, total: withFile.length }
+}
+
+/**
+ * Why the lists cannot be finalised yet, or null when they can. In this order: the RH-app bundle
+ * with usable settings, anything not set, the checklist, vetting (D4), then import errors.
+ */
+export function finaliseBlock(state: Pick<AppState, 'report' | 'review'>): string | null {
+  const { report, review } = state
+  if (!report.settings) return BUNDLE_REQUIRED_REASON
+  const notSet = notSetReason(report, review)
+  if (notSet) return notSet
+  if (!checklistComplete(checklistRows(report, review.notSubmitting))) return 'Complete the checklist before finalising.'
+  const { vetted, total } = vettedCounts(report, review)
+  if (vetted < total) return `Vet every CCA before finalising (${vetted} of ${total} vetted).`
+  if (!report.canCompute) return 'Fix the import errors before finalising.'
   return null
 }
 

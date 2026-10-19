@@ -2,7 +2,7 @@ import { Download, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { compareRuns, type ScenarioConfig } from '../../engine'
 import { Button } from '../common/controls'
-import { LIST_KEYS, LIST_TITLES, downloadCsv, exportStamp, type ListKey } from '../export/exportCsv'
+import { LIST_KEYS, LIST_TITLES, downloadCsv, entryCounts, exportStamp, type ListKey } from '../export/exportCsv'
 import { ListTabs, panelId, tabId } from '../results/ListTabs'
 import type { Scenario } from '../state/scenarios'
 import { sandboxInputOf } from '../../workspace'
@@ -58,7 +58,7 @@ export function CompareScreen({ state, scenarios }: CompareScreenProps) {
         <h1 className="text-display font-semibold tracking-tight">Compare</h1>
         <SidePicker label="A" value={sideA} scenarios={scenarios} onChange={setSideA} />
         <SidePicker label="B" value={sideB} scenarios={scenarios} onChange={setSideB} />
-        <Button className="ml-auto" disabled={!comparison} onClick={() => comparison && downloadCsv(`rhps_comparison_${exportStamp(new Date())}.csv`, buildComparisonCsv(comparison, state.report.outOfRange, { a: labelOf(sideA), b: labelOf(sideB) }))}>
+        <Button className="ml-auto" disabled={!comparison} onClick={() => comparison && downloadCsv(`rhps_comparison_${exportStamp(new Date())}.csv`, buildComparisonCsv(comparison, state.report.outOfRange, { a: labelOf(sideA), b: labelOf(sideB) }, entryCounts(null, state.report.review), { perCca: state.report.perCca, levels: state.config.levels }))}>
           <Download aria-hidden size={15} /> Export comparison
         </Button>
       </div>

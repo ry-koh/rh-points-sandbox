@@ -56,8 +56,8 @@ export const MAX_REASON_LENGTH = 200
 export const BASE_POINTS_MIN = 0
 export const BASE_POINTS_MAX = 20
 
-/** The only leader-export format version the sandbox accepts (spec 2a). */
-export const LEADER_FORMAT_VERSION = 1
+/** The leader-export format versions the sandbox reads (spec 2a): 1 has no `ihg` column, 2 adds it. The RH app writes 2. */
+export const LEADER_FORMAT_VERSIONS = [1, 2] as const
 
 /** The only flat-points-file format version the sandbox accepts (spec 2e). */
 export const FLAT_FORMAT_VERSION = 1

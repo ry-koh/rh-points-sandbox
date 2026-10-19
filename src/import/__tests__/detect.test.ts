@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { FILE_COLUMNS, RETIRED_CCAS_COLUMNS, detectFileKind } from '../detect'
+import { FILE_COLUMNS, LEADER_V1_COLUMNS, RETIRED_CCAS_COLUMNS, RETIRED_IHG_COLUMNS, detectFileKind } from '../detect'
 
 const LEADER = [
   'formatVersion', 'ccaID', 'ccaName', 'matric', 'name',
-  'basePoints', 'semesterOnly', 'outgoingRole', 'incomingRole', 'exportedAt',
+  'basePoints', 'semesterOnly', 'outgoingRole', 'incomingRole', 'ihg', 'exportedAt',
 ]
+const LEADER_V1 = LEADER.filter((col) => col !== 'ihg')
 const RESIDENTS = ['matric', 'name', 'gender', 'sem2', 'aux', 'jcrc']
 const FLAT = ['formatVersion', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints', 'exportedAt']
 const SETTINGS = ['formatVersion', 'scope', 'ccaID', 'ccaName', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note', 'exportedAt']
-const IHG = ['matric', 'ccaID', 'placement']
 const BUNDLE = [
   'formatVersion', 'section', 'scope', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints', 'type', 'sport',
   'ihgResult', 'ihgCap', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note', 'exportedAt',
@@ -19,8 +19,8 @@ const reversed = (header: readonly string[]): string[] => [...header].reverse()
 describe('detectFileKind', () => {
   it.each([
     ['leader', LEADER],
+    ['leader', LEADER_V1],
     ['residents', RESIDENTS],
-    ['ihg', IHG],
     ['flat', FLAT],
     ['settings', SETTINGS],
     ['bundle', BUNDLE],
@@ -30,8 +30,8 @@ describe('detectFileKind', () => {
 
   it.each([
     ['leader', LEADER],
+    ['leader', LEADER_V1],
     ['residents', RESIDENTS],
-    ['ihg', IHG],
     ['flat', FLAT],
     ['bundle', BUNDLE],
   ] as const)('recognises the %s header in any column order', (kind, header) => {
@@ -41,6 +41,23 @@ describe('detectFileKind', () => {
   it('the bundle has exactly the 18 columns the RH-app writes', () => {
     expect(FILE_COLUMNS.bundle).toEqual(BUNDLE)
     expect(FILE_COLUMNS.bundle.length).toBe(18)
+  })
+
+  it('leader formatVersion 2 has the 11 columns the RH-app writes; version 1 is the same without ihg', () => {
+    expect(FILE_COLUMNS.leader).toEqual(LEADER)
+    expect(LEADER_V1_COLUMNS).toEqual(LEADER_V1)
+    expect(detectFileKind(LEADER_V1)).not.toBeNull()
+  })
+
+  it('never accepts a leader superset or a partial ihg header', () => {
+    expect(detectFileKind([...LEADER, 'extra'])).toBeNull()
+    expect(detectFileKind([...LEADER_V1, 'extra'])).toBeNull()
+    expect(detectFileKind(LEADER_V1.slice(1))).toBeNull()
+  })
+
+  it('does not recognise the retired ihg.csv header as any kind', () => {
+    expect(detectFileKind(RETIRED_IHG_COLUMNS)).toBeNull()
+    expect(Object.keys(FILE_COLUMNS)).not.toContain('ihg')
   })
 
   it('does not recognise the retired ccas.csv header as any kind', () => {

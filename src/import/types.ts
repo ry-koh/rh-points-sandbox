@@ -8,7 +8,7 @@ import type {
   Role,
 } from '../engine'
 
-export type FileKind = 'leader' | 'residents' | 'ihg' | 'flat' | 'settings' | 'bundle'
+export type FileKind = 'leader' | 'residents' | 'flat' | 'settings' | 'bundle'
 
 export interface SourceFile {
   readonly name: string
@@ -28,7 +28,8 @@ export type IssueCode =
   | 'BAD_BUNDLE_FILE'
   | 'BAD_IHG_CAP'
   | 'CCAS_FILE_RETIRED'
-  | 'DUPLICATE_RESIDENTS_OR_IHG_FILE'
+  | 'DUPLICATE_RESIDENTS_FILE'
+  | 'IHG_FILE_RETIRED'
   | 'BAD_MATRIC'
   | 'UNKNOWN_MATRIC'
   | 'DUPLICATE_MATRIC_IN_FILE'
@@ -49,8 +50,10 @@ export type IssueCode =
   | 'DUPLICATE_SETTINGS_FILE'
   | 'SETTINGS_UNKNOWN_CCA'
   | 'UNKNOWN_CCA'
-  | 'IHG_UNKNOWN_MATRIC'
-  | 'IHG_UNKNOWN_CCA'
+  | 'IHG_OVER_CAP'
+  | 'IHG_NOT_SET'
+  | 'IHG_TICK_IGNORED'
+  | 'IHG_NO_TICKS'
   | 'TYPE_NOT_SET'
   | 'LEVEL_NOT_SET'
   | 'UNKNOWN_LEVEL'
@@ -104,6 +107,8 @@ export interface LeaderRow {
   readonly semesterOnly: boolean
   readonly outgoingRole: Role
   readonly incomingRole: Role
+  /** The member gets the sport's IHG points (formatVersion 2); false in a version-1 file. */
+  readonly ihg: boolean
 }
 
 export interface ResidentRow {
@@ -132,13 +137,6 @@ export interface SettingsRow {
   readonly ccaID: string
   readonly exportedAt: string
   readonly range: MeanSdRange
-}
-
-export interface IhgRow {
-  readonly line: number
-  readonly matric: string
-  readonly ccaID: string
-  readonly placement: IhgPlacement
 }
 
 /** One CCA as the checks and the engine see it: the engine's `Cca` plus the bundle line it came from. */
@@ -232,6 +230,8 @@ export interface PerCcaReport extends BaseCcaReport {
   readonly multiplierOverride: number | null
   /** Leader-file rows with an outgoing role. */
   readonly outgoingLeaders: number
+  /** Leader-file rows ticked for the sport's IHG points. */
+  readonly ihgTicked: number
 }
 
 /** A CCA whose mean or SD is outside its allowed range: allowed, but listed on every export. */

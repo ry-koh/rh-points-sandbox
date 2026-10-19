@@ -1,14 +1,11 @@
-import type { MeanSdRange, Membership, PipelineInput, Resident, ScenarioConfig } from '../engine'
+import type { IhgEntry, MeanSdRange, Membership, PipelineInput, Resident, ScenarioConfig } from '../engine'
 import { ccaLevelFor, isBonusTweak, isMultiplierTweak, levelProblems, validateCcaLevelEntry } from './ccaLevels'
 import {
   checkFlatFile,
-  checkIhgRows,
   checkLeaderFile,
   checkResidentRows,
   ccaStats,
   flatStats,
-  ihgNonMemberWarnings,
-  ihgOnFlatWarnings,
   leaderWarnings,
   type CcaStats,
   type CheckedFlat,
@@ -18,11 +15,11 @@ import {
   type Loaded,
 } from './checks'
 import { parseCsv } from './csv'
-import { FILE_COLUMNS, RETIRED_CCAS_COLUMNS, detectFileKind, headerMatches } from './detect'
+import { FILE_COLUMNS, RETIRED_CCAS_COLUMNS, RETIRED_IHG_COLUMNS, detectFileKind, headerMatches } from './detect'
+import { buildIhgFromTicks } from './ihgTicks'
 import { parseBundle } from './parseBundle'
 import { parseFlat } from './parseFlat'
 import { makeIssue } from './parseCommon'
-import { parseIhg } from './parseIhg'
 import { parseLeader } from './parseLeader'
 import { parseResidents } from './parseResidents'
 import { parseSettings } from './parseSettings'
@@ -36,7 +33,6 @@ import type {
   FlatRow,
   ImportReport,
   Issue,
-  IhgRow,
   LoadedBundle,
   LoadedSettings,
   ParsedCsv,
@@ -60,7 +56,6 @@ interface Classified {
 const KIND_LABEL: Readonly<Record<FileKind, string>> = {
   leader: 'a CCA points file',
   residents: 'the residents list',
-  ihg: 'the IHG list',
   flat: 'the flat-points file',
   settings: "JCRC's points settings file",
   bundle: 'the RH-app bundle',
@@ -72,7 +67,7 @@ function guessKindFromName(name: string): FileKind | null {
   if (lower.startsWith('points_settings_')) return 'settings'
   if (lower.startsWith('points_')) return 'leader'
   if (lower.startsWith('flat_points_')) return 'flat'
-  return (['residents', 'ihg'] as const).find((kind) => lower.startsWith(kind)) ?? null
+  return lower.startsWith('residents') ? 'residents' : null
 }
 
 function headerProblem(claimed: FileKind, header: readonly string[]): string {
@@ -93,6 +88,12 @@ const isRetiredCcasFile = (file: SourceFile, header: readonly string[]): boolean
 
 const CCAS_RETIRED_TEXT = 'ccas.csv is no longer used: CCA types come from the RH-app bundle and levels are set on the Review step. Remove this file.' // CCAS_FILE_RETIRED
 
+/** The retired ihg.csv, by its header or its name (R34): IHG_FILE_RETIRED, its rows are never read. */
+const isRetiredIhgFile = (file: SourceFile, header: readonly string[]): boolean =>
+  headerMatches(header, RETIRED_IHG_COLUMNS) || file.name.toLowerCase().startsWith('ihg') // IHG_FILE_RETIRED
+
+const IHG_RETIRED_TEXT = "ihg.csv is no longer used: IHG results come from the RH-app bundle and the sport's head ticks who gets the points in the RH app. Remove this file." // IHG_FILE_RETIRED
+
 function classify(file: SourceFile, issues: Issue[]): Classified {
   const csv = parseCsv(file.text)
   for (const problem of csv.issues) {
@@ -104,10 +105,14 @@ function classify(file: SourceFile, issues: Issue[]): Classified {
     issues.push(makeIssue('CCAS_FILE_RETIRED', file.name, CCAS_RETIRED_TEXT))
     return { file, csv, kind: null, claimed: null }
   }
+  if (isRetiredIhgFile(file, csv.header)) {
+    issues.push(makeIssue('IHG_FILE_RETIRED', file.name, IHG_RETIRED_TEXT))
+    return { file, csv, kind: null, claimed: null }
+  }
   const claimed = guessKindFromName(file.name)
   const text = claimed
     ? headerProblem(claimed, csv.header)
-    : 'this file is not a points file, RH-app bundle, flat-points file, settings file, residents list or IHG list (its columns match none of them).'
+    : 'this file is not a points file, RH-app bundle, flat-points file, settings file or residents list (its columns match none of them).'
   issues.push(makeIssue(claimed ? 'BAD_HEADER' : 'UNRECOGNISED_FILE', file.name, text))
   return { file, csv, kind: null, claimed }
 }
@@ -122,11 +127,9 @@ function fileLevelIssues(classified: readonly Classified[]): Issue[] {
     issues.push(makeIssue('MISSING_RESIDENTS_FILE', '', `No ${KIND_LABEL.residents} was provided (residents.csv is needed).`))
   }
   if (!classified.some((c) => c.claimed === 'bundle')) issues.push(makeIssue('MISSING_BUNDLE_FILE', '', MISSING_BUNDLE_TEXT))
-  for (const kind of ['residents', 'ihg'] as const) {
-    for (const extra of ofKind(kind).slice(1)) {
-      const text = `${KIND_LABEL[kind]} was provided more than once; this extra copy is ignored.`
-      issues.push(makeIssue('DUPLICATE_RESIDENTS_OR_IHG_FILE', extra.file.name, text))
-    }
+  for (const extra of ofKind('residents').slice(1)) {
+    const text = `${KIND_LABEL.residents} was provided more than once; this extra copy is ignored.`
+    issues.push(makeIssue('DUPLICATE_RESIDENTS_FILE', extra.file.name, text))
   }
   for (const extra of ofKind('bundle').slice(1)) {
     const text = `${KIND_LABEL.bundle} was provided more than once; this extra copy is ignored. Remove the older bundle.`
@@ -328,7 +331,7 @@ function toEngineInput(
   ccas: Loaded<CcaRow>,
   leaders: readonly CheckedLeader[],
   flats: readonly CheckedFlat[],
-  ihg: readonly IhgRow[],
+  ihg: readonly IhgEntry[],
 ): PipelineInput {
   const residentList = residents.result.rows.map(
     ({ matric, name, gender, sem2, aux, jcrc }): Resident => ({ matric, name, gender, sem2, aux, jcrc }),
@@ -365,7 +368,7 @@ function toEngineInput(
     residents: residentList,
     ccas: ccaList,
     memberships: [...memberships, ...flatMemberships],
-    ihg: ihg.map(({ matric, ccaID, placement }) => ({ matric, ccaID, placement })),
+    ihg: [...ihg],
   }
 }
 
@@ -378,7 +381,13 @@ function loadedBundle(bundle: SplitBundle | null): LoadedBundle | null {
 }
 
 /** Adds what the bundle, the level table and the leader file say about a CCA to its stats. */
-function perCcaReport(stats: CcaStats, cca: CcaRow, bundle: SplitBundle, leaders: readonly CheckedLeader[]): PerCcaReport {
+function perCcaReport(
+  stats: CcaStats,
+  cca: CcaRow,
+  bundle: SplitBundle,
+  leaders: readonly CheckedLeader[],
+  tickedByCca: Readonly<Record<string, number>>,
+): PerCcaReport {
   const row = bundle.ccas.rows.find((c) => c.ccaID === cca.ccaID)
   const leader = leaders.find((l) => l.ccaID === cca.ccaID)
   return {
@@ -391,6 +400,7 @@ function perCcaReport(stats: CcaStats, cca: CcaRow, bundle: SplitBundle, leaders
     bonusOverride: cca.bonusOverride,
     multiplierOverride: cca.multiplierOverride,
     outgoingLeaders: leader?.rows.filter((r) => r.outgoingRole !== 'none').length ?? 0,
+    ihgTicked: tickedByCca[cca.ccaID] ?? 0,
   }
 }
 
@@ -422,7 +432,6 @@ export function validateImport(
   const ccas = bundle ? synthesiseCcas(bundle, applied?.waivers ?? {}, entries, issues) : null
   // While settings are loaded, their default replaces the sandbox's own for every check.
   const checkConfig: ScenarioConfig = settings ? { ...config, meanSdDefault: settings.defaultRange } : config
-  const ihg = loadFirst(classified, 'ihg', parseIhg, issues)
   const leaderFiles = loadLeaders(classified, issues)
   if (bundle) issues.push(...levelNotSet(bundle, new Set(leaderFiles.map((f) => f.ccaID)), ccaLevels))
   if (residents) issues.push(...checkResidentRows(residents, config))
@@ -439,11 +448,10 @@ export function validateImport(
   const grouped = bundle ? bundleFlatGroups(bundle, flatOutcome?.checked ?? [], leaderFiles) : null
   if (grouped) issues.push(...grouped.issues)
   const flats = grouped?.flats ?? flatOutcome?.checked ?? []
-  const ihgOutcome = ihg ? checkIhgRows(ihg, residents, ccas) : null
-  if (ihgOutcome) issues.push(...ihgOutcome.issues)
+  // IHG comes only from the leader files' ticks, judged against the bundle's sport, result and cap.
+  const ticks = buildIhgFromTicks(checked, bundle?.ccas.rows ?? [])
+  issues.push(...ticks.issues)
   if (ccas) issues.push(...leaderWarnings(ccas, checked))
-  if (ihg && config.ihgInSportNet) issues.push(...ihgNonMemberWarnings(ihg, checked, flats))
-  if (ihg) issues.push(...ihgOnFlatWarnings(ihg, flats))
   const stats = (ccas?.result.rows ?? []).map((cca) => {
     const flat = flats.find((f) => f.ccaID === cca.ccaID)
     const result = flat
@@ -459,14 +467,14 @@ export function validateImport(
   }
   const canCompute = !issues.some((i) => i.severity === 'error')
   const input =
-    canCompute && residents && ccas ? toEngineInput(residents, ccas, checked, flats, ihgOutcome?.rows ?? []) : undefined
+    canCompute && residents && ccas ? toEngineInput(residents, ccas, checked, flats, ticks.ihg) : undefined
   const reportSettings: LoadedSettings | null = settings && applied ? { ...settings, waivers: applied.waivers } : settings
   return {
     canCompute,
     bundle: loadedBundle(bundle),
     settings: reportSettings,
     issues,
-    perCca: bundle ? stats.map(({ cca, result }) => perCcaReport(result, cca, bundle, checked)) : [],
+    perCca: bundle ? stats.map(({ cca, result }) => perCcaReport(result, cca, bundle, checked, ticks.tickedByCca)) : [],
     outOfRange: stats.flatMap(({ result }) => (result.outOfRange ? [result.outOfRange] : [])),
     ...(input ? { input } : {}),
   }

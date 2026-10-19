@@ -5,7 +5,6 @@ import type {
   BaseCcaReport,
   CcaRow,
   FlatRow,
-  IhgRow,
   Issue,
   LeaderRow,
   OutOfRangeRecord,
@@ -127,63 +126,6 @@ export function checkFlatFile(
     checked.push({ fileName, ccaID, flatPoints: first.flatPoints, rows: members })
   }
   return { issues, checked }
-}
-
-export function checkIhgRows(
-  ihg: Loaded<IhgRow>,
-  residents: Loaded<ResidentRow> | null,
-  ccas: Loaded<CcaRow> | null,
-): { readonly issues: Issue[]; readonly rows: IhgRow[] } {
-  const matrics = new Set(residents?.result.seenKeys ?? [])
-  const ccaIDs = new Set(ccas?.result.seenKeys ?? [])
-  const issues: Issue[] = []
-  const rows = ihg.result.rows.filter((row) => {
-    const details = { line: row.line, matric: row.matric, ccaID: row.ccaID }
-    if (residents && !matrics.has(row.matric)) {
-      issues.push(makeIssue('IHG_UNKNOWN_MATRIC', ihg.fileName, `${row.matric} is not in the residents list.`, { ...details, column: 'matric' }))
-      return false
-    }
-    if (ccas && !ccaIDs.has(row.ccaID)) {
-      issues.push(makeIssue('IHG_UNKNOWN_CCA', ihg.fileName, `CCA "${row.ccaID}" is not listed in ${ccas.fileName}.`, { ...details, column: 'ccaID' }))
-      return false
-    }
-    return true
-  })
-  return { issues, rows }
-}
-
-/** An IHG row for a flat membership is always ignored, whatever ihgInSportNet says (spec 4.1). */
-export function ihgOnFlatWarnings(ihg: Loaded<IhgRow>, flats: readonly CheckedFlat[]): Issue[] {
-  const members = new Set(flats.flatMap((f) => f.rows.map((row) => `${row.matric}|${f.ccaID}`)))
-  return ihg.result.rows
-    .filter((row) => members.has(`${row.matric}|${row.ccaID}`))
-    .map((row) =>
-      makeIssue('IHG_ON_FINAL_CCA', ihg.fileName, `${row.matric} has IHG points for ${row.ccaID}, which has flat points, so the IHG row is ignored.`, {
-        line: row.line,
-        matric: row.matric,
-        ccaID: row.ccaID,
-      }),
-    )
-}
-
-export function ihgNonMemberWarnings(
-  ihg: Loaded<IhgRow>,
-  leaders: readonly CheckedLeader[],
-  flats: readonly CheckedFlat[] = [],
-): Issue[] {
-  const members = new Set([
-    ...leaders.flatMap((l) => l.rows.map((row) => `${row.matric}|${l.ccaID}`)),
-    ...flats.flatMap((f) => f.rows.map((row) => `${row.matric}|${f.ccaID}`)),
-  ])
-  return ihg.result.rows
-    .filter((row) => !members.has(`${row.matric}|${row.ccaID}`))
-    .map((row) =>
-      makeIssue('IHG_NON_MEMBER', ihg.fileName, `${row.matric} has IHG points for ${row.ccaID} but is not a member of it, so they stay flat.`, {
-        line: row.line,
-        matric: row.matric,
-        ccaID: row.ccaID,
-      }),
-    )
 }
 
 export function leaderWarnings(

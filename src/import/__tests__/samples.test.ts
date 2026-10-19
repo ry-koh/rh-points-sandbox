@@ -1,6 +1,8 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, computeAll, type ListRow, type PipelineInput, type ScenarioConfig } from '../../engine'
+import { parseCsv } from '../csv'
+import { LEADER_V1_COLUMNS } from '../detect'
 import { validateImport } from '../validate'
 import type { CcaLevelEntry, SourceFile } from '../types'
 import { DEMO_LEVELS } from './fixtures'
@@ -71,7 +73,35 @@ describe('samples/valid', () => {
     expect(report.bundle?.fileName).toBe('points_bundle_20270401.csv')
     expect(report.issues.map((i) => i.code)).not.toContain('LEVEL_NOT_SET')
     expect(ccaLevels).toHaveLength(12)
-    expect(files.filter((f) => /^(ccas|points_settings_|flat_points_)/.test(f.name))).toEqual([])
+    expect(files.filter((f) => /^(ccas|ihg|points_settings_|flat_points_)/.test(f.name))).toEqual([])
+  })
+
+  it("builds IHG from the six sports' ticks, one ticked member each (never above the cap of 3)", () => {
+    expect(report.input?.ihg).toEqual([
+      { matric: 'A9900005Z', ccaID: 'C01', placement: '1st' },
+      { matric: 'A9900035Z', ccaID: 'C02', placement: '2nd' },
+      { matric: 'A9900078Z', ccaID: 'C04', placement: '3rd' },
+      { matric: 'A9900004Z', ccaID: 'C05', placement: '3rd4th_no_match' },
+      { matric: 'A9900043Z', ccaID: 'C06', placement: '2nd' },
+      { matric: 'A9900026Z', ccaID: 'C08', placement: '1st' },
+    ])
+    expect(report.perCca.filter((c) => c.ihgTicked > 0).map((c) => c.ccaID)).toEqual(['C01', 'C02', 'C04', 'C05', 'C06', 'C08'])
+  })
+
+  it('still imports a formatVersion-1 leader file (as main wrote points_C01) beside the bundle', () => {
+    // main's points_C01 is this sample's file without the ihg column, at formatVersion 1.
+    const v2 = files.find((f) => f.name === 'points_C01_20270401.csv')
+    if (!v2) throw new Error('expected points_C01')
+    const csv = parseCsv(v2.text)
+    const keep = LEADER_V1_COLUMNS.map((col) => csv.header.indexOf(col))
+    const lines = csv.rows.map((row) => keep.map((i) => (i === 0 ? '1' : row.cells[i] ?? '')).join(','))
+    const v1 = { ...v2, text: [LEADER_V1_COLUMNS.join(','), ...lines].join('\n') + '\n' }
+    const mixed = validateImport(files.map((f) => (f === v2 ? v1 : f)), DEFAULT_CONFIG, { ccaLevels })
+    expect(mixed.issues.filter((i) => i.severity === 'error')).toEqual([])
+    const added = mixed.issues.filter((i) => !report.issues.some((j) => j.message === i.message))
+    expect(added.map((i) => [i.code, i.ccaID])).toEqual([['IHG_NO_TICKS', 'C01']])
+    expect(mixed.input?.memberships.filter((m) => m.ccaID === 'C01')).toHaveLength(csv.rows.length)
+    expect(mixed.input?.ihg.map((e) => e.ccaID)).toEqual(['C02', 'C04', 'C05', 'C06', 'C08'])
   })
 
   it('marks six CCAs as sports, with their IHG result and a cap of 3', () => {
@@ -131,9 +161,10 @@ describe('samples/broken', () => {
 })
 
 describe('samples/', () => {
-  it('has no ccas.csv anywhere (the file is retired)', () => {
+  it('has no ccas.csv or ihg.csv anywhere (the files are retired)', () => {
     const names = readdirSync('samples', { recursive: true }).map((path) => path.split(/[\\/]/).pop())
     expect(names.filter((name) => name === 'ccas.csv')).toEqual([])
+    expect(names.filter((name) => name === 'ihg.csv')).toEqual([])
     expect(names).toContain('points_bundle_20270401.csv')
   })
 })

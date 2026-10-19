@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, MAX_EXHAUSTIVE_HALVES, computeAll, type ScenarioConfig } from '../../engine'
-import { RETIRED_CCAS_COLUMNS } from '../detect'
+import { RETIRED_CCAS_COLUMNS, RETIRED_IHG_COLUMNS } from '../detect'
 import { validateImport } from '../validate'
 import type { CcaLevelEntry, ImportReport, IssueCode, SandboxInput, SourceFile } from '../types'
 import { deepFreeze } from '../../engine/__tests__/helpers'
@@ -8,6 +8,7 @@ import {
   BASE_SCORES,
   DEMO_LEVELS,
   LEADER_COLS,
+  LEADER_V1_COLS,
   baseCcas,
   baseResidents,
   bundleFile,
@@ -61,6 +62,20 @@ const twoHighGolds: ScenarioConfig = {
   levels: [...DEFAULT_CONFIG.levels, { name: 'High Gold', bonus: 5, multiplier: 2.1 }],
 }
 const retiredCcasText = toCsv(RETIRED_CCAS_COLUMNS, [{ ccaID: 'C1', ccaName: 'Test CCA One', type: '1x', placement: 'gold' }])
+const retiredIhgFile: SourceFile = { name: 'ihg.csv', text: toCsv(RETIRED_IHG_COLUMNS, [{ matric: matricOf(1), ccaID: 'C1', placement: '1st' }]) }
+
+const v1Rows = (rows: ReturnType<typeof leaderRows>) => rows.map((row) => ({ ...row, formatVersion: '1' }))
+/** A leader file with the formatVersion-1 header (10 columns, no ihg). */
+const v1File = (ccaID: string, rows: ReturnType<typeof leaderRows>): SourceFile => ({
+  name: leaderFileName(ccaID),
+  text: toCsv(LEADER_V1_COLS, rows),
+})
+/** The base scenario with C1's leader file replaced by the given file. */
+const withC1File = (file: SourceFile): SourceFile[] => scenario({ leaders: { C2: leaderRows('C2') }, extra: [file] })
+
+/** C1 as a sport with a result and a cap (C2 stays a non-sport). */
+const sportC1 = (patch: Record<string, string> = {}) => patchRow(baseCcas(), 0, { sport: 'Y', ihgResult: '1st', ihgCap: '3', ...patch })
+const ticked = (ccaID: string, ihg: number[]) => leaderRows(ccaID, BASE_SCORES, { ihg })
 
 interface Case {
   readonly name: string
@@ -76,7 +91,9 @@ const CASES: Case[] = [
   { name: 'CSV_SYNTAX (unterminated quote)', files: withText(scenario(), leaderFileName('C1'), (t) => `${t}1,C1,"Test\n`), codes: ['CSV_SYNTAX'], blocks: true },
   { name: 'CSV_SYNTAX (wrong cell count)', files: withText(scenario(), 'residents.csv', (t) => `${t}A9900011Z,Test Resident 011,M\n`), codes: ['CSV_SYNTAX'], blocks: true },
   { name: 'BAD_HEADER', files: withText(scenario(), leaderFileName('C1'), (t) => t.replace('basePoints', 'basePoint')), codes: ['BAD_HEADER', 'NO_LEADER_FILE'], blocks: true },
-  { name: 'BAD_FORMAT_VERSION', files: scenario({ leaders: { C1: patchRow(c1, -1, { formatVersion: '2' }), C2: leaderRows('C2') } }), codes: ['BAD_FORMAT_VERSION'], blocks: true },
+  { name: 'BAD_FORMAT_VERSION (v2 header, formatVersion 1)', files: scenario({ leaders: { C1: patchRow(c1, -1, { formatVersion: '1' }), C2: leaderRows('C2') } }), codes: ['BAD_FORMAT_VERSION'], blocks: true },
+  { name: 'BAD_FORMAT_VERSION (v1 header, formatVersion 2)', files: withC1File(v1File('C1', patchRow(v1Rows(c1), 0, { formatVersion: '2' }))), codes: ['BAD_FORMAT_VERSION'], blocks: true },
+  { name: 'BAD_FORMAT_VERSION (formatVersion 3)', files: scenario({ leaders: { C1: patchRow(c1, -1, { formatVersion: '3' }), C2: leaderRows('C2') } }), codes: ['BAD_FORMAT_VERSION'], blocks: true },
   { name: 'MIXED_CCA_ID', files: scenario({ leaders: { ...lastOf({ ccaID: 'C2' }), C2: leaderRows('C2') } }), codes: ['MIXED_CCA_ID'], blocks: true },
   { name: 'DUPLICATE_CCA_FILE', files: scenario({ extra: [{ name: 'points_C1_20270402.csv', text: toCsv(LEADER_COLS, c1) }] }), codes: ['DUPLICATE_CCA_FILE'], blocks: true },
   { name: 'MISSING_RESIDENTS_FILE', files: scenario({ residents: null }), codes: ['MISSING_RESIDENTS_FILE'], blocks: true },
@@ -85,7 +102,9 @@ const CASES: Case[] = [
   { name: 'CCAS_FILE_RETIRED (the old header)', files: scenario({ extra: [{ name: 'ccas.csv', text: retiredCcasText }] }), codes: ['CCAS_FILE_RETIRED'], blocks: true },
   { name: 'CCAS_FILE_RETIRED (the old header, any name)', files: scenario({ extra: [{ name: 'old.csv', text: retiredCcasText }] }), codes: ['CCAS_FILE_RETIRED'], blocks: true },
   { name: 'CCAS_FILE_RETIRED (the old name)', files: scenario({ extra: [{ name: 'CCAS_2026.csv', text: 'foo,bar\n' }] }), codes: ['CCAS_FILE_RETIRED'], blocks: true },
-  { name: 'DUPLICATE_RESIDENTS_OR_IHG_FILE', files: scenario({ extra: [duplicateResidentsFile] }), codes: ['DUPLICATE_RESIDENTS_OR_IHG_FILE'], blocks: true },
+  { name: 'DUPLICATE_RESIDENTS_FILE', files: scenario({ extra: [duplicateResidentsFile] }), codes: ['DUPLICATE_RESIDENTS_FILE'], blocks: true },
+  { name: 'IHG_FILE_RETIRED (the old header)', files: scenario({ extra: [retiredIhgFile] }), codes: ['IHG_FILE_RETIRED'], blocks: true },
+  { name: 'IHG_FILE_RETIRED (the old name)', files: scenario({ extra: [{ name: 'IHG_2026.csv', text: 'foo,bar\n' }] }), codes: ['IHG_FILE_RETIRED'], blocks: true },
   { name: 'BAD_MATRIC', files: scenario({ leaders: { ...lastOf({ matric: 'XYZ' }), C2: leaderRows('C2') } }), codes: ['BAD_MATRIC'], blocks: true },
   { name: 'UNKNOWN_MATRIC', files: scenario({ leaders: { ...lastOf({ matric: matricOf(99) }), C2: leaderRows('C2') } }), codes: ['UNKNOWN_MATRIC'], blocks: true },
   { name: 'DUPLICATE_MATRIC_IN_FILE', files: scenario({ leaders: { C1: [...c1, ...c1.slice(0, 1)], C2: leaderRows('C2') } }), codes: ['DUPLICATE_MATRIC_IN_FILE'], blocks: true },
@@ -96,8 +115,10 @@ const CASES: Case[] = [
   { name: 'BAD_GENDER', files: scenario({ residents: patchRow(baseResidents(), -1, { gender: 'X' }) }), codes: ['BAD_GENDER'], blocks: true },
   { name: 'BAD_AUX', files: scenario({ residents: patchRow(baseResidents(), -1, { aux: '-1' }) }), codes: ['BAD_AUX'], blocks: true },
   { name: 'UNKNOWN_CCA', files: scenario({ leaders: { C1: c1, C2: leaderRows('C2'), C9: leaderRows('C9') } }), codes: ['UNKNOWN_CCA'], blocks: true },
-  { name: 'IHG_UNKNOWN_MATRIC', files: scenario({ ihg: [{ matric: matricOf(99), ccaID: 'C1', placement: '1st' }] }), codes: ['IHG_UNKNOWN_MATRIC'], blocks: true },
-  { name: 'IHG_UNKNOWN_CCA', files: scenario({ ihg: [{ matric: matricOf(1), ccaID: 'C9', placement: '2nd' }] }), codes: ['IHG_UNKNOWN_CCA'], blocks: true },
+  { name: 'IHG_OVER_CAP', files: scenario({ ccas: sportC1({ ihgCap: '1' }), leaders: { C1: ticked('C1', [0, 1]), C2: leaderRows('C2') } }), codes: ['IHG_OVER_CAP'], blocks: true },
+  { name: 'IHG_NOT_SET (warning)', files: scenario({ ccas: sportC1({ ihgResult: '' }), leaders: { C1: ticked('C1', [0]), C2: leaderRows('C2') } }), codes: ['IHG_NOT_SET'], blocks: false },
+  { name: 'IHG_TICK_IGNORED (warning)', files: scenario({ leaders: { C1: ticked('C1', [0]), C2: leaderRows('C2') } }), codes: ['IHG_TICK_IGNORED'], blocks: false },
+  { name: 'IHG_NO_TICKS (warning)', files: scenario({ ccas: sportC1() }), codes: ['IHG_NO_TICKS'], blocks: false },
   { name: 'UNKNOWN_LEVEL', files: scenario(), sandbox: levelsWith(entry('C1', { level: 'Platinum' })), codes: ['UNKNOWN_LEVEL'], blocks: true },
   { name: 'BAD_LEVEL_TWEAK (multiplier)', files: scenario(), sandbox: levelsWith(entry('C1', { level: 'High Gold', multiplierOverride: -2 })), codes: ['BAD_LEVEL_TWEAK'], blocks: true },
   { name: 'BAD_LEVEL_TWEAK (bonus)', files: scenario(), sandbox: levelsWith(entry('C1', { level: 'High Gold', bonusOverride: Number.NaN })), codes: ['BAD_LEVEL_TWEAK'], blocks: true },
@@ -111,7 +132,6 @@ const CASES: Case[] = [
   { name: 'NO_LEADER_FILE (warning)', files: scenario({ leaders: { C1: c1 } }), codes: ['NO_LEADER_FILE'], blocks: false },
   { name: 'SEMESTER_ONLY_ON_HALF_CCA (warning)', files: scenario({ leaders: { C1: c1, C2: patchRow(leaderRows('C2'), -1, { semesterOnly: 'Y' }) } }), codes: ['SEMESTER_ONLY_ON_HALF_CCA'], blocks: false },
   { name: 'AUX_ABOVE_CAP (warning)', files: scenario({ residents: patchRow(baseResidents(), -1, { aux: '12' }) }), codes: ['AUX_ABOVE_CAP'], blocks: false },
-  { name: 'IHG_NON_MEMBER (warning, ihgInSportNet on)', files: scenario({ ihg: [{ matric: matricOf(10), ccaID: 'C1', placement: '1st' }] }), codes: ['IHG_NON_MEMBER'], blocks: false, config: { ...DEFAULT_CONFIG, ihgInSportNet: true } },
 ]
 
 describe('one issue code per mistake', () => {
@@ -153,15 +173,74 @@ describe('a valid import', () => {
     expect(result.input?.residents[0]?.matric).toBe(matricOf(1))
   })
 
-  it('includes a valid IHG file and treats the file as optional', () => {
-    const ihg = [{ matric: matricOf(1), ccaID: 'C1', placement: '3rd4th_no_match' }]
-    expect(run(scenario({ ihg })).input?.ihg).toHaveLength(1)
-    expect(run(scenario()).canCompute).toBe(true)
+  it('reads a formatVersion-1 leader file (no ihg column) with no ticks', () => {
+    const report = run(withC1File(v1File('C1', v1Rows(c1))))
+    expect(report.issues).toEqual([])
+    expect(report.input?.memberships.filter((m) => m.ccaID === 'C1')).toHaveLength(6)
+    expect(report.input?.ihg).toEqual([])
+    expect(report.perCca.map((c) => c.ihgTicked)).toEqual([0, 0])
+  })
+})
+
+describe("IHG from the leader files' ticks", () => {
+  const resultOf = (report: ImportReport, n: number, config: ScenarioConfig = DEFAULT_CONFIG) => {
+    if (!report.input) throw new Error('expected an engine input')
+    return computeAll(report.input, config).results.find((r) => r.matric === matricOf(n))
+  }
+  const c1Of = (result: ReturnType<typeof resultOf>) => result?.memberships.find((m) => m.ccaID === 'C1')
+
+  it('builds one IHG entry per ticked member of a sport with a result and a cap', () => {
+    const report = run(scenario({ ccas: sportC1(), leaders: { C1: ticked('C1', [0, 2]), C2: leaderRows('C2') } }))
+    expect(report.issues).toEqual([])
+    expect(report.input?.ihg).toEqual([
+      { matric: matricOf(1), ccaID: 'C1', placement: '1st' },
+      { matric: matricOf(3), ccaID: 'C1', placement: '1st' },
+    ])
+    expect(report.perCca.map((c) => [c.ccaID, c.ihgTicked])).toEqual([['C1', 2], ['C2', 0]])
   })
 
-  it('does not warn about IHG non-members when ihgInSportNet is off', () => {
-    const ihg = [{ matric: matricOf(10), ccaID: 'C1', placement: '1st' }]
-    expect(run(scenario({ ihg })).issues).toEqual([])
+  it('IHG_OVER_CAP blocks compute; the three warnings compute with no IHG for that CCA', () => {
+    const over = run(scenario({ ccas: sportC1({ ihgCap: '1' }), leaders: { C1: ticked('C1', [0, 1]), C2: leaderRows('C2') } }))
+    expect(over.issues[0]).toMatchObject({ severity: 'error', code: 'IHG_OVER_CAP', fileName: leaderFileName('C1'), ccaID: 'C1' })
+    expect(over.input).toBeUndefined()
+    const notSet = run(scenario({ ccas: sportC1({ ihgCap: '' }), leaders: { C1: ticked('C1', [0]), C2: leaderRows('C2') } }))
+    const ignored = run(scenario({ leaders: { C1: ticked('C1', [0]), C2: leaderRows('C2') } }))
+    const noTicks = run(scenario({ ccas: sportC1() }))
+    for (const report of [notSet, ignored, noTicks]) {
+      expect(report.canCompute).toBe(true)
+      expect(report.input?.ihg).toEqual([])
+    }
+  })
+
+  it('two sports, one player ticked in both: two IHG entries whose points sum', () => {
+    const ccas = sportC1().map((c) => (c.ccaID === 'C2' ? { ...c, sport: 'Y', ihgResult: '2nd', ihgCap: '3' } : c))
+    const report = run(scenario({ ccas, leaders: { C1: ticked('C1', [0]), C2: ticked('C2', [0]) } }))
+    expect(report.issues).toEqual([])
+    expect(report.input?.ihg).toEqual([
+      { matric: matricOf(1), ccaID: 'C1', placement: '1st' },
+      { matric: matricOf(1), ccaID: 'C2', placement: '2nd' },
+    ])
+    expect(resultOf(report, 1)?.bidding.flatIHG).toBe(5 + 4)
+    expect(resultOf(report, 1)?.staying.flatIHG).toBe(5 + 4)
+  })
+
+  it("ihgInSportNet adds the result's points into that sport's net instead of flat", () => {
+    const report = run(scenario({ ccas: sportC1(), leaders: { C1: ticked('C1', [0]), C2: leaderRows('C2') } }))
+    const off = resultOf(report, 1)
+    const on = resultOf(report, 1, { ...DEFAULT_CONFIG, ihgInSportNet: true })
+    expect(off?.bidding.flatIHG).toBe(5)
+    expect(on?.bidding.flatIHG).toBe(0)
+    expect(c1Of(on)?.ihgNet).toBe(5)
+    expect(c1Of(on)?.bidNet).toBeCloseTo((c1Of(off)?.bidNet ?? Number.NaN) + 5, 9)
+  })
+
+  it('a ticked semester-only member gets the full IHG points (R47)', () => {
+    const rows = patchRow(ticked('C1', [0]), 0, { semesterOnly: 'Y' })
+    const report = run(scenario({ ccas: sportC1(), leaders: { C1: rows, C2: leaderRows('C2') } }))
+    expect(report.issues).toEqual([])
+    expect(resultOf(report, 1)?.bidding.flatIHG).toBe(5)
+    const inNet = c1Of(resultOf(report, 1, { ...DEFAULT_CONFIG, ihgInSportNet: true }))
+    expect(inNet?.ihgNet).toBe(5)
   })
 })
 
@@ -206,10 +285,23 @@ describe('issue details', () => {
     expect(codesOf(run(files))).toEqual(['MEAN_SD_OUT_OF_RANGE'])
   })
 
-  it('rejects a second IHG file', () => {
-    const ihg = { name: 'ihg.csv', text: 'matric,ccaID,placement\n' }
-    const files = scenario({ extra: [ihg, { ...ihg, name: 'ihg_old.csv' }] })
-    expect(codesOf(run(files))).toEqual(['DUPLICATE_RESIDENTS_OR_IHG_FILE'])
+  it('IHG_FILE_RETIRED tells the user to remove the file, and its rows are never read', () => {
+    const report = run(scenario({ extra: [retiredIhgFile] }))
+    expect(report.issues[0]?.message).toBe(
+      "ihg.csv: ihg.csv is no longer used: IHG results come from the RH-app bundle and the sport's head ticks who gets the points in the RH app. Remove this file.",
+    )
+    expect(report.input).toBeUndefined()
+  })
+
+  it('names the version mismatch and the unsupported version', () => {
+    const v2AsV1 = run(scenario({ leaders: { C1: patchRow(c1, 0, { formatVersion: '1' }), C2: leaderRows('C2') } }))
+    expect(v2AsV1.issues[0]?.message).toBe(
+      'points_C1_20270401.csv line 2: formatVersion "1" does not match this file\'s columns: a file with an ihg column is version 2.',
+    )
+    const v1AsV2 = run(withC1File(v1File('C1', patchRow(v1Rows(c1), 0, { formatVersion: '2' }))))
+    expect(v1AsV2.issues[0]?.message).toContain('a file without an ihg column is version 1')
+    const v3 = run(scenario({ leaders: { C1: patchRow(c1, 0, { formatVersion: '3' }), C2: leaderRows('C2') } }))
+    expect(v3.issues[0]?.message).toContain('formatVersion "3" is not supported; this tool reads versions 1 and 2.')
   })
 
   it('says where an unknown CCA should have been listed: the bundle', () => {

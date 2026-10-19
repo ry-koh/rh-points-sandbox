@@ -109,6 +109,76 @@ describe('RH-app bundle imports cleanly', () => {
   })
 })
 
+// Contract test for the formatVersion-2 leader file: samples/app-export/bundle/points_9201_20270401.csv
+// is byte-for-byte the shared fixture RH-app's buildPointsCsv test pins (src/lib/points/__tests__/
+// exportCsv.test.ts there, "shared leader-CSV contract"): 11 columns with `ihg`, CRLF with a
+// trailing CRLF. If the app's bytes change, change both repos together.
+const LEADER_V2_TEXT =
+  'formatVersion,ccaID,ccaName,matric,name,basePoints,semesterOnly,outgoingRole,incomingRole,ihg,exportedAt\r\n' +
+  '2,9201,Soccer (M),A9920101X,Test Player 01,15,N,head,none,Y,2027-04-01T09:30:00.000Z\r\n' +
+  '2,9201,Soccer (M),A9920102X,"Lim, ""Ah"" Kow",12,Y,none,vice_head,Y,2027-04-01T09:30:00.000Z\r\n' +
+  '2,9201,Soccer (M),A9920103X,Test Player 03,9,N,none,none,N,2027-04-01T09:30:00.000Z\r\n'
+
+describe('RH-app leader export, formatVersion 2 with IHG ticks', () => {
+  const soccer = read('bundle/points_9201_20270401.csv')
+  const levels: readonly CcaLevelEntry[] = [
+    ...LEVELS,
+    { ccaID: '9201', level: 'High Gold', bonusOverride: null, multiplierOverride: null },
+  ]
+  const files = [...bundleFiles, soccer]
+  const report = run(files, levels)
+  /** The same files with the bundle's 9201 cca row edited. */
+  const withSoccerRow = (from: string, to: string): SourceFile[] =>
+    files.map((f) => (f === bundle ? { ...f, text: f.text.replace(from, to) } : f))
+
+  it('is exactly the string the app writes', () => {
+    expect(soccer.text).toBe(LEADER_V2_TEXT)
+  })
+
+  it('is detected as a leader file', () => {
+    expect(detectFileKind(parseCsv(soccer.text).header)).toBe('leader')
+  })
+
+  it('imports beside the bundle: no errors, only NO_LEADER_FILE for 9202', () => {
+    expect(report.issues.map((i) => [i.code, i.ccaID])).toEqual([['NO_LEADER_FILE', '9202']])
+    expect(report.canCompute).toBe(true)
+  })
+
+  it('builds the IHG entries from the ticks and the bundle result', () => {
+    expect(report.input?.ihg).toEqual([
+      { matric: 'A9920101X', ccaID: '9201', placement: '1st' },
+      { matric: 'A9920102X', ccaID: '9201', placement: '1st' },
+    ])
+    const row = report.perCca.find((c) => c.ccaID === '9201')
+    expect(row).toMatchObject({ status: 'ok', ihgTicked: 2, outgoingLeaders: 1 })
+    expect(row?.mean).toBeCloseTo(12, 9)
+    expect(row?.sd).toBeCloseTo(2.449, 3)
+  })
+
+  it('adds the 1st-place IHG points flat to a ticked player (ihgInSportNet off)', () => {
+    if (!report.input) throw new Error('expected an engine input')
+    const { results } = computeAll(report.input, DEFAULT_CONFIG)
+    const player = (matric: string) => results.find((r) => r.matric === matric)
+    expect(DEFAULT_CONFIG.ihgInSportNet).toBe(false)
+    expect(player('A9920101X')?.bidding.flatIHG).toBe(5)
+    expect(player('A9920103X')?.bidding.flatIHG).toBe(0)
+  })
+
+  it('with the cap edited to 1: IHG_OVER_CAP and no compute', () => {
+    const over = run(withSoccerRow(',Y,1st,12,', ',Y,1st,1,'), levels)
+    expect(codesOf(over)).toEqual(['IHG_OVER_CAP', 'NO_LEADER_FILE'])
+    expect(over.canCompute).toBe(false)
+    expect(over.input).toBeUndefined()
+  })
+
+  it('with the result blanked: IHG_NOT_SET, a warning; it computes with no IHG', () => {
+    const notSet = run(withSoccerRow(',Y,1st,12,', ',Y,,12,'), levels)
+    expect(codesOf(notSet)).toEqual(['IHG_NOT_SET', 'NO_LEADER_FILE'])
+    expect(notSet.canCompute).toBe(true)
+    expect(notSet.input?.ihg).toEqual([])
+  })
+})
+
 // Contract test for the leader file: samples/app-export/points_9101_20270401.csv is SYNTHETIC but
 // byte-for-byte in the format RH-app's buildPointsCsv writes (src/lib/points/exportCsv.ts there):
 // CRLF with a trailing CRLF, RFC 4180 quoting, an apostrophe formula guard on free text, Y/N,

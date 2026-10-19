@@ -51,7 +51,7 @@ Filename: `points_<ccaID>_<YYYYMMDD>.csv`. One file per CCA.
 
 | Column | Type / allowed values |
 |---|---|
-| `formatVersion` | integer, must equal `1` |
+| `formatVersion` | `1` (10 columns, no `ihg`) or `2` (adds `ihg`); must match the file's columns |
 | `ccaID` | string, must exist in ccas.csv, identical on every row |
 | `ccaName` | string |
 | `matric` | matric pattern above |
@@ -60,7 +60,10 @@ Filename: `points_<ccaID>_<YYYYMMDD>.csv`. One file per CCA.
 | `semesterOnly` | `Y` / `N` |
 | `outgoingRole` | `none` / `head` / `vice_head` |
 | `incomingRole` | `none` / `head` / `vice_head` |
+| `ihg` | version 2 only, after `incomingRole`: `Y` / `N`, this member receives the sport's IHG points (meaningful only for a sports CCA) |
 | `exportedAt` | ISO 8601 timestamp |
+
+The RH app writes version 2; a file's `formatVersion` must match its columns.
 
 ### (b) residents.csv — JCRC
 
@@ -73,15 +76,11 @@ Filename: `points_<ccaID>_<YYYYMMDD>.csv`. One file per CCA.
 | `aux` | integer ≥ 0 |
 | `jcrc` | `N` / `FULL` / `EXCHANGE` (required; see 4.6). `FULL` or `EXCHANGE` together with `sem2` = `Y` is an error |
 
-### (c) ihg.csv — JCRC / Sports
+### (c) ihg.csv — retired
 
-| Column | Type / allowed values |
-|---|---|
-| `matric` | matric pattern |
-| `ccaID` | string (the sport's ccaID) |
-| `placement` | `1st` / `2nd` / `3rd` / `3rd4th_no_match` |
-
-A resident may have several rows; their IHG points are summed.
+ihg.csv (spec ≤ v2.2) is retired: `IHG_FILE_RETIRED`. IHG rows are built from the leader files'
+`ihg` ticks and the bundle's `ihgResult` for that sport; more ticks than `ihgCap` is
+`IHG_OVER_CAP`; a sport with a leader file and no result or cap is `IHG_NOT_SET`.
 
 ### (d) RH-app bundle — produced by the RH app (JCRC)
 
@@ -288,6 +287,7 @@ Notation: resident `r`, CCA `c`, membership `m = (r, c)` taken from the leader f
   ignored** (whatever `ihgInSportNet` says, so it is neither in the net nor flat) with the
   warning `IHG_ON_FINAL_CCA`, to avoid counting IHG twice.
 - Everything below describes the **normal calculation**.
+- IHG points are added in full whatever `semesterOnly` says.
 
 **effBase**
 
@@ -618,10 +618,10 @@ Block results until each is fixed by re-importing a corrected file.
 - `ccaID` not in the bundle
 - two files for the same `ccaID`
 - wrong `formatVersion` or wrong header
-- duplicate matric in residents.csv
+- duplicate matric in residents.csv, or more than one residents.csv
 - bad `gender`, `sem2` or `aux` value
-- ihg.csv `matric` not in residents.csv
-- ihg.csv `ccaID` not in the bundle
+- an ihg.csv (retired)
+- more leader-file `ihg` ticks than the sport's `ihgCap`
 - no RH-app bundle, more than one bundle, a value in a column its section does not use, an IHG
   column on a `sport` = `N` row, an unknown `section`, no `cca` rows, an `ihgCap` that is not
   a whole number ≥ 1, or the same `ccaID` on two `cca` rows
@@ -649,7 +649,10 @@ Shown, do not block.
 - a level entry for a CCA that is not in the bundle (the entry is ignored)
 - `semesterOnly` on a `0.5x` CCA (the tick is ignored)
 - `aux` above `auxCap`
-- IHG for a non-member when `ihgInSportNet` is on
+- IHG for a non-member when `ihgInSportNet` is on (engine only)
+- a sport with a leader file and no IHG result or cap (its ticks get no IHG points yet)
+- `ihg` ticks in a leader file of a CCA that is not a sport in the bundle (ignored)
+- a sport with an IHG result and no member ticked
 - more than 10 `0.5x` memberships for one resident
 - an IHG row for a flat or overridden membership (the row is always ignored)
 - a waiver for a `ccaID` that is not in the bundle (the row is ignored)
@@ -666,8 +669,8 @@ raises one issue rather than a cascade. The IHG file is optional.
 |---|---|---|
 | `UNRECOGNISED_FILE` | error | header matches no file kind and the file name gives no hint |
 | `CSV_SYNTAX` | error | unterminated quote, or a row whose cell count differs from the header |
-| `BAD_HEADER` | error | file name says bundle (`points_bundle_*`) / leader (`points_*`) / flat (`flat_points_*`) / residents / ihg but the header columns are not exactly right (a residents.csv without the `jcrc` column lands here) |
-| `BAD_FORMAT_VERSION` | error | bundle, leader, flat or settings `formatVersion` is not `1` |
+| `BAD_HEADER` | error | file name says bundle (`points_bundle_*`) / leader (`points_*`) / flat (`flat_points_*`) / residents but the header columns are not exactly right (a residents.csv without the `jcrc` column lands here) |
+| `BAD_FORMAT_VERSION` | error | bundle, flat or settings `formatVersion` is not `1`; leader `formatVersion` is not `1` or `2`, or does not match its columns (`ihg` column = `2`, none = `1`) |
 | `MIXED_CCA_ID` | error | one leader file contains more than one `ccaID` |
 | `DUPLICATE_CCA_FILE` | error | two leader files for the same `ccaID` |
 | `MISSING_RESIDENTS_FILE` | error | no residents.csv |
@@ -676,7 +679,8 @@ raises one issue rather than a cascade. The IHG file is optional.
 | `BAD_BUNDLE_FILE` | error | a bundle value in a column its section does not use, an `ihgResult` / `ihgCap` on a `sport` = `N` row, an unknown `section`, a `cca` row without a `ccaID`, or no `cca` rows at all |
 | `BAD_IHG_CAP` | error | a bundle `ihgCap` that is not blank and not a whole number ≥ 1 (read as blank) |
 | `CCAS_FILE_RETIRED` | error | a ccas.csv (by its header or a `ccas` file name); its rows are not read |
-| `DUPLICATE_RESIDENTS_OR_IHG_FILE` | error | more than one residents or ihg file |
+| `IHG_FILE_RETIRED` | error | an ihg.csv (by its header or an `ihg` file name); its rows are not read |
+| `DUPLICATE_RESIDENTS_FILE` | error | more than one residents file |
 | `DUPLICATE_FLAT_FILE` | error | a standalone flat-points file beside the bundle, or more than one without a bundle (the extra copy is ignored) |
 | `BAD_MATRIC` | error | matric does not match `^A\d{7}[A-Z]$` after uppercasing |
 | `UNKNOWN_MATRIC` | error | leader matric not in residents.csv |
@@ -698,8 +702,7 @@ raises one issue rather than a cascade. The IHG file is optional.
 | `OVERRIDE_UNKNOWN_MEMBERSHIP` | error | (override entry) no such membership |
 | `BAD_DISCRETION_POINTS` | error | (discretion entry) a delta is not a finite number |
 | `DISCRETION_UNKNOWN_RESIDENT` | error | (discretion entry) no such resident |
-| `IHG_UNKNOWN_MATRIC` | error | ihg.csv matric not in residents.csv |
-| `IHG_UNKNOWN_CCA` | error | ihg.csv `ccaID` not in the bundle |
+| `IHG_OVER_CAP` | error | a sport's leader file has more `ihg` ticks than its `ihgCap`; that CCA gets no IHG entries |
 | `UNKNOWN_LEVEL` | error | (level entry, 3b) `level` not one of the `levels` |
 | `BAD_LEVEL_TWEAK` | error | (level entry, 3b) `bonusOverride` not a number ≥ 0, or `multiplierOverride` not a number > 0 |
 | `DUPLICATE_LEVEL_NAME` | error | two `levels` in Settings have the same name |
@@ -713,9 +716,12 @@ raises one issue rather than a cascade. The IHG file is optional.
 | `TYPE_NOT_SET` | warning | a non-flat `cca` row with a blank `type` (1x is assumed) |
 | `LEVEL_NOT_SET` | warning | (3b) a non-flat CCA with a leader file and no level or tweak picked (bonus 0 and ×1 are assumed) |
 | `LEVEL_UNKNOWN_CCA` | warning | (3b) a level entry for a CCA not in the bundle; the entry is ignored |
+| `IHG_NOT_SET` | warning | a non-flat `sport` = `Y` CCA with a leader file and a blank `ihgResult` or `ihgCap`; its ticks get no IHG points yet |
+| `IHG_TICK_IGNORED` | warning | `ihg` = `Y` ticks in the leader file of a `sport` = `N` CCA; the ticks are ignored |
+| `IHG_NO_TICKS` | warning | a sport with an `ihgResult` and a cap whose leader file ticks nobody |
 | `SEMESTER_ONLY_ON_HALF_CCA` | warning | `semesterOnly` = `Y` on a `0.5x` CCA (ignored) |
 | `AUX_ABOVE_CAP` | warning | `aux` above `auxCap` |
-| `IHG_NON_MEMBER` | warning | IHG row for a CCA the resident is not in, only when `ihgInSportNet` is on |
+| `IHG_NON_MEMBER` | warning | (engine) IHG entry for a CCA the resident is not in, only when `ihgInSportNet` is on; not raised by file import |
 | `MANY_HALF_CCAS` | warning | a resident has more than 10 `0.5x` memberships |
 | `SETTINGS_UNKNOWN_CCA` | warning | a waiver names a `ccaID` not in the bundle; the row is ignored |
 | `IHG_ON_FINAL_CCA` | warning | an IHG row for a flat or overridden membership; the row is always ignored, whatever `ihgInSportNet` says |

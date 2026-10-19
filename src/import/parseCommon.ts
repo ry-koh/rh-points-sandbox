@@ -23,6 +23,9 @@ const WARNING_CODES: ReadonlySet<IssueCode> = new Set<IssueCode>([
   'TYPE_NOT_SET',
   'LEVEL_NOT_SET',
   'LEVEL_UNKNOWN_CCA',
+  'IHG_NOT_SET',
+  'IHG_TICK_IGNORED',
+  'IHG_NO_TICKS',
 ])
 
 type IssueDetails = Partial<Pick<Issue, 'line' | 'column' | 'ccaID' | 'matric'>>

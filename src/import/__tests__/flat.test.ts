@@ -132,28 +132,6 @@ describe('one issue code per flat mistake', () => {
   })
 })
 
-describe('IHG on a flat membership', () => {
-  const ihg = [{ matric: matricOf(1), ccaID: 'C3', placement: '1st' }]
-
-  it('warns IHG_ON_FINAL_CCA when ihgInSportNet is on, and does not block', () => {
-    const report = run(scenario({ ccas: [...baseCcas(), flatCca()], flat: flatRows(), ihg }), { ...DEFAULT_CONFIG, ihgInSportNet: true })
-    expect(codesOf(report)).toEqual(['IHG_ON_FINAL_CCA'])
-    expect(report.canCompute).toBe(true)
-    expect(report.issues[0]?.severity).toBe('warning')
-  })
-
-  it('warns IHG_ON_FINAL_CCA when ihgInSportNet is off too (the row is always ignored)', () => {
-    const report = run(scenario({ ccas: [...baseCcas(), flatCca()], flat: flatRows(), ihg }))
-    expect(codesOf(report)).toEqual(['IHG_ON_FINAL_CCA'])
-    expect(report.canCompute).toBe(true)
-  })
-
-  it('does not call a flat member a non-member', () => {
-    const report = run(scenario({ ccas: [...baseCcas(), flatCca()], flat: flatRows(), ihg }), { ...DEFAULT_CONFIG, ihgInSportNet: true })
-    expect(codesOf(report)).not.toContain('IHG_NON_MEMBER')
-  })
-})
-
 describe('the jcrc column in residents.csv', () => {
   it('reads N, FULL and EXCHANGE', () => {
     const residents = patchRow(patchRow(baseResidents(), 0, { jcrc: 'FULL' }), 1, { jcrc: 'EXCHANGE' })

@@ -9,7 +9,6 @@ export interface FileInfo {
 export const KIND_LABELS: Readonly<Record<FileKind, string>> = {
   leader: 'Leader',
   residents: 'Residents',
-  ihg: 'IHG',
   flat: 'Flat points',
   settings: 'JCRC settings',
   bundle: 'RH-app bundle',

@@ -2,13 +2,15 @@ import type { CcaLevelEntry, SourceFile } from '../types'
 
 export type Row = Readonly<Record<string, string>>
 
+/** The formatVersion-2 leader header the RH app writes (`ihg` after `incomingRole`). */
 export const LEADER_COLS = [
   'formatVersion', 'ccaID', 'ccaName', 'matric', 'name',
-  'basePoints', 'semesterOnly', 'outgoingRole', 'incomingRole', 'exportedAt',
+  'basePoints', 'semesterOnly', 'outgoingRole', 'incomingRole', 'ihg', 'exportedAt',
 ]
+/** The formatVersion-1 leader header (no `ihg`), still read. */
+export const LEADER_V1_COLS = LEADER_COLS.filter((col) => col !== 'ihg')
 export const RESIDENT_COLS = ['matric', 'name', 'gender', 'sem2', 'aux', 'jcrc']
 export const FLAT_COLS = ['formatVersion', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints', 'exportedAt']
-export const IHG_COLS = ['matric', 'ccaID', 'placement']
 export const BUNDLE_COLS = [
   'formatVersion', 'section', 'scope', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints', 'type', 'sport',
   'ihgResult', 'ihgCap', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note', 'exportedAt',
@@ -55,9 +57,14 @@ export const DEMO_LEVELS: readonly CcaLevelEntry[] = [
   { ccaID: 'C2', level: 'Low Bronze', bonusOverride: null, multiplierOverride: null },
 ]
 
-export function leaderRows(ccaID: string, scores: readonly number[] = BASE_SCORES): Row[] {
+/** formatVersion-2 leader rows; `ihg` is Y on the given row indexes. */
+export function leaderRows(
+  ccaID: string,
+  scores: readonly number[] = BASE_SCORES,
+  { ihg = [] }: { readonly ihg?: readonly number[] } = {},
+): Row[] {
   return scores.map((score, i) => ({
-    formatVersion: '1',
+    formatVersion: '2',
     ccaID,
     ccaName: `Test CCA ${ccaID}`,
     matric: matricOf(i + 1),
@@ -66,6 +73,7 @@ export function leaderRows(ccaID: string, scores: readonly number[] = BASE_SCORE
     semesterOnly: 'N',
     outgoingRole: 'none',
     incomingRole: 'none',
+    ihg: ihg.includes(i) ? 'Y' : 'N',
     exportedAt: EXPORTED_AT,
   }))
 }
@@ -163,11 +171,10 @@ export interface Scenario {
   /** null leaves the bundle out. */
   readonly bundle: null | undefined
   readonly leaders: Readonly<Record<string, readonly Row[]>>
-  readonly ihg: readonly Row[] | null
   readonly extra: readonly SourceFile[]
 }
 
-/** A valid import (10 residents, C1 and C2 in one bundle with a default range, no IHG) with any part replaced. */
+/** A valid import (10 residents, C1 and C2 in one bundle with a default range, no sports) with any part replaced. */
 export function scenario(overrides: Partial<Scenario> = {}): SourceFile[] {
   const s: Scenario = {
     residents: baseResidents(),
@@ -176,7 +183,6 @@ export function scenario(overrides: Partial<Scenario> = {}): SourceFile[] {
     flat: null,
     bundle: undefined,
     leaders: { C1: leaderRows('C1'), C2: leaderRows('C2') },
-    ihg: null,
     extra: [],
     ...overrides,
   }
@@ -186,6 +192,5 @@ export function scenario(overrides: Partial<Scenario> = {}): SourceFile[] {
   for (const [ccaID, rows] of Object.entries(s.leaders)) {
     files.push({ name: leaderFileName(ccaID), text: toCsv(LEADER_COLS, rows) })
   }
-  if (s.ihg) files.push({ name: 'ihg.csv', text: toCsv(IHG_COLS, s.ihg) })
   return [...files, ...s.extra]
 }

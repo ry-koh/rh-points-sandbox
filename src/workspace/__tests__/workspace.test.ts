@@ -224,6 +224,16 @@ describe('version 1 files (spec 8b migration)', () => {
     expect(restored.report.issues.map((i) => i.code)).not.toContain('IHG_FILE_RETIRED')
   })
 
+  it('waits for the bundle: nothing is listed as stale, both groups are unchecked', async () => {
+    const parsed = await parseWorkspaceFile(v1Text)
+    if (!parsed.ok) throw new Error('expected ok')
+    const restored = restoreWorkspace(parsed.workspace, parsed.notes)
+    expect(restored.notes).toHaveLength(2)
+    expect(restored.unchecked).toEqual({ review: true, computed: true })
+    expect(restored.stale).toEqual({ overrides: [], discretion: [], resolutions: [], edits: [], vetted: [], ccaLevels: [] })
+    expect(restored.workspace.discretion).toEqual(v1.discretion)
+  })
+
   it('drops a retired file by its header whatever its name, and by its name whatever its text', () => {
     const files = [
       { name: 'levels.csv', text: v1.files[1].text },
@@ -289,25 +299,32 @@ describe('restoreWorkspace re-validates the saved files', () => {
     expect(restored.stale.discretion).toEqual([])
   })
 
-  it('reports discretion for a resident who left the residents list', () => {
-    const files = workspace.files.map((f) =>
-      f.name === 'residents.csv' ? { ...f, text: f.text.split('\n').filter((l) => !l.startsWith('A9900002Z')).join('\n') } : f,
-    )
-    const restored = restoreWorkspace({ ...workspace, files })
-    expect(restored.stale.discretion).toEqual(workspace.discretion)
+  it('still lists discretion for a resident who is not in the residents list, when the import is good', () => {
+    const gone = { matric: 'A9999999Z', stayingDelta: 1, biddingDelta: 1, reason: 'left' }
+    const restored = restoreWorkspace({ ...workspace, discretion: [...workspace.discretion, gone] })
+    expect(restored.report.canCompute).toBe(true)
+    expect(restored.unchecked).toEqual({ review: false, computed: false })
+    expect(restored.stale.discretion).toEqual([gone])
   })
 
   it('reports a wheel resolution that no longer matches a tie group', () => {
     expect(restoreWorkspace(workspace).stale.resolutions).toEqual(workspace.resolutions)
   })
 
-  it('reports every item as stale while the saved files do not import', () => {
+  it('leaves computed entries unchecked while the import has an error, and checks review items', () => {
     const files = workspace.files.filter((f) => f.name !== 'residents.csv')
     const restored = restoreWorkspace({ ...workspace, files })
     expect(restored.report.canCompute).toBe(false)
-    expect(restored.stale.overrides).toEqual(workspace.finalOverrides)
-    expect(restored.stale.discretion).toEqual(workspace.discretion)
-    expect(restored.stale.resolutions).toEqual(workspace.resolutions)
+    expect(restored.report.bundle).not.toBeNull()
+    expect(restored.unchecked).toEqual({ review: false, computed: true })
+    expect(restored.stale.overrides).toEqual([])
+    expect(restored.stale.discretion).toEqual([])
+    expect(restored.stale.resolutions).toEqual([])
+    expect(restored.stale.ccaLevels).toEqual([])
+  })
+
+  it('has nothing unchecked when the import computes', () => {
+    expect(restoreWorkspace(workspace).unchecked).toEqual({ review: false, computed: false })
   })
 
   it('reports nothing about review or levels while everything still matches', () => {

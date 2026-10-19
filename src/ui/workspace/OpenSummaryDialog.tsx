@@ -18,10 +18,17 @@ function Line({ ok, children }: { readonly ok: boolean; readonly children: React
   )
 }
 
+const WAITING_FOR_BUNDLE =
+  'Score edits, vetted marks, CCA levels, discretion points, final-points overrides and wheel results will be checked once the RH-app bundle is loaded.'
+const WAITING_FOR_IMPORT = 'Discretion points, final-points overrides and wheel results will be checked once the import has no errors.'
+
+const waitingNote = (unchecked: RestoredWorkspace['unchecked']): string =>
+  unchecked.review ? WAITING_FOR_BUNDLE : WAITING_FOR_IMPORT
+
 /** What was just loaded, and anything in the file that no longer applies. */
 export function OpenSummaryDialog({ restored, onClose }: OpenSummaryDialogProps) {
   if (!restored) return <Modal open={false} title="Workspace opened" onClose={onClose} footer={null}>{null}</Modal>
-  const { workspace, report, stale, notes } = restored
+  const { workspace, report, stale, notes, unchecked } = restored
   const ccaName = (ccaID: string): string => report.bundle?.ccas.find((c) => c.ccaID === ccaID)?.ccaName ?? ccaID
   const reviewStale = stale.edits.length + stale.vetted.length + stale.ccaLevels.length
   const { errors, warnings } = countIssues(report)
@@ -44,11 +51,15 @@ export function OpenSummaryDialog({ restored, onClose }: OpenSummaryDialogProps)
           {warnings > 0 ? ` · ${plural(warnings, 'warning')}` : ''}.
         </Line>
         <Line ok>Your settings were replaced by the ones saved in the file.</Line>
-        <Line ok={staleCount === 0}>
-          {staleCount === 0
-            ? 'Every final-points override, discretion entry and wheel result still applies.'
-            : `${plural(staleCount, 'saved item')} no longer match the files and are not used:`}
-        </Line>
+        {unchecked.review || unchecked.computed ? (
+          <Line ok>{waitingNote(unchecked)}</Line>
+        ) : (
+          <Line ok={staleCount === 0}>
+            {staleCount === 0
+              ? 'Every final-points override, discretion entry and wheel result still applies.'
+              : `${plural(staleCount, 'saved item')} no longer match the files and are not used:`}
+          </Line>
+        )}
       </ul>
       {staleCount > 0 && (
         <ul className="mt-1 ml-6 list-disc text-body text-muted">

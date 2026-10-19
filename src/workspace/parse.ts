@@ -168,22 +168,31 @@ export function sandboxInputOf(workspace: Pick<Workspace, 'ccaLevels' | 'review'
 /**
  * Loads a workspace: re-runs the import validation on the saved files, then reports every
  * override, discretion entry, wheel resolution, score edit, vetted mark and level entry that no
- * longer matches. Stale entries are never applied silently. While the files do not import, the
- * computed entries cannot be checked, so every one of them is reported as stale. `notes` are the
- * migration notes from reading the file.
+ * longer matches. Stale entries are never applied silently. What cannot be checked yet is not
+ * called stale: with no bundle the review items are `unchecked.review`, and while the import
+ * cannot compute the computed entries are `unchecked.computed`. Nothing is dropped. `notes` are
+ * the migration notes from reading the file.
  */
 export function restoreWorkspace(workspace: Workspace, notes: readonly string[] = []): RestoredWorkspace {
   const report = validateImport(workspace.files, workspace.config, sandboxInputOf(workspace))
   const bundleIds = new Set(report.bundle?.ccas.map((cca) => cca.ccaID) ?? [])
-  const review = {
-    edits: report.review.edits.filter((checked) => checked.status !== 'applied'),
-    vetted: workspace.review.vetted.filter((mark) => vettedStatus(mark, report.perCca) !== 'vetted'),
-    ccaLevels: workspace.ccaLevels.filter((entry) => !bundleIds.has(entry.ccaID)),
-  }
+  const reviewUnchecked = report.bundle === null
+  const review = reviewUnchecked
+    ? { edits: [], vetted: [], ccaLevels: [] }
+    : {
+        edits: report.review.edits.filter((checked) => checked.status !== 'applied'),
+        vetted: workspace.review.vetted.filter((mark) => vettedStatus(mark, report.perCca) !== 'vetted'),
+        ccaLevels: workspace.ccaLevels.filter((entry) => !bundleIds.has(entry.ccaID)),
+      }
   const { input } = report
   if (!report.canCompute || !input) {
-    const { finalOverrides, discretion, resolutions } = workspace
-    return { workspace, report, stale: { overrides: finalOverrides, discretion, resolutions, ...review }, notes }
+    return {
+      workspace,
+      report,
+      stale: { overrides: [], discretion: [], resolutions: [], ...review },
+      unchecked: { review: reviewUnchecked, computed: true },
+      notes,
+    }
   }
   const options: ComputeOptions = {
     overrides: workspace.finalOverrides,
@@ -203,6 +212,7 @@ export function restoreWorkspace(workspace: Workspace, notes: readonly string[] 
       resolutions: staleOf(run.resolutions),
       ...review,
     },
+    unchecked: { review: reviewUnchecked, computed: false },
     notes,
   }
 }

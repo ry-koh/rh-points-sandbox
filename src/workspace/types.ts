@@ -101,6 +101,11 @@ export interface RestoredWorkspace {
     /** Level entries for CCAs the loaded bundle does not list. */
     readonly ccaLevels: readonly CcaLevelEntry[]
   }
+  /**
+   * Groups that could not be checked yet, so nothing in them is listed as stale: `review` while
+   * no RH-app bundle is loaded, `computed` while the import cannot compute.
+   */
+  readonly unchecked: { readonly review: boolean; readonly computed: boolean }
   /** The migration notes, passed through from reading the file. */
   readonly notes: readonly string[]
 }

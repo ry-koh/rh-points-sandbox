@@ -37,8 +37,8 @@
 - **Export header lines** (6.6): every list and comparison export adds `# review edits: N`,
   `# levels: ...` and `# level tweaks: ...` after the out-of-range, override and discretion lines.
   They never carry a score or a resident's name.
-- **Open workspace** (8b) lists the migration notes, a missing bundle and every stale score edit,
-  vetted mark and level entry. Save workspace says what it holds.
+- **Open workspace** (8b) lists the migration notes, a missing bundle and, once they can be checked, every stale score
+  edit, vetted mark and level entry (until then, one calm line). Save workspace says what it holds.
 
 **Changes in v2.2**
 
@@ -1209,6 +1209,11 @@ and Settings says how many tweaks were cleared.
   6.3, 5.6), score edits that are `changed` or `stale` (6.4), vetted marks that no longer count
   (6.5) and level entries for CCAs not in the bundle are reported, with the migration notes, and
   never applied silently.
+  What cannot be checked yet is **not** reported as stale: with no usable bundle the score edits,
+  vetted marks and level entries are `unchecked.review`; while the import cannot compute the
+  overrides, discretion entries and wheel resolutions are `unchecked.computed`. The open summary
+  then shows one line saying they will be checked once the bundle is loaded (or once the import
+  has no errors). Nothing is deleted or applied by this.
 
 ## 9. Open items for JCRC
 

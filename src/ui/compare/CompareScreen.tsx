@@ -39,8 +39,8 @@ export function CompareScreen({ state, scenarios }: CompareScreenProps) {
   const configB = configOf(sideB)
   const { finalOverrides, discretion, resolutions } = state
   const entries = useMemo(() => entryOptions({ finalOverrides, discretion, resolutions }), [finalOverrides, discretion, resolutions])
-  const runA = useMemo(() => runSide(state.files, state.overrides, configA, entries), [state.files, state.overrides, configA, entries])
-  const runB = useMemo(() => runSide(state.files, state.overrides, configB, entries), [state.files, state.overrides, configB, entries])
+  const runA = useMemo(() => runSide(state.files, configA, entries), [state.files, configA, entries])
+  const runB = useMemo(() => runSide(state.files, configB, entries), [state.files, configB, entries])
   const comparison = useMemo(() => (runA.ok && runB.ok ? compareRuns(runA.run, runB.run) : null), [runA, runB])
   const diffs = configDifferences(configA, configB)
   const query = search.trim().toLowerCase()
@@ -55,7 +55,7 @@ export function CompareScreen({ state, scenarios }: CompareScreenProps) {
         <h1 className="text-display font-semibold tracking-tight">Compare</h1>
         <SidePicker label="A" value={sideA} scenarios={scenarios} onChange={setSideA} />
         <SidePicker label="B" value={sideB} scenarios={scenarios} onChange={setSideB} />
-        <Button className="ml-auto" disabled={!comparison} onClick={() => comparison && downloadCsv(`rhps_comparison_${exportStamp(new Date())}.csv`, buildComparisonCsv(comparison, state.report.overrides, { a: labelOf(sideA), b: labelOf(sideB) }))}>
+        <Button className="ml-auto" disabled={!comparison} onClick={() => comparison && downloadCsv(`rhps_comparison_${exportStamp(new Date())}.csv`, buildComparisonCsv(comparison, state.report.outOfRange, { a: labelOf(sideA), b: labelOf(sideB) }))}>
           <Download aria-hidden size={15} /> Export comparison
         </Button>
       </div>

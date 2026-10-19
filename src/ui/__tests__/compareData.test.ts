@@ -8,8 +8,8 @@ const config = { ...DEFAULT_CONFIG, headcounts: { ...DEFAULT_CONFIG.headcounts, 
 
 describe('compare runs with the current adjustments', () => {
   it('applies final-points overrides and discretion on a side', () => {
-    const plain = runSide(files, [], config, {})
-    const adjusted = runSide(files, [], config, {
+    const plain = runSide(files, config, {})
+    const adjusted = runSide(files, config, {
       overrides: [{ matric: matricOf(1), ccaID: 'C1', finalPoints: 0, reason: 'test' }],
       discretion: [{ matric: matricOf(2), stayingDelta: 100, biddingDelta: 100, reason: 'test' }],
     })
@@ -21,7 +21,7 @@ describe('compare runs with the current adjustments', () => {
   })
 
   it('applies wheel resolutions on a side', () => {
-    const side = runSide(files, [], config, { resolutions: [{ list: 'maleStaying', order: ['x', 'y'] }] })
+    const side = runSide(files, config, { resolutions: [{ list: 'maleStaying', order: ['x', 'y'] }] })
     if (!side.ok) throw new Error('expected the side to run')
     expect(side.run.resolutions.map((r) => r.status)).toEqual(['stale'])
   })

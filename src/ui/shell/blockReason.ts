@@ -6,13 +6,13 @@ const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' 
 export function blockReason(report: ImportReport, fileCount: number): string | null {
   if (report.canCompute) return null
   if (fileCount === 0) return 'Add files to start'
-  const blocking = report.issues.filter((i) => i.severity === 'error' && i.overridden !== true)
+  const blocking = report.issues.filter((i) => i.severity === 'error')
   if (blocking.length > 0) return `${plural(blocking.length, 'error')} to fix`
   return 'Import is not complete'
 }
 
 export function countIssues(report: ImportReport): { errors: number; warnings: number } {
-  const errors = report.issues.filter((i) => i.severity === 'error' && i.overridden !== true).length
+  const errors = report.issues.filter((i) => i.severity === 'error').length
   const warnings = report.issues.filter((i) => i.severity === 'warning').length
   return { errors, warnings }
 }

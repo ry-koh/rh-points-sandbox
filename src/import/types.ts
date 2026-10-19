@@ -65,15 +65,12 @@ export type IssueCode =
 export interface Issue {
   readonly severity: 'error' | 'warning'
   readonly code: IssueCode
-  readonly overridable: boolean
   readonly fileName: string
   readonly line?: number
   readonly column?: string
   readonly ccaID?: string
   readonly matric?: string
   readonly message: string
-  /** True once the user has overridden this (only MEAN_SD_OUT_OF_RANGE can be). */
-  readonly overridden?: boolean
 }
 
 export interface CsvRow {
@@ -160,7 +157,7 @@ export interface ParseResult<T> {
   readonly issues: readonly Issue[]
 }
 
-export type CcaStatus = 'ok' | 'out_of_range' | 'overridden' | 'missing_file' | 'flat'
+export type CcaStatus = 'ok' | 'out_of_range' | 'missing_file' | 'flat'
 
 export interface PerCcaReport {
   readonly ccaID: string
@@ -175,7 +172,8 @@ export interface PerCcaReport {
   readonly flatPoints: number | null
 }
 
-export interface OverrideRecord {
+/** A CCA whose mean or SD is outside its allowed range: allowed, but listed on every export. */
+export interface OutOfRangeRecord {
   readonly ccaID: string
   readonly name: string
   readonly fileName: string
@@ -200,10 +198,6 @@ export interface ImportReport {
   readonly settings: LoadedSettings | null
   readonly issues: readonly Issue[]
   readonly perCca: readonly PerCcaReport[]
-  readonly overrides: readonly OverrideRecord[]
+  readonly outOfRange: readonly OutOfRangeRecord[]
   readonly input?: PipelineInput
-}
-
-export interface OverrideRequest {
-  readonly ccaID: string
 }

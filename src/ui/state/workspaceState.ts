@@ -16,7 +16,7 @@ export function toWorkspace(state: AppState, savedAt: Date): Workspace {
     version: WORKSPACE_VERSION,
     savedAt: savedAt.toISOString(),
     files: state.files,
-    meanSdOverrides: state.overrides,
+    meanSdOverrides: [],
     config: state.config,
     finalOverrides: state.finalOverrides,
     discretion: state.discretion,
@@ -42,7 +42,6 @@ export function fromRestored(restored: RestoredWorkspace): LoadedWorkspace {
   )
   return {
     files: workspace.files,
-    overrides: workspace.meanSdOverrides,
     config: workspace.config,
     finalOverrides: workspace.finalOverrides,
     discretion: workspace.discretion,

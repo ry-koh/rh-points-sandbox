@@ -32,7 +32,7 @@ describe('RH-app export format', () => {
 })
 
 describe('RH-app export imports cleanly', () => {
-  const report = validateImport(files, DEFAULT_CONFIG, [])
+  const report = validateImport(files, DEFAULT_CONFIG)
 
   it('has no issues and can compute', () => {
     expect(report.issues).toEqual([])
@@ -78,7 +78,7 @@ const flatFiles = [flatRead(FLAT), flatRead('residents.csv'), flatRead('ccas.csv
 
 describe('RH-app flat-points export', () => {
   const text = flatFiles[0]!.text
-  const report = validateImport(flatFiles, DEFAULT_CONFIG, [])
+  const report = validateImport(flatFiles, DEFAULT_CONFIG)
 
   it('uses CRLF line endings with a trailing CRLF, as the app writes', () => {
     expect(text.startsWith('formatVersion,ccaID,ccaName,matric,name,flatPoints,exportedAt\r\n')).toBe(true)
@@ -120,7 +120,7 @@ const settingsFiles = [settingsRead(SETTINGS), settingsRead('points_9101_2027040
 
 describe('RH-app points settings export', () => {
   const text = settingsFiles[0]!.text
-  const report = validateImport(settingsFiles, DEFAULT_CONFIG, [])
+  const report = validateImport(settingsFiles, DEFAULT_CONFIG)
 
   it('is exactly the bytes the app writes', () => {
     expect(text).toBe(
@@ -143,7 +143,7 @@ describe('RH-app points settings export', () => {
     expect(report.perCca).toEqual([
       expect.objectContaining({ ccaID: '9101', status: 'ok', range: { meanMin: 12, meanMax: 15, sdMin: 1.5, sdMax: 5 } }),
     ])
-    const without = validateImport(settingsFiles.filter((f) => f.name !== SETTINGS), DEFAULT_CONFIG, [])
+    const without = validateImport(settingsFiles.filter((f) => f.name !== SETTINGS), DEFAULT_CONFIG)
     expect(without.perCca[0]).toMatchObject({ status: 'out_of_range' })
   })
 })

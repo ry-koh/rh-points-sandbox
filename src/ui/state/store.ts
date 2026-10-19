@@ -33,8 +33,6 @@ export interface Finalised {
 
 export interface AppState {
   readonly files: readonly SourceFile[]
-  /** ccaIDs whose mean/SD error is overridden. */
-  readonly overrides: readonly string[]
   readonly config: ScenarioConfig
   /** Final-points overrides, discretion and wheel results: resident data, in memory only. */
   readonly finalOverrides: readonly FinalOverride[]
@@ -53,7 +51,6 @@ export interface AppState {
 /** Everything a workspace file restores; the report is recomputed from the files. */
 export interface LoadedWorkspace {
   readonly files: readonly SourceFile[]
-  readonly overrides: readonly string[]
   readonly config: ScenarioConfig
   readonly finalOverrides: readonly FinalOverride[]
   readonly discretion: readonly Discretion[]
@@ -64,7 +61,6 @@ export interface LoadedWorkspace {
 export type Action =
   | { readonly type: 'addFiles'; readonly files: readonly SourceFile[] }
   | { readonly type: 'removeFile'; readonly name: string }
-  | { readonly type: 'toggleOverride'; readonly ccaID: string }
   | { readonly type: 'setConfig'; readonly config: ScenarioConfig }
   | { readonly type: 'setFinalOverride'; readonly entry: FinalOverride }
   | { readonly type: 'removeFinalOverride'; readonly matric: string; readonly ccaID: string }
@@ -80,14 +76,13 @@ export type Action =
   | { readonly type: 'loadWorkspace'; readonly workspace: LoadedWorkspace }
   | { readonly type: 'markSaved'; readonly at: string }
 
-type Inputs = Pick<AppState, 'files' | 'overrides' | 'config'> & Partial<AppState>
+type Inputs = Pick<AppState, 'files' | 'config'> & Partial<AppState>
 
-/** Validation is pure and fast, so it runs on every change to files, overrides or config. */
+/** Validation is pure and fast, so it runs on every change to files or config. */
 function revalidate(state: Inputs): AppState {
-  const report = validateImport(state.files, state.config, state.overrides.map((ccaID) => ({ ccaID })))
+  const report = validateImport(state.files, state.config)
   return {
     files: state.files,
-    overrides: state.overrides,
     config: state.config,
     finalOverrides: state.finalOverrides ?? [],
     discretion: state.discretion ?? [],
@@ -126,7 +121,7 @@ export function entryOptions(state: Pick<AppState, 'finalOverrides' | 'discretio
 }
 
 export function initialState(config: ScenarioConfig = DEFAULT_CONFIG): AppState {
-  return revalidate({ files: [], overrides: [], config })
+  return revalidate({ files: [], config })
 }
 
 /** A dropped file with the same name replaces the earlier one. */
@@ -143,7 +138,7 @@ export const resolutionKey = (list: WheelList, matrics: readonly string[]): stri
 
 const keyOfResolution = (r: WheelResolution): string => resolutionKey(r.list, r.order)
 
-/** Files, mean/SD overrides, settings, final-points overrides and discretion: locked while finalised. */
+/** Files, settings, final-points overrides and discretion: locked while finalised. */
 function inputChange(state: AppState, action: Action): AppState {
   if (state.finalised) return state
   switch (action.type) {
@@ -151,11 +146,6 @@ function inputChange(state: AppState, action: Action): AppState {
       return revalidate({ ...state, files: mergeFiles(state.files, action.files) })
     case 'removeFile':
       return revalidate({ ...state, files: state.files.filter((f) => f.name !== action.name) })
-    case 'toggleOverride': {
-      const on = state.overrides.includes(action.ccaID)
-      const overrides = on ? state.overrides.filter((id) => id !== action.ccaID) : [...state.overrides, action.ccaID]
-      return revalidate({ ...state, overrides })
-    }
     case 'setConfig':
       return revalidate({ ...state, config: action.config })
     case 'setFinalOverride':
@@ -209,7 +199,6 @@ function change(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'addFiles':
     case 'removeFile':
-    case 'toggleOverride':
     case 'setConfig':
     case 'setFinalOverride':
     case 'removeFinalOverride':
@@ -233,7 +222,7 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'loadWorkspace':
       return revalidate({ ...action.workspace, dirty: false, savedAt: null })
     default: {
-      // Any real change to files, overrides, adjustments, wheel results, penalties,
+      // Any real change to files, adjustments, wheel results, penalties,
       // finalise state or settings marks the workspace as having unsaved changes.
       const next = change(state, action)
       return next === state ? state : { ...next, dirty: true }

@@ -25,8 +25,8 @@ export function App() {
     () =>
       reason !== null &&
       state.files.length > 0 &&
-      validateImport(state.files, DEFAULT_CONFIG, state.overrides.map((ccaID) => ({ ccaID }))).canCompute,
-    [reason, state.files, state.overrides],
+      validateImport(state.files, DEFAULT_CONFIG).canCompute,
+    [reason, state.files],
   )
   // Closing the tab with unsaved resident data loses it: ask the browser to warn.
   const warnOnLeave = state.dirty && hasResidentData(state)

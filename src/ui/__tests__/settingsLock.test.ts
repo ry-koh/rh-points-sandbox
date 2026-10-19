@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, computeAll, createPenaltyState } from '../../engine'
 import {
   leaderRows,
+  matricOf,
+  patchRow,
   scenario,
   settingsDefaultRow,
   settingsWaiverRow,
@@ -41,7 +43,7 @@ describe('Finalise needs the JCRC settings file', () => {
   })
 
   it('still needs the import to be clean, as before', () => {
-    const state = load(withSettings(scenario({ leaders: { C1: leaderRows('C1', [20, 20, 20, 20, 20, 20]), C2: leaderRows('C2') } })))
+    const state = load(withSettings(scenario({ leaders: { C1: patchRow(leaderRows('C1'), -1, { matric: matricOf(99) }), C2: leaderRows('C2') } })))
     expect(state.report.canCompute).toBe(false)
     expect(finaliseBlock(state)).not.toBeNull()
     expect(reducer(state, { type: 'finalise', penalty: { cutoffs: { M: null, F: null }, applied: [], removed: [] } }).finalised).toBeNull()

@@ -14,11 +14,10 @@ export type SideRun = { readonly ok: true; readonly run: PipelineResult } | { re
  */
 export function runSide(
   files: readonly SourceFile[],
-  overrides: readonly string[],
   config: ScenarioConfig,
   entries: EntryOptions,
 ): SideRun {
-  const report = validateImport(files, config, overrides.map((ccaID) => ({ ccaID })))
+  const report = validateImport(files, config)
   if (!report.canCompute || !report.input) {
     return { ok: false, error: `the files do not pass with these settings (${blockReason(report, files.length) ?? 'blocked'})` }
   }
@@ -50,7 +49,7 @@ export const COMPARE_COLUMNS = ['list', 'matric', 'name', 'statusA', 'statusB', 
 /** Every row of every list, A against B, after the usual export header lines. */
 export function buildComparisonCsv(
   comparison: Comparison,
-  overrides: readonly { readonly name: string }[],
+  outOfRange: readonly { readonly name: string }[],
   labels: { readonly a: string; readonly b: string },
 ): string {
   const rows = LIST_KEYS.flatMap((list) =>
@@ -58,6 +57,6 @@ export function buildComparisonCsv(
       toCsvLine([list, r.matric, r.name, r.statusA, r.statusB, String(r.rankA ?? ''), String(r.rankB ?? ''), signed(r.rankDelta, 0), fixed(r.pointsA), fixed(r.pointsB), signed(r.pointsDelta, POINTS_DECIMALS)]),
     ),
   )
-  const lines = [...headerLines(overrides, null), `# A: ${labels.a} · B: ${labels.b}`, COMPARE_COLUMNS.join(','), ...rows]
+  const lines = [...headerLines(outOfRange, null), `# A: ${labels.a} · B: ${labels.b}`, COMPARE_COLUMNS.join(','), ...rows]
   return `${lines.join('\n')}\n`
 }

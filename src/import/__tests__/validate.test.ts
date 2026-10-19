@@ -19,8 +19,7 @@ import {
 const run = (
   files: readonly SourceFile[],
   config: ScenarioConfig = DEFAULT_CONFIG,
-  overrides: readonly { ccaID: string }[] = [],
-): ImportReport => validateImport(files, config, overrides)
+): ImportReport => validateImport(files, config)
 
 const codesOf = (report: ImportReport): string[] =>
   [...new Set(report.issues.map((issue) => issue.code))].sort()
@@ -76,7 +75,7 @@ const CASES: Case[] = [
   { name: 'MISSING_OUTGOING_MULTIPLIER', files: scenario({ leaders: { ...lastOf({ outgoingRole: 'head' }), C2: leaderRows('C2') } }), codes: ['MISSING_OUTGOING_MULTIPLIER'], blocks: true },
   { name: 'DUPLICATE_CCA', files: scenario({ ccas: [...baseCcas(), ...baseCcas().slice(0, 1)] }), codes: ['DUPLICATE_CCA'], blocks: true },
   { name: 'BAD_RANGE', files: scenario({ ccas: patchRow(baseCcas(), 0, { meanMin: 'low' }) }), codes: ['BAD_RANGE'], blocks: true },
-  { name: 'MEAN_SD_OUT_OF_RANGE', files: scenario({ leaders: { C1: leaderRows('C1', [20, 20, 20, 20, 20, 20]), C2: leaderRows('C2') } }), codes: ['MEAN_SD_OUT_OF_RANGE'], blocks: true },
+  { name: 'MEAN_SD_OUT_OF_RANGE', files: scenario({ leaders: { C1: leaderRows('C1', [20, 20, 20, 20, 20, 20]), C2: leaderRows('C2') } }), codes: ['MEAN_SD_OUT_OF_RANGE'], blocks: false },
   { name: 'NO_LEADER_FILE (warning)', files: scenario({ leaders: { C1: c1 } }), codes: ['NO_LEADER_FILE'], blocks: false },
   { name: 'SEMESTER_ONLY_ON_HALF_CCA (warning)', files: scenario({ leaders: { C1: c1, C2: patchRow(leaderRows('C2'), -1, { semesterOnly: 'Y' }) } }), codes: ['SEMESTER_ONLY_ON_HALF_CCA'], blocks: false },
   { name: 'AUX_ABOVE_CAP (warning)', files: scenario({ residents: patchRow(baseResidents(), -1, { aux: '12' }) }), codes: ['AUX_ABOVE_CAP'], blocks: false },
@@ -141,7 +140,6 @@ describe('issue details', () => {
     expect(issue).toMatchObject({
       severity: 'error',
       code: 'BAD_BASE_POINTS',
-      overridable: false,
       fileName: leaderFileName('C1'),
       line: 5,
       column: 'basePoints',
@@ -165,11 +163,10 @@ describe('issue details', () => {
     expect(run(scenario({ ccas, leaders: { C1: rows, C2: leaderRows('C2') } })).issues).toEqual([])
   })
 
-  it('marks only MEAN_SD_OUT_OF_RANGE as overridable', () => {
+  it('MEAN_SD_OUT_OF_RANGE is a warning that names the CCA', () => {
     const files = scenario({ leaders: { C1: leaderRows('C1', [20, 20, 20, 20, 20, 20]), C2: leaderRows('C2') } })
     const [issue] = run(files).issues
-    expect(issue?.overridable).toBe(true)
-    expect(issue?.ccaID).toBe('C1')
+    expect(issue).toMatchObject({ severity: 'warning', code: 'MEAN_SD_OUT_OF_RANGE', ccaID: 'C1' })
   })
 
   it('treats a leader file with no members as out of range', () => {
@@ -208,53 +205,36 @@ describe('mean/SD ranges', () => {
   })
 })
 
-describe('overrides', () => {
+describe('out of range', () => {
   const failing = scenario({ leaders: { C1: leaderRows('C1', [20, 20, 20, 20, 20, 20]), C2: leaderRows('C2') } })
 
-  it('an overridden mean/SD error no longer blocks and is listed in report.overrides', () => {
-    const report = run(failing, DEFAULT_CONFIG, [{ ccaID: 'C1' }])
-    expect(report.canCompute).toBe(true)
-    expect(report.input).toBeDefined()
-    expect(report.perCca[0]?.status).toBe('overridden')
-    expect(report.overrides).toEqual([
-      expect.objectContaining({ ccaID: 'C1', name: 'Test CCA One', fileName: leaderFileName('C1'), mean: 20 }),
-    ])
-    expect(report.issues[0]).toMatchObject({ code: 'MEAN_SD_OUT_OF_RANGE', overridden: true })
-  })
-
-  it('without an override the same file blocks', () => {
+  it('lists out-of-range CCAs in report.outOfRange with mean, sd, range and fileName', () => {
     const report = run(failing)
-    expect(report.canCompute).toBe(false)
-    expect(report.input).toBeUndefined()
+    expect(report.canCompute).toBe(true)
     expect(report.perCca[0]?.status).toBe('out_of_range')
-    expect(report.overrides).toEqual([])
+    expect(report.outOfRange).toEqual([
+      {
+        ccaID: 'C1',
+        name: 'Test CCA One',
+        fileName: leaderFileName('C1'),
+        mean: 20,
+        sd: 0,
+        range: DEFAULT_CONFIG.meanSdDefault,
+      },
+    ])
   })
 
-  it('overriding a different CCA does not unblock', () => {
-    expect(run(failing, DEFAULT_CONFIG, [{ ccaID: 'C2' }]).canCompute).toBe(false)
+  it('lists nothing when every CCA is in range', () => {
+    expect(run(scenario()).outOfRange).toEqual([])
   })
 
-  it('non-overridable errors ignore override attempts', () => {
-    const files = scenario({ leaders: { ...lastOf({ matric: matricOf(99) }), C2: leaderRows('C2') } })
-    const report = run(files, DEFAULT_CONFIG, [{ ccaID: 'C1' }, { ccaID: 'C2' }])
-    expect(report.canCompute).toBe(false)
-    expect(report.overrides).toEqual([])
-    expect(codesOf(report)).toEqual(['UNKNOWN_MATRIC'])
-  })
-
-  it('an override does not hide other errors in the same import', () => {
+  it('does not hide other errors in the same import', () => {
     const files = scenario({
       leaders: { C1: leaderRows('C1', [20, 20, 20, 20, 20, 20]), C2: patchRow(leaderRows('C2'), -1, { matric: matricOf(99) }) },
     })
-    const report = run(files, DEFAULT_CONFIG, [{ ccaID: 'C1' }])
+    const report = run(files)
     expect(report.canCompute).toBe(false)
-    expect(report.overrides).toHaveLength(1)
-  })
-
-  it('ignores an override for a CCA that is fine', () => {
-    const report = run(scenario(), DEFAULT_CONFIG, [{ ccaID: 'C1' }])
-    expect(report.overrides).toEqual([])
-    expect(report.perCca[0]?.status).toBe('ok')
+    expect(report.outOfRange).toHaveLength(1)
   })
 })
 
@@ -301,10 +281,10 @@ describe('purity', () => {
   const files = scenario({ leaders: { C1: leaderRows('C1', [20, 20, 20, 20, 20, 20]), C2: leaderRows('C2') } })
 
   it('gives the same report for the same input', () => {
-    expect(run(files, DEFAULT_CONFIG, [{ ccaID: 'C1' }])).toEqual(run(files, DEFAULT_CONFIG, [{ ccaID: 'C1' }]))
+    expect(run(files, DEFAULT_CONFIG)).toEqual(run(files, DEFAULT_CONFIG))
   })
 
   it('does not mutate its inputs', () => {
-    expect(() => run(deepFreeze([...files]), deepFreeze({ ...DEFAULT_CONFIG }), deepFreeze([{ ccaID: 'C1' }]))).not.toThrow()
+    expect(() => run(deepFreeze([...files]), deepFreeze({ ...DEFAULT_CONFIG }))).not.toThrow()
   })
 })

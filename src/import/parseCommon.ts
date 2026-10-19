@@ -21,6 +21,7 @@ const WARNING_CODES: ReadonlySet<IssueCode> = new Set<IssueCode>([
   'IHG_ON_FINAL_CCA',
   'CCAS_RANGE_IGNORED',
   'SETTINGS_UNKNOWN_CCA',
+  'MEAN_SD_OUT_OF_RANGE',
 ])
 
 type IssueDetails = Partial<Pick<Issue, 'line' | 'column' | 'ccaID' | 'matric'>>
@@ -37,7 +38,6 @@ export function makeIssue(
   return {
     severity: WARNING_CODES.has(code) ? 'warning' : 'error',
     code,
-    overridable: code === 'MEAN_SD_OUT_OF_RANGE',
     fileName,
     ...details,
     message: `${where}${text}`,

@@ -32,7 +32,6 @@ import type {
   Issue,
   IhgRow,
   LoadedSettings,
-  OverrideRequest,
   ParsedCsv,
   ParseResult,
   ResidentRow,
@@ -238,13 +237,12 @@ function toEngineInput(
 }
 
 /**
- * Parses and checks the dropped files. Pure: the same files, config and overrides always
- * give the same report. Only MEAN_SD_OUT_OF_RANGE can be overridden.
+ * Parses and checks the dropped files. Pure: the same files and config always give the
+ * same report. A mean or SD outside the range is a warning, never an error.
  */
 export function validateImport(
   files: readonly SourceFile[],
   config: ScenarioConfig,
-  overrides: readonly OverrideRequest[],
 ): ImportReport {
   const issues: Issue[] = []
   const classified = files.map((file) => classify(file, issues))
@@ -279,12 +277,11 @@ export function validateImport(
   if (ccas) issues.push(...checkOutgoing(ccas, checked, config), ...leaderWarnings(ccas, checked))
   if (ihg && config.ihgInSportNet) issues.push(...ihgNonMemberWarnings(ihg, checked, flats))
   if (ihg) issues.push(...ihgOnFlatWarnings(ihg, flats))
-  const wanted = new Set(overrides.map((o) => o.ccaID))
   const stats = (ccas?.result.rows ?? []).map((cca) => {
     const flat = flats.find((f) => f.ccaID === cca.ccaID)
     return flat
       ? flatStats(cca, flat, checkConfig)
-      : ccaStats(cca, checked.find((l) => l.ccaID === cca.ccaID), checkConfig, wanted.has(cca.ccaID))
+      : ccaStats(cca, checked.find((l) => l.ccaID === cca.ccaID), checkConfig)
   })
   for (const s of stats) {
     if (s.issue) issues.push(s.issue)
@@ -292,7 +289,7 @@ export function validateImport(
       issues.push(makeIssue('NO_LEADER_FILE', '', `${s.report.name} (${s.report.ccaID}) has no points file.`, { ccaID: s.report.ccaID }))
     }
   }
-  const canCompute = !issues.some((i) => i.severity === 'error' && i.overridden !== true)
+  const canCompute = !issues.some((i) => i.severity === 'error')
   const input =
     canCompute && residents && ccas ? toEngineInput(residents, ccas, checked, flats, ihgOutcome?.rows ?? []) : undefined
   const reportSettings: LoadedSettings | null = settings && applied ? { ...settings, waivers: applied.waivers } : settings
@@ -301,7 +298,7 @@ export function validateImport(
     settings: reportSettings,
     issues,
     perCca: stats.map((s) => s.report),
-    overrides: stats.flatMap((s) => (s.override ? [s.override] : [])),
+    outOfRange: stats.flatMap((s) => (s.outOfRange ? [s.outOfRange] : [])),
     ...(input ? { input } : {}),
   }
 }

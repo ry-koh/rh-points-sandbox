@@ -20,7 +20,7 @@ export interface Workspace {
   readonly version: typeof WORKSPACE_VERSION
   readonly savedAt: string
   readonly files: readonly SourceFile[]
-  /** ccaIDs whose mean/SD error JCRC chose to override. */
+  /** Always written empty. Read and ignored so v1 files that carry ccaIDs here still open. */
   readonly meanSdOverrides: readonly string[]
   readonly config: ScenarioConfig
   readonly finalOverrides: readonly FinalOverride[]

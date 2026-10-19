@@ -1,4 +1,15 @@
-# RH Hall Points Spec — v2.1
+# RH Hall Points Spec — v2.2
+
+**Changes in v2.2**
+
+- A mean or SD outside the CCA's range is a **warning**, not an error: it never blocks. It is
+  listed on the Import and Results screens and on every export (`# mean/SD out of range: …`).
+- The per-CCA mean/SD **override is removed** (the Override button, the `overridable` and
+  `overridden` issue fields, the `overridden` CCA status and `report.overrides`). The import
+  report lists the CCAs instead as `report.outOfRange`.
+- The §7.4 table loses its Overridable column.
+- Workspace files (8b) write `meanSdOverrides` empty; a v1 file that carries ids there still
+  opens and the ids are ignored.
 
 Authoritative rules for the Raffles Hall AY26-27 points system. Where this document and the
 CLAUDE.md summary differ, this document wins. Every number below is a **config variable**
@@ -530,18 +541,16 @@ Computed over the CCA's **full `basePoints`** — leaders included, semester-onl
 `1e-9`. The range is the CCA's override fields, else `meanSdDefault`; each of the four
 range fields falls back to `meanSdDefault` independently.
 
+A mean or SD outside the range does not block anything (7.3).
+
 **When a points settings file (2g) is loaded** the ranges come ONLY from it: the CCA's
 `waiver` row if it has one, else the `default` row. ccas.csv range columns and the sandbox's
 `meanSdDefault` are not used.
 
 ### 7.2 ERRORS
 
-Block results until each is fixed by re-importing a corrected file. **Mean/SD out of range is
-the only overridable error**: JCRC may override it explicitly, per CCA, and every override is
-listed on all outputs. Every other error is **non-overridable** and must be fixed by
-re-importing a corrected file; override attempts for them are ignored.
+Block results until each is fixed by re-importing a corrected file.
 
-- mean/SD out of range
 - unknown matric (not in residents.csv)
 - duplicate matric within a leader file
 - `basePoints` not an integer in 0–20
@@ -570,6 +579,7 @@ re-importing a corrected file; override attempts for them are ignored.
 
 Shown, do not block.
 
+- mean or SD outside the CCA's range (allowed; shown on Import and Review)
 - a CCA in ccas.csv with no leader file
 - `semesterOnly` on a `0.5x` CCA (the tick is ignored)
 - `aux` above `auxCap`
@@ -581,63 +591,63 @@ Shown, do not block.
 
 ### 7.4 Issue codes
 
-Every issue carries `severity`, `code`, `overridable`, `fileName`, and where known `line`,
+Every issue carries `severity`, `code`, `fileName`, and where known `line`,
 `column`, `ccaID` and `matric`, plus a plain-English `message`. Line numbers count the header as
-line 1. `canCompute` is true when no error remains except overridden ones. Checks that need a
+line 1. `canCompute` is true when no error remains. Checks that need a
 reference file (residents.csv, ccas.csv) are skipped when that file is missing, so one mistake
 raises one issue rather than a cascade. The IHG file is optional.
 
-| Code | Sev | Overridable | Raised when |
-|---|---|---|---|
-| `UNRECOGNISED_FILE` | error | no | header matches no file kind and the file name gives no hint |
-| `CSV_SYNTAX` | error | no | unterminated quote, or a row whose cell count differs from the header |
-| `BAD_HEADER` | error | no | file name says leader (`points_*`) / flat (`flat_points_*`) / residents / ihg / ccas but the header columns are not exactly right (a residents.csv without the `jcrc` column lands here) |
-| `BAD_FORMAT_VERSION` | error | no | leader, flat or settings `formatVersion` is not `1` |
-| `MIXED_CCA_ID` | error | no | one leader file contains more than one `ccaID` |
-| `DUPLICATE_CCA_FILE` | error | no | two leader files for the same `ccaID` |
-| `MISSING_RESIDENTS_FILE` | error | no | no residents.csv |
-| `MISSING_CCAS_FILE` | error | no | no ccas.csv |
-| `DUPLICATE_RESIDENTS_OR_CCAS_FILE` | error | no | more than one residents, ccas or ihg file |
-| `DUPLICATE_FLAT_FILE` | error | no | more than one flat-points file (the extra copy is ignored) |
-| `BAD_MATRIC` | error | no | matric does not match `^A\d{7}[A-Z]$` after uppercasing |
-| `UNKNOWN_MATRIC` | error | no | leader matric not in residents.csv |
-| `DUPLICATE_MATRIC_IN_FILE` | error | no | same matric twice in one leader file, or twice within one `ccaID` of the flat file (the later row is ignored) |
-| `DUPLICATE_RESIDENT` | error | no | same matric twice in residents.csv |
-| `BAD_BASE_POINTS` | error | no | `basePoints` not a whole number 0–20 |
-| `BAD_ENUM` | error | no | bad `outgoingRole` / `incomingRole` / `type` / `placement` value |
-| `BAD_YN` | error | no | `semesterOnly` / `sem2` not `Y` or `N` |
-| `BAD_GENDER` | error | no | `gender` not `M` or `F` |
-| `BAD_AUX` | error | no | `aux` not a whole number ≥ 0 |
-| `UNKNOWN_CCA` | error | no | leader file or flat-file `ccaID` not in ccas.csv |
-| `BAD_JCRC` | error | no | `jcrc` not `N`, `FULL` or `EXCHANGE` |
-| `JCRC_AND_SEM2` | error | no | `jcrc` is `FULL` or `EXCHANGE` and `sem2` is `Y` for the same resident |
-| `BAD_FLAT_POINTS` | error | no | `flatPoints` not a number ≥ 0 |
-| `FLAT_VALUE_MISMATCH` | error | no | rows of one flat `ccaID` carry different `flatPoints` |
-| `FLAT_AND_LEADER_FILE` | error | no | a `ccaID` has both a flat-points row and a leader file |
-| `BAD_FINAL_POINTS` | error | no | (override entry) `finalPoints` is not a finite number |
-| `MISSING_REASON` | error | no | (override or discretion entry) reason empty or over 200 characters |
-| `OVERRIDE_UNKNOWN_MEMBERSHIP` | error | no | (override entry) no such membership |
-| `BAD_DISCRETION_POINTS` | error | no | (discretion entry) a delta is not a finite number |
-| `DISCRETION_UNKNOWN_RESIDENT` | error | no | (discretion entry) no such resident |
-| `IHG_UNKNOWN_MATRIC` | error | no | ihg.csv matric not in residents.csv |
-| `IHG_UNKNOWN_CCA` | error | no | ihg.csv `ccaID` not in ccas.csv |
-| `UNKNOWN_TIER` | error | no | `outgoingTier` not blank and not in `outgoingTiers` |
-| `BAD_MANUAL_MULTIPLIER` | error | no | `outgoingMultiplier` not blank and not a positive number |
-| `MISSING_OUTGOING_MULTIPLIER` | error | no | a CCA has an outgoing leader but the field for the active `outgoingMode` is blank |
-| `DUPLICATE_CCA` | error | no | same `ccaID` twice in ccas.csv |
-| `BAD_RANGE` | error | no | a mean/SD range field in ccas.csv is not blank and not a number; or a settings-file range value is not a number, is outside 0–20 (mean) / 0–10 (SD), or has min above max |
-| `BAD_SETTINGS_FILE` | error | no | settings file without exactly one `default` row, with a `scope` other than `default` / `waiver`, or a waiver row without a `ccaID` |
-| `DUPLICATE_WAIVER` | error | no | the same `ccaID` on two waiver rows of the settings file (the later row is ignored) |
-| `DUPLICATE_SETTINGS_FILE` | error | no | more than one settings file (the extra copy is ignored) |
-| `MEAN_SD_OUT_OF_RANGE` | error | **yes** | mean or population SD outside the CCA's range (also raised for a leader file with no members) |
-| `NO_LEADER_FILE` | warning | – | a CCA in ccas.csv has no leader file and is not a flat CCA |
-| `SEMESTER_ONLY_ON_HALF_CCA` | warning | – | `semesterOnly` = `Y` on a `0.5x` CCA (ignored) |
-| `AUX_ABOVE_CAP` | warning | – | `aux` above `auxCap` |
-| `IHG_NON_MEMBER` | warning | – | IHG row for a CCA the resident is not in, only when `ihgInSportNet` is on |
-| `MANY_HALF_CCAS` | warning | – | a resident has more than 10 `0.5x` memberships |
-| `CCAS_RANGE_IGNORED` | warning | – | a settings file is loaded and ccas.csv has range values for one or more CCAs; they are ignored (the message lists the CCAs) |
-| `SETTINGS_UNKNOWN_CCA` | warning | – | a settings-file waiver names a `ccaID` not in ccas.csv; the row is ignored |
-| `IHG_ON_FINAL_CCA` | warning | – | an IHG row for a flat or overridden membership; the row is always ignored, whatever `ihgInSportNet` says |
+| Code | Sev | Raised when |
+|---|---|---|
+| `UNRECOGNISED_FILE` | error | header matches no file kind and the file name gives no hint |
+| `CSV_SYNTAX` | error | unterminated quote, or a row whose cell count differs from the header |
+| `BAD_HEADER` | error | file name says leader (`points_*`) / flat (`flat_points_*`) / residents / ihg / ccas but the header columns are not exactly right (a residents.csv without the `jcrc` column lands here) |
+| `BAD_FORMAT_VERSION` | error | leader, flat or settings `formatVersion` is not `1` |
+| `MIXED_CCA_ID` | error | one leader file contains more than one `ccaID` |
+| `DUPLICATE_CCA_FILE` | error | two leader files for the same `ccaID` |
+| `MISSING_RESIDENTS_FILE` | error | no residents.csv |
+| `MISSING_CCAS_FILE` | error | no ccas.csv |
+| `DUPLICATE_RESIDENTS_OR_CCAS_FILE` | error | more than one residents, ccas or ihg file |
+| `DUPLICATE_FLAT_FILE` | error | more than one flat-points file (the extra copy is ignored) |
+| `BAD_MATRIC` | error | matric does not match `^A\d{7}[A-Z]$` after uppercasing |
+| `UNKNOWN_MATRIC` | error | leader matric not in residents.csv |
+| `DUPLICATE_MATRIC_IN_FILE` | error | same matric twice in one leader file, or twice within one `ccaID` of the flat file (the later row is ignored) |
+| `DUPLICATE_RESIDENT` | error | same matric twice in residents.csv |
+| `BAD_BASE_POINTS` | error | `basePoints` not a whole number 0–20 |
+| `BAD_ENUM` | error | bad `outgoingRole` / `incomingRole` / `type` / `placement` value |
+| `BAD_YN` | error | `semesterOnly` / `sem2` not `Y` or `N` |
+| `BAD_GENDER` | error | `gender` not `M` or `F` |
+| `BAD_AUX` | error | `aux` not a whole number ≥ 0 |
+| `UNKNOWN_CCA` | error | leader file or flat-file `ccaID` not in ccas.csv |
+| `BAD_JCRC` | error | `jcrc` not `N`, `FULL` or `EXCHANGE` |
+| `JCRC_AND_SEM2` | error | `jcrc` is `FULL` or `EXCHANGE` and `sem2` is `Y` for the same resident |
+| `BAD_FLAT_POINTS` | error | `flatPoints` not a number ≥ 0 |
+| `FLAT_VALUE_MISMATCH` | error | rows of one flat `ccaID` carry different `flatPoints` |
+| `FLAT_AND_LEADER_FILE` | error | a `ccaID` has both a flat-points row and a leader file |
+| `BAD_FINAL_POINTS` | error | (override entry) `finalPoints` is not a finite number |
+| `MISSING_REASON` | error | (override or discretion entry) reason empty or over 200 characters |
+| `OVERRIDE_UNKNOWN_MEMBERSHIP` | error | (override entry) no such membership |
+| `BAD_DISCRETION_POINTS` | error | (discretion entry) a delta is not a finite number |
+| `DISCRETION_UNKNOWN_RESIDENT` | error | (discretion entry) no such resident |
+| `IHG_UNKNOWN_MATRIC` | error | ihg.csv matric not in residents.csv |
+| `IHG_UNKNOWN_CCA` | error | ihg.csv `ccaID` not in ccas.csv |
+| `UNKNOWN_TIER` | error | `outgoingTier` not blank and not in `outgoingTiers` |
+| `BAD_MANUAL_MULTIPLIER` | error | `outgoingMultiplier` not blank and not a positive number |
+| `MISSING_OUTGOING_MULTIPLIER` | error | a CCA has an outgoing leader but the field for the active `outgoingMode` is blank |
+| `DUPLICATE_CCA` | error | same `ccaID` twice in ccas.csv |
+| `BAD_RANGE` | error | a mean/SD range field in ccas.csv is not blank and not a number; or a settings-file range value is not a number, is outside 0–20 (mean) / 0–10 (SD), or has min above max |
+| `BAD_SETTINGS_FILE` | error | settings file without exactly one `default` row, with a `scope` other than `default` / `waiver`, or a waiver row without a `ccaID` |
+| `DUPLICATE_WAIVER` | error | the same `ccaID` on two waiver rows of the settings file (the later row is ignored) |
+| `DUPLICATE_SETTINGS_FILE` | error | more than one settings file (the extra copy is ignored) |
+| `MEAN_SD_OUT_OF_RANGE` | warning | mean or population SD outside the CCA's range (also raised for a leader file with no members) |
+| `NO_LEADER_FILE` | warning | a CCA in ccas.csv has no leader file and is not a flat CCA |
+| `SEMESTER_ONLY_ON_HALF_CCA` | warning | `semesterOnly` = `Y` on a `0.5x` CCA (ignored) |
+| `AUX_ABOVE_CAP` | warning | `aux` above `auxCap` |
+| `IHG_NON_MEMBER` | warning | IHG row for a CCA the resident is not in, only when `ihgInSportNet` is on |
+| `MANY_HALF_CCAS` | warning | a resident has more than 10 `0.5x` memberships |
+| `CCAS_RANGE_IGNORED` | warning | a settings file is loaded and ccas.csv has range values for one or more CCAs; they are ignored (the message lists the CCAs) |
+| `SETTINGS_UNKNOWN_CCA` | warning | a settings-file waiver names a `ccaID` not in ccas.csv; the row is ignored |
+| `IHG_ON_FINAL_CCA` | warning | an IHG row for a flat or overridden membership; the row is always ignored, whatever `ihgInSportNet` says |
 
 The five entry codes (`BAD_FINAL_POINTS` … `DISCRETION_UNKNOWN_RESIDENT`) are returned by the
 engine's `validateOverride` / `validateDiscretion` when an entry is added; they are not raised
@@ -757,7 +767,7 @@ deviations² = 51.020, 51.020, 4.592, 0.735, 8.163, 23.592, 61.735 -> sum 200.85
 variance = 200.857 / 7 = 28.694, population SD = 5.357
 ```
 
-With defaults (mean 10–14, SD 2–5): mean passes; **SD 5.357 > 5 fails** → ERROR.
+With defaults (mean 10–14, SD 2–5): mean passes; **SD 5.357 > 5 fails** → `MEAN_SD_OUT_OF_RANGE` warning; nothing blocks.
 
 ### E9 — Stacking (base 18, Gold, incoming 1.2 + outgoing 2.0)
 
@@ -914,8 +924,8 @@ downloads explicitly. It is never written to localStorage, sessionStorage or Ind
   meanSdOverrides, config, finalOverrides, discretion, resolutions, finalised }
 ```
 
-`files` are the imported CSVs as text; `meanSdOverrides` the per-CCA mean/SD overrides (CCA
-ids); `config` the scenario config; `finalOverrides`, `discretion` and `resolutions` the entries
+`files` are the imported CSVs as text; `meanSdOverrides` is written empty and ignored when read (it held per-CCA mean/SD
+overrides before v2.2; older files that list ids there still open); `config` the scenario config; `finalOverrides`, `discretion` and `resolutions` the entries
 of 6.2, 6.3 and 5.6; `finalised` the penalty state or `null`. The workspace contains resident
 data and must be handled like the input files.
 

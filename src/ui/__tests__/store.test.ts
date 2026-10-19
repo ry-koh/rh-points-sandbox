@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, computeAll, createPenaltyState } from '../../engine'
-import { leaderFileName, leaderRows, scenario, withSettings } from '../../import/__tests__/fixtures'
+import { leaderFileName, leaderRows, matricOf, patchRow, scenario, withSettings } from '../../import/__tests__/fixtures'
 import { initialState, reducer, type AppState } from '../state/store'
 
 const failingC1 = scenario({
   leaders: { C1: leaderRows('C1', [20, 20, 20, 20, 20, 20]), C2: leaderRows('C2') },
+})
+
+const unknownMatricC1 = scenario({
+  leaders: { C1: patchRow(leaderRows('C1'), -1, { matric: matricOf(99) }), C2: leaderRows('C2') },
 })
 
 const withFiles = (files = scenario()): AppState => reducer(initialState(), { type: 'addFiles', files })
@@ -31,7 +35,7 @@ describe('app reducer', () => {
   })
 
   it('replaces a file dropped again under the same name', () => {
-    const broken = withFiles(failingC1)
+    const broken = withFiles(unknownMatricC1)
     expect(broken.report.canCompute).toBe(false)
     const fixed = scenario().find((f) => f.name === leaderFileName('C1'))
     if (!fixed) throw new Error('fixture missing')
@@ -47,22 +51,13 @@ describe('app reducer', () => {
     expect(state.report.issues.map((i) => i.code)).toContain('MISSING_RESIDENTS_FILE')
   })
 
-  it('toggles an override on and off', () => {
-    const on = reducer(withFiles(failingC1), { type: 'toggleOverride', ccaID: 'C1' })
-    expect(on.overrides).toEqual(['C1'])
-    expect(on.report.canCompute).toBe(true)
-    expect(on.report.perCca[0]?.status).toBe('overridden')
-    const off = reducer(on, { type: 'toggleOverride', ccaID: 'C1' })
-    expect(off.overrides).toEqual([])
-    expect(off.report.canCompute).toBe(false)
-  })
-
   it('re-validates on a config change and keeps state immutable', () => {
     const before = withFiles()
     const config = { ...DEFAULT_CONFIG, meanSdDefault: { ...DEFAULT_CONFIG.meanSdDefault, meanMax: 11 } }
     const after = reducer(before, { type: 'setConfig', config })
-    expect(after.report.canCompute).toBe(false)
-    expect(before.report.canCompute).toBe(true)
+    expect(after.report.perCca[0]?.status).toBe('out_of_range')
+    expect(after.report.canCompute).toBe(true)
+    expect(before.report.perCca[0]?.status).toBe('ok')
     expect(after).not.toBe(before)
   })
 
@@ -80,17 +75,16 @@ describe('app reducer', () => {
     }
     const entry = { key: { matric: 'A9900001Z', ccaID: 'C1' }, residentName: 'Test Resident 001', ccaName: 'Test CCA One', outcome: 'Stays green' }
 
-    it('locks settings, files and overrides', () => {
+    it('locks settings and files', () => {
       const state = finalised()
       expect(state.finalised).not.toBeNull()
       expect(reducer(state, { type: 'setConfig', config: { ...state.config, sem2Factor: 9 } })).toBe(state)
       expect(reducer(state, { type: 'addFiles', files: failingC1 })).toBe(state)
       expect(reducer(state, { type: 'removeFile', name: 'residents.csv' })).toBe(state)
-      expect(reducer(state, { type: 'toggleOverride', ccaID: 'C1' })).toBe(state)
     })
 
     it('cannot finalise while the import is blocked', () => {
-      const blocked = withFiles(failingC1)
+      const blocked = withFiles(unknownMatricC1)
       expect(reducer(blocked, { type: 'finalise', penalty: { cutoffs: { M: null, F: null }, applied: [], removed: [] } }).finalised).toBeNull()
     })
 

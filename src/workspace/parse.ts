@@ -131,11 +131,7 @@ export async function parseWorkspaceFile(text: string, password?: string): Promi
  * entry is reported as stale.
  */
 export function restoreWorkspace(workspace: Workspace): RestoredWorkspace {
-  const report = validateImport(
-    workspace.files,
-    workspace.config,
-    workspace.meanSdOverrides.map((ccaID) => ({ ccaID })),
-  )
+  const report = validateImport(workspace.files, workspace.config)
   const { input } = report
   if (!report.canCompute || !input) {
     const { finalOverrides, discretion, resolutions } = workspace

@@ -34,7 +34,7 @@ function exportLists(lists: Lists, keys: readonly ListKey[], state: AppState): v
   const now = new Date()
   const penalties = state.finalised ? state.finalised.log.length : null
   const counts = entryCounts(state.results)
-  for (const key of keys) downloadCsv(exportFileName(key, now), buildListCsv(lists[key], state.report.overrides, penalties, counts))
+  for (const key of keys) downloadCsv(exportFileName(key, now), buildListCsv(lists[key], state.report.outOfRange, penalties, counts))
 }
 
 const focusRow = (matric: string): void => {

@@ -22,12 +22,11 @@ function finalised(state = loaded()): AppState {
 }
 
 describe('lock rules while finalised', () => {
-  it('refuses files, settings, mean/SD overrides, final-points overrides and discretion', () => {
+  it('refuses files, settings, final-points overrides and discretion', () => {
     const state = finalised(run(loaded(), { type: 'setFinalOverride', entry: override }, { type: 'setDiscretion', entry: discretion }))
     for (const action of [
       { type: 'setConfig', config: DEFAULT_CONFIG },
       { type: 'addFiles', files: scenario() },
-      { type: 'toggleOverride', ccaID: 'C1' },
       { type: 'setFinalOverride', entry: { ...override, finalPoints: 9 } },
       { type: 'removeFinalOverride', matric: override.matric, ccaID: override.ccaID },
       { type: 'setDiscretion', entry: { ...discretion, stayingDelta: 9 } },
@@ -61,7 +60,6 @@ describe('unsaved-changes flag', () => {
   it.each<[string, (s: AppState) => AppState]>([
     ['files', (s) => reducer(s, { type: 'removeFile', name: 'residents.csv' })],
     ['settings', (s) => reducer(s, { type: 'setConfig', config: DEFAULT_CONFIG })],
-    ['mean/SD overrides', (s) => reducer(s, { type: 'toggleOverride', ccaID: 'C1' })],
     ['final-points overrides', (s) => reducer(s, { type: 'setFinalOverride', entry: override })],
     ['discretion', (s) => reducer(s, { type: 'setDiscretion', entry: discretion })],
     ['wheel results', (s) => reducer(s, { type: 'setResolution', resolution })],

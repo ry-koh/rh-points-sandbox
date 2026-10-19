@@ -18,7 +18,7 @@ import {
 } from './fixtures'
 
 const run = (files: readonly SourceFile[], config = DEFAULT_CONFIG): ImportReport =>
-  validateImport(files, config, [])
+  validateImport(files, config)
 const codesOf = (report: ImportReport): string[] => [...new Set(report.issues.map((i) => i.code))].sort()
 
 /** C1 and C2 have leader files, C3 is a flat CCA with flat points for residents 1..6. */

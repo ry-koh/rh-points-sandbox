@@ -48,7 +48,7 @@ export function ImportScreen({ state, dispatch, blockedReason, settingsCause, on
       </div>
       {locked && (
         <p role="status" className="mt-6 flex items-center gap-2 border-l-4 border-gold bg-gold-soft px-4 py-3 text-body font-medium">
-          <Lock aria-hidden size={15} /> Finalised · settings locked. Files and overrides cannot change until the lists are unlocked on the Results screen.
+          <Lock aria-hidden size={15} /> Finalised · settings locked. Files cannot change until the lists are unlocked on the Results screen.
         </p>
       )}
       {settingsCause && (
@@ -76,8 +76,6 @@ export function ImportScreen({ state, dispatch, blockedReason, settingsCause, on
       <CcaTable
         rows={report.perCca}
         waivers={new Set(Object.keys(report.settings?.waivers ?? {}))}
-        locked={locked}
-        onToggleOverride={(ccaID) => dispatch({ type: 'toggleOverride', ccaID })}
       />
     </main>
   )

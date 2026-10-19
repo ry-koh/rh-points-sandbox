@@ -49,7 +49,7 @@ function configAroundTie(input: PipelineInput): ScenarioConfig {
 
 describe('samples/valid', () => {
   const files = loadCsvFiles(VALID_DIR)
-  const report = validateImport(files, DEFAULT_CONFIG, [])
+  const report = validateImport(files, DEFAULT_CONFIG)
 
   it('has no errors', () => {
     expect(report.issues.filter((issue) => issue.severity === 'error')).toEqual([])
@@ -98,7 +98,7 @@ describe('samples/broken', () => {
 
   it.each(folders)('%s produces exactly its expected codes', (folder) => {
     const dir = `${BROKEN_DIR}/${folder}`
-    const report = validateImport(loadCsvFiles(dir), DEFAULT_CONFIG, [])
+    const report = validateImport(loadCsvFiles(dir), DEFAULT_CONFIG)
     const codes = [...new Set(report.issues.map((issue) => issue.code))].sort()
     expect(codes).toEqual(expectedCodes(dir))
   })

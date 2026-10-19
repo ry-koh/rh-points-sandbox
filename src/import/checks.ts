@@ -7,7 +7,7 @@ import type {
   IhgRow,
   Issue,
   LeaderRow,
-  OverrideRecord,
+  OutOfRangeRecord,
   ParseResult,
   PerCcaReport,
   ResidentRow,
@@ -266,38 +266,37 @@ export function flatStats(cca: CcaRow, flat: CheckedFlat, config: ScenarioConfig
     status: 'flat',
     flatPoints: flat.flatPoints,
   }
-  return { report, issue: null, override: null }
+  return { report, issue: null, outOfRange: null }
 }
 
 export interface CcaStats {
   readonly report: PerCcaReport
   readonly issue: Issue | null
-  readonly override: OverrideRecord | null
+  readonly outOfRange: OutOfRangeRecord | null
 }
 
-/** Mean/SD for one CCA over its valid leader rows; honours a per-CCA override. */
+/** Mean/SD for one CCA over its valid leader rows. */
 export function ccaStats(
   cca: CcaRow,
   leader: CheckedLeader | undefined,
   config: ScenarioConfig,
-  overridden: boolean,
 ): CcaStats {
   const range = resolveRange(cca, config.meanSdDefault)
   const base = { ccaID: cca.ccaID, name: cca.ccaName, range, flatPoints: null }
   if (!leader) {
     const report: PerCcaReport = { ...base, fileName: null, n: 0, mean: null, sd: null, status: 'missing_file' }
-    return { report, issue: null, override: null }
+    return { report, issue: null, outOfRange: null }
   }
   const scores = leader.rows.map((row) => row.basePoints)
   const check = checkMeanSd(scores, range, RANGE_TOLERANCE)
   const n = scores.length
   const mean = n === 0 ? null : check.mean
   const sd = n === 0 ? null : check.sd
-  const status = check.ok && n > 0 ? 'ok' : overridden ? 'overridden' : 'out_of_range'
+  const status = check.ok && n > 0 ? 'ok' : 'out_of_range'
   const report: PerCcaReport = { ...base, fileName: leader.fileName, n, mean, sd, status }
-  if (status === 'ok') return { report, issue: null, override: null }
+  if (status === 'ok') return { report, issue: null, outOfRange: null }
   const text = meanSdMessage(cca, n, check.mean, check.sd, range)
-  const issue = { ...makeIssue('MEAN_SD_OUT_OF_RANGE', leader.fileName, text, { ccaID: cca.ccaID }), ...(overridden ? { overridden: true } : {}) }
-  const override = overridden ? { ccaID: cca.ccaID, name: cca.ccaName, fileName: leader.fileName, mean, sd, range } : null
-  return { report, issue, override }
+  const issue = makeIssue('MEAN_SD_OUT_OF_RANGE', leader.fileName, text, { ccaID: cca.ccaID })
+  const outOfRange = { ccaID: cca.ccaID, name: cca.ccaName, fileName: leader.fileName, mean, sd, range }
+  return { report, issue, outOfRange }
 }

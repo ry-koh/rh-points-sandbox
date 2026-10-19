@@ -1,5 +1,5 @@
 import type { Checked, Discretion, FinalOverride, ListRow, Lists } from '../../engine'
-import type { OverrideRecord } from '../../import'
+import type { OutOfRangeRecord } from '../../import'
 
 export type ListKey = keyof Lists
 
@@ -47,9 +47,9 @@ export function entryCounts(
   return { finalOverrides: appliedCount(results.overrides), discretion: appliedCount(results.discretion) }
 }
 
-/** First comment line of every export: which CCAs had their mean/SD check overridden. */
-export function meanSdOverridesLine(overrideNames: readonly string[]): string {
-  return `# mean/SD overrides: ${overrideNames.length > 0 ? overrideNames.join(', ') : 'none'}`
+/** First comment line of every export: which CCAs are outside their allowed mean/SD range. */
+export function meanSdOutOfRangeLine(names: readonly string[]): string {
+  return `# mean/SD out of range: ${names.length > 0 ? names.join(', ') : 'none'}`
 }
 
 export const finalOverridesLine = (count: number): string => `# final-points overrides: ${count}`
@@ -75,12 +75,12 @@ export function finalisedLine(penalties: number): string {
 
 /** The comment lines every export starts with. */
 export function headerLines(
-  overrides: readonly Pick<OverrideRecord, 'name'>[],
+  outOfRange: readonly Pick<OutOfRangeRecord, 'name'>[],
   finalisedPenalties: number | null,
   counts: EntryCounts = NO_ENTRIES,
 ): string[] {
   return [
-    meanSdOverridesLine(overrides.map((o) => o.name)),
+    meanSdOutOfRangeLine(outOfRange.map((o) => o.name)),
     finalOverridesLine(counts.finalOverrides),
     discretionLine(counts.discretion),
     ...(finalisedPenalties === null ? [] : [finalisedLine(finalisedPenalties)]),
@@ -91,12 +91,12 @@ export const toCsvLine = (cells: readonly string[]): string => cells.map(quote).
 
 export function buildListCsv(
   rows: readonly ListRow[],
-  overrides: readonly Pick<OverrideRecord, 'name'>[],
+  outOfRange: readonly Pick<OutOfRangeRecord, 'name'>[],
   finalisedPenalties: number | null = null,
   counts: EntryCounts = NO_ENTRIES,
 ): string {
   const lines = [
-    ...headerLines(overrides, finalisedPenalties, counts),
+    ...headerLines(outOfRange, finalisedPenalties, counts),
     EXPORT_COLUMNS.join(','),
     ...rows.map((row) => rowCells(row).map(quote).join(',')),
   ]

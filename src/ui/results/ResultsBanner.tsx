@@ -8,14 +8,14 @@ interface ResultsBannerProps {
   readonly onBackToImport: () => void
 }
 
-/** Shown whenever results rest on overrides or there are warnings. */
+/** Shown whenever results rest on out-of-range CCAs or there are warnings. */
 export function ResultsBanner({ report, onBackToImport }: ResultsBannerProps) {
   const [open, setOpen] = useState(false)
   const warnings = report.issues.filter((i) => i.severity === 'warning')
-  const overrides = report.overrides
-  if (warnings.length === 0 && overrides.length === 0) return null
+  const outOfRange = report.outOfRange
+  if (warnings.length === 0 && outOfRange.length === 0) return null
   const parts = [
-    ...(overrides.length > 0 ? [`${plural(overrides.length, 'CCA')} overridden (mean/SD)`] : []),
+    ...(outOfRange.length > 0 ? [`${plural(outOfRange.length, 'CCA')} out of range (accepted)`] : []),
     ...(warnings.length > 0 ? [plural(warnings.length, 'warning')] : []),
   ]
   return (
@@ -37,9 +37,9 @@ export function ResultsBanner({ report, onBackToImport }: ResultsBannerProps) {
       </div>
       {open && (
         <ul className="max-h-48 overflow-y-auto border-t border-warning/20 px-6 py-2 text-body">
-          {overrides.map((o) => (
+          {outOfRange.map((o) => (
             <li key={o.ccaID} className="py-0.5">
-              <span className="font-medium">Overridden:</span> {o.name} — mean{' '}
+              <span className="font-medium">Out of range:</span> {o.name} — mean{' '}
               <span className="num">{o.mean?.toFixed(2) ?? '—'}</span>, SD <span className="num">{o.sd?.toFixed(2) ?? '—'}</span>
             </li>
           ))}

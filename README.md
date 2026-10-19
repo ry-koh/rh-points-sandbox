@@ -43,8 +43,8 @@ Exact formats and every rule are in the [points spec](docs/points-spec.md).
 ## Workflow
 
 1. **Import.** Drop the files. Problems are listed in plain English. Errors must be fixed in
-   the file and dropped again. The one exception: a CCA whose average or spread is out of range
-   may be **overridden** in the "Mean and SD check" table; overrides are printed on every export.
+   the file and dropped again. A CCA whose average or spread is out of range is allowed: it shows
+   as a warning in the "Mean and SD check" table, and CCAs out of range are listed on every export.
 2. **Fix issues** until "View results" unlocks.
 3. **Tune settings** (left panel on Results). Each setting has a plain-English label and a help
    line; a gold dot marks a value changed from the default, and the arrow resets it. Start
@@ -55,7 +55,7 @@ Exact formats and every rule are in the [points spec](docs/points-spec.md).
      reason; "Same for both" is on by default).
    The **Adjustments** strip above the lists shows every entry, with Open and Remove.
 5. **Save workspace often** (top bar). See the next section.
-6. **Finalise lists.** Locks settings, files, mean/SD overrides, final-points overrides and
+6. **Finalise lists.** Locks settings, files, final-points overrides and
    discretion, and freezes each gender's green cut-off.
 7. **Record wheel results.** A tie across a colour boundary ("TIE green/grey · 1 of 2") is
    settled by a wheel spin. Click the tie, put the residents in the wheel's order with ↑/↓,
@@ -75,7 +75,7 @@ overrides, discretion and wheel results, and shows who changes colour.
 ## Workspace files and the password
 
 **Save workspace** downloads one `.rhps` file holding everything: the imported files, settings,
-mean/SD overrides, final-points overrides, discretion, wheel results and penalties. **Open
+final-points overrides, discretion, wheel results and penalties. **Open
 workspace** loads it again, re-checks every file, and lists anything that no longer matches.
 
 - **Protect with a password** is on by default and strongly recommended. The file is then

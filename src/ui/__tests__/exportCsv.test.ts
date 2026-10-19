@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, compareRuns, computeAll, type ListRow } from '../../engine'
 import { makeInput } from '../../engine/__tests__/helpers'
-import { EXPORT_COLUMNS, buildListCsv, exportFileName, meanSdOverridesLine } from '../export/exportCsv'
+import { EXPORT_COLUMNS, buildListCsv, exportFileName, meanSdOutOfRangeLine } from '../export/exportCsv'
 import { buildComparisonCsv } from '../compare/compareData'
 import { bandRows } from '../results/bands'
 
@@ -19,7 +19,7 @@ const { lists } = computeAll(
 describe('CSV export', () => {
   it('starts with the three comment lines, then the column header', () => {
     const lines = buildListCsv(lists.maleStaying, []).split('\n')
-    expect(lines[0]).toBe('# mean/SD overrides: none')
+    expect(lines[0]).toBe('# mean/SD out of range: none')
     expect(lines[1]).toBe('# final-points overrides: 0')
     expect(lines[2]).toBe('# discretion adjustments: 0')
     expect(lines[3]).toBe('rank,position,matric,name,points,status,tieFlags,labels')
@@ -29,15 +29,15 @@ describe('CSV export', () => {
   it('counts the final-points overrides and discretion adjustments in force', () => {
     const lines = buildListCsv(lists.maleStaying, [], null, { finalOverrides: 3, discretion: 2 }).split('\n')
     expect(lines.slice(0, 3)).toEqual([
-      '# mean/SD overrides: none',
+      '# mean/SD out of range: none',
       '# final-points overrides: 3',
       '# discretion adjustments: 2',
     ])
   })
 
-  it('names every overridden CCA', () => {
-    expect(meanSdOverridesLine(['Test CCA 03', 'Test CCA 07'])).toBe('# mean/SD overrides: Test CCA 03, Test CCA 07')
-    expect(buildListCsv([], [{ name: 'Test CCA 03' }]).split('\n')[0]).toBe('# mean/SD overrides: Test CCA 03')
+  it('names every out-of-range CCA', () => {
+    expect(meanSdOutOfRangeLine(['Test CCA 03', 'Test CCA 07'])).toBe('# mean/SD out of range: Test CCA 03, Test CCA 07')
+    expect(buildListCsv([], [{ name: 'Test CCA 03' }]).split('\n')[0]).toBe('# mean/SD out of range: Test CCA 03')
   })
 
   it('writes one row per resident with 3-decimal points, status and tie flags', () => {
@@ -57,7 +57,7 @@ describe('CSV export', () => {
   it('adds the finalised line after the three comment lines while finalised', () => {
     const lines = buildListCsv(lists.maleStaying, [{ name: 'Test CCA 03' }], 2).split(NL)
     expect(lines.slice(0, 5)).toEqual([
-      '# mean/SD overrides: Test CCA 03',
+      '# mean/SD out of range: Test CCA 03',
       '# final-points overrides: 0',
       '# discretion adjustments: 0',
       '# finalised: yes · penalties: 2',
@@ -69,7 +69,7 @@ describe('CSV export', () => {
   it('starts a comparison export with the comment lines', () => {
     const run = computeAll(makeInput([{ id: 'A9900001Z', base: 15 }]), config)
     const lines = buildComparisonCsv(compareRuns(run, run), [], { a: 'Current settings', b: 'Draft' }).split(NL)
-    expect(lines[0]).toBe('# mean/SD overrides: none')
+    expect(lines[0]).toBe('# mean/SD out of range: none')
     expect(lines[1]).toBe('# final-points overrides: 0')
     expect(lines[2]).toBe('# discretion adjustments: 0')
     expect(lines[3]).toBe('# A: Current settings · B: Draft')

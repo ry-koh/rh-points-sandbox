@@ -24,8 +24,7 @@ const waiverRow = settingsWaiverRow
 /** Mean 14.5, population SD 1.58: outside the default 10-14 range, inside the 12-15 / 1.5-5 waiver. */
 const E21_SCORES = [11, 14, 14, 15, 15, 15, 15, 17]
 
-const run = (files: readonly SourceFile[], overrides: readonly string[] = []): ImportReport =>
-  validateImport(files, DEFAULT_CONFIG, overrides.map((ccaID) => ({ ccaID })))
+const run = (files: readonly SourceFile[]): ImportReport => validateImport(files, DEFAULT_CONFIG)
 const codesOf = (report: ImportReport): string[] => [...new Set(report.issues.map((i) => i.code))].sort()
 const codeList = (report: ImportReport, code: IssueCode) => report.issues.filter((i) => i.code === code)
 
@@ -57,7 +56,7 @@ describe('E21: the waiver range applies', () => {
       range: { meanMin: 12, meanMax: 15, sdMin: 1.5, sdMax: 5 },
     })
     expect(withFile.canCompute).toBe(true)
-    expect(withoutFile.canCompute).toBe(false)
+    expect(withoutFile.canCompute).toBe(true)
   })
 
   it('uses the default row for a CCA that has no waiver row', () => {
@@ -77,13 +76,13 @@ describe('E21: the waiver range applies', () => {
 describe("the file's default replaces the sandbox default for the check", () => {
   it('uses the file default even when the config says otherwise', () => {
     const narrow = { ...DEFAULT_CONFIG, meanSdDefault: { meanMin: 0, meanMax: 1, sdMin: 0, sdMax: 1 } }
-    const report = validateImport(files(settingsFile([defaultRow(), waiverRow('C1')])), narrow, [])
+    const report = validateImport(files(settingsFile([defaultRow(), waiverRow('C1')])), narrow)
     expect(report.perCca.find((c) => c.ccaID === 'C2')).toMatchObject({ status: 'ok', range: { meanMax: 14 } })
   })
 
   it('does not consult the config default at all when a settings file is loaded', () => {
     const wide = { ...DEFAULT_CONFIG, meanSdDefault: { meanMin: 0, meanMax: 20, sdMin: 0, sdMax: 10 } }
-    const report = validateImport(files(settingsFile([defaultRow({ meanMin: '17', meanMax: '18' })])), wide, [])
+    const report = validateImport(files(settingsFile([defaultRow({ meanMin: '17', meanMax: '18' })])), wide)
     expect(report.perCca.find((c) => c.ccaID === 'C2')?.status).toBe('out_of_range')
   })
 })

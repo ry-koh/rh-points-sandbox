@@ -29,16 +29,19 @@ Drop all files at once on the Import screen. A file with the same name replaces 
 
 | File | Who makes it | Columns |
 |---|---|---|
-| `points_<ccaID>_<YYYYMMDD>.csv` | each CCA leader (RH app) | formatVersion, ccaID, ccaName, matric, name, basePoints, semesterOnly, outgoingRole, incomingRole, exportedAt |
-| `flat_points_<YYYYMMDD>.csv` (optional) | JCRC (RH app) | formatVersion, ccaID, ccaName, matric, name, flatPoints, exportedAt |
-| `points_settings_<YYYYMMDD>.csv` | JCRC (RH app, "Export settings file") | formatVersion, scope, ccaID, ccaName, meanMin, meanMax, sdMin, sdMax, note, exportedAt |
+| `points_bundle_<YYYYMMDD>.csv` | JCRC (RH app, "Download sandbox bundle") | formatVersion, section, scope, ccaID, ccaName, matric, name, flatPoints, type, sport, ihgResult, ihgCap, meanMin, meanMax, sdMin, sdMax, note, exportedAt |
+| `points_<ccaID>_<YYYYMMDD>.csv` | each CCA leader (RH app) | formatVersion (2), ccaID, ccaName, matric, name, basePoints, semesterOnly, outgoingRole, incomingRole, ihg, exportedAt (formatVersion 1, without `ihg`, is still read) |
 | `residents.csv` | JCRC | matric, name (preferred name, as published), gender, sem2, aux, jcrc (N / FULL / EXCHANGE) |
-| `ccas.csv` | JCRC | ccaID, ccaName, type, placement, outgoingTier, outgoingMultiplier, meanMin, meanMax, sdMin, sdMax |
-| `ihg.csv` (optional) | JCRC / Sports | matric, ccaID, placement |
+| `flat_points_<YYYYMMDD>.csv` | JCRC (RH app) | older export, superseded by the bundle |
+| `points_settings_<YYYYMMDD>.csv` | JCRC (RH app) | older export, superseded by the bundle |
+
+`ccas.csv` and `ihg.csv` are retired: the sandbox refuses them with a message.
 
 Exact formats and every rule are in the [points spec](docs/points-spec.md).
 
-**Load JCRC's points settings file.** Export it from the RH app (/admin/points, "Export settings file") and drop it with the leader files. While it is loaded, the average and spread checks use only its ranges (the default plus each waiver), the range settings here become read-only, and ranges in `ccas.csv` are ignored. You can explore without it, but **Finalise lists stays locked until it is loaded**.
+**Load the RH-app bundle.** Download it from the RH app (/admin/points, "Download sandbox bundle") and drop it with the leader files. It lists every CCA with its type, whether it is a sport, and a sport's IHG result and cap; it also carries the flat-points members and the allowed average and spread (the default plus each waiver). While it is loaded, the checks use only those ranges and the range settings here become read-only. **Finalise lists stays locked until it is loaded.**
+
+Each CCA's level is picked on the Review step; the levels themselves are edited in Settings. IHG points go to the members the sport's head ticked in the RH app; the result and cap come from the bundle.
 
 ## Workflow
 

@@ -51,8 +51,8 @@ export function DropZone({ onFiles }: DropZoneProps) {
         <div className="min-w-0 flex-1">
           <div className="text-lead font-medium">Drop CSV files here</div>
           <div className="text-body text-muted">
-            Leader exports, residents.csv, ccas.csv and ihg.csv. A file with the same name replaces the
-            earlier one.
+            Leader exports, the RH-app bundle and residents.csv. A file with the same name replaces
+            the earlier one.
           </div>
         </div>
         <div className="flex shrink-0 flex-col gap-2">

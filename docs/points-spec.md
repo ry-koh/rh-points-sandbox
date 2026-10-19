@@ -1,4 +1,29 @@
-# RH Hall Points Spec — v2.2
+# RH Hall Points Spec — v2.3
+
+**Changes in v2.3**
+
+- The **RH-app bundle** (2d) replaces ccas.csv: it carries the CCA list, the mean/SD ranges and
+  the flat members. ccas.csv is retired (`CCAS_FILE_RETIRED`).
+- ihg.csv is retired (`IHG_FILE_RETIRED`). IHG recipients are the members the sport's head
+  ticked in the RH app (the leader file's `ihg` column); the sport's result and cap come from the
+  bundle.
+- The leader export is **formatVersion 2** (adds `ihg`); version 1 is still read.
+- A CCA's `type` is set in the RH app and is read-only in the sandbox. The sport flag, IHG
+  result and cap are set in the RH app, for sports only.
+- **Levels** (3, 3b) replace the placement bonus and the outgoing tiers. Each CCA's level, and
+  its optional tweaks, are picked in the sandbox on the Review step and saved in the workspace.
+  An older config that still has `placementBonus` / `outgoingTiers` is migrated (3).
+- The mean/SD ranges come from the bundle's `settings` rows. The standalone settings (2g) and
+  flat-points (2e) files are older exports, superseded by the bundle: recognised, but beside a
+  bundle they are `DUPLICATE_SETTINGS_FILE` / `DUPLICATE_FLAT_FILE` and ignored.
+- Issue codes added: `CCAS_FILE_RETIRED`, `IHG_FILE_RETIRED`, `MISSING_BUNDLE_FILE`,
+  `DUPLICATE_BUNDLE_FILE`, `BAD_BUNDLE_FILE`, `BAD_IHG_CAP`, `DUPLICATE_CCA`, `IHG_OVER_CAP`,
+  `IHG_NOT_SET`, `IHG_TICK_IGNORED`, `IHG_NO_TICKS`, `TYPE_NOT_SET`, `LEVEL_NOT_SET`,
+  `UNKNOWN_LEVEL`, `BAD_LEVEL_TWEAK`, `DUPLICATE_LEVEL_NAME`, `LEVEL_UNKNOWN_CCA`. The
+  `CCAS_RANGE_IGNORED` sentence in 2g is removed: there are no ccas.csv ranges to ignore.
+- Spec text corrected to match the code: `IHG_ON_FINAL_CCA` is raised by the engine only (a flat
+  CCA has no leader file, so a tick can never reach one); the engine guard stays.
+- The planned workspace version 2 (`ccaLevels`, `review`, `step`) is noted in 8b.
 
 **Changes in v2.2**
 
@@ -24,13 +49,14 @@ RH app (CCA leaders)  ->  CSV export  ->  email to portfolio head  ->  vetted
       ->  sandbox (JCRC)  ->  5 lists
 ```
 
-1. CCA leaders allocate base points (whole numbers 0–20) to members in the RH app. The app
+1. CCA leaders allocate base points (whole numbers 0–20) to members in the RH app. A sport's
+   head also ticks the members who get the IHG points (at most the sport's cap). The app
    checks the CCA's mean/SD range in the browser and only then lets the leader export.
    Points are never sent to or stored on the RH-app server.
 2. The leader emails the CSV to their portfolio head, who vets it.
-3. JCRC loads all vetted CSVs plus its own files (residents, IHG, CCA settings, and the
-   optional flat-points file, and the **points settings file** exported from the RH app, 2g)
-   into the offline sandbox, adjusts the scenario config, and gets
+3. JCRC loads all vetted CSVs plus the **RH-app bundle** (2d: the CCA list with each CCA's
+   type, sport flag, IHG result and cap, the mean/SD ranges and the flat members) and its own
+   residents list into the offline sandbox, adjusts the scenario config, and gets
    five lists: **male staying, male bidding, female staying, female bidding, sem-2 staying**.
    Bidding lists are ordered colour first (green, grey, white), see 5.3.
 4. JCRC may then enter, directly in the sandbox, **final-points overrides** (6.2) and
@@ -52,7 +78,7 @@ Filename: `points_<ccaID>_<YYYYMMDD>.csv`. One file per CCA.
 | Column | Type / allowed values |
 |---|---|
 | `formatVersion` | `1` (10 columns, no `ihg`) or `2` (adds `ihg`); must match the file's columns |
-| `ccaID` | string, must exist in ccas.csv, identical on every row |
+| `ccaID` | string, must be a `cca` row of the bundle, identical on every row |
 | `ccaName` | string |
 | `matric` | matric pattern above |
 | `name` | string |
@@ -146,9 +172,9 @@ formatVersion,ccaID,ccaName,matric,name,flatPoints,exportedAt
 
 JCRC sets the flat value per CCA in the RH app; the sandbox only **reads** it. It is not a
 sandbox setting. A file is detected by its header (or, failing that, a `flat_points_` file
-name). The file is optional. A flat CCA's `type`, `placement` and outgoing columns in
-ccas.csv are ignored for the points (the CCA still needs a ccas.csv row). A flat CCA is
-**not** mean/SD checked and does **not** raise `NO_LEADER_FILE`.
+name). The file is optional. A flat CCA's type and level are ignored for the points
+(the CCA still needs a `cca` row in the bundle). A flat CCA is **not** mean/SD checked and does
+**not** raise `NO_LEADER_FILE`.
 
 ### (g) points settings file — produced by the RH app (JCRC)
 
@@ -178,17 +204,17 @@ Exactly **one** `default` row, then zero or more `waiver` rows. Every range valu
 app), so no fallback is applied when reading. A file is detected by its header (or, failing
 that, a `points_settings_` file name).
 
-**Effect.** While the file is loaded, the mean/SD check (7.1) of every leader file uses ONLY
-these ranges: the `default` row for a CCA with no waiver row, the waiver row's range for a
-waived CCA. The sandbox's own `meanSdDefault` setting is not used for the check and is shown
-read-only ("From JCRC settings file"); loading a scenario does not change it. Ranges in
-ccas.csv are ignored (`CCAS_RANGE_IGNORED`). A waiver row for a `ccaID` not in ccas.csv is
+**Effect.** These rows are the bundle's `settings` rows (2d). While a bundle is loaded, the
+mean/SD check (7.1) of every leader file uses ONLY these ranges: the `default` row for a CCA
+with no waiver row, the waiver row's range for a waived CCA. The sandbox's own `meanSdDefault`
+setting is not used for the check and is shown read-only ("From the RH-app bundle"); loading a
+scenario does not change it. A waiver row for a `ccaID` not in the bundle's `cca` rows is
 ignored (`SETTINGS_UNKNOWN_CCA`). A waiver on a flat CCA is harmless: flat CCAs are not
 mean/SD checked.
 
-**Finalise lists is refused until the file is loaded**: "Load JCRC's points settings file
-before finalising." Before that, the sandbox may be used to explore with its own ranges and
-shows a note saying so. The file is optional for everything except finalising.
+**Finalise lists is refused until the bundle is loaded**: "Load the RH-app bundle before
+finalising." While no usable `settings` rows are loaded, the sandbox uses its own ranges and
+shows a note saying so.
 
 ## 3. Scenario config (JSON)
 
@@ -219,9 +245,10 @@ The scenario JSON holds **settings only, never resident data**.
 
 Each CCA has one `level` (a name from `levels`, or none) and two optional tweaks,
 `bonusOverride` and `multiplierOverride`, that win over the level's numbers for that CCA only.
-Until ccas.csv is retired, it supplies them: `outgoingTier` names the level (else `placement`
-maps pass → Pass, bronze → Low Bronze, silver → Low Silver, gold → High Gold), and
-`outgoingMultiplier` is the multiplier tweak. Type and range overrides also come from ccas.csv.
+Type, sport flag, IHG result and cap come from the bundle (set in the RH app on /admin/points).
+Each CCA's level and optional tweaks are set in the sandbox (Review step) and saved in the
+workspace (3b, 8b); they are never in the scenario config or in a file. The levels THEMSELVES
+(names and numbers) are scenario config.
 
 **Migration.** A config or scenario file saved under v1.x has `headcounts.sem2Spots`. When
 read, it becomes `sem2Green = sem2Spots` and `sem2Grey = 0`; the `jcrc*` keys take their
@@ -285,7 +312,8 @@ Notation: resident `r`, CCA `c`, membership `m = (r, c)` taken from the leader f
   **never paired** by half-CCA merging, even in a `0.5x` CCA. They still occupy one slot in the
   staying ranking and take that slot's weight. An IHG row for such a membership is **always
   ignored** (whatever `ihgInSportNet` says, so it is neither in the net nor flat) with the
-  warning `IHG_ON_FINAL_CCA`, to avoid counting IHG twice.
+  warning `IHG_ON_FINAL_CCA`, to avoid counting IHG twice. A flat CCA has no leader file, so a
+  tick can never reach one; the guard is in the engine and applies to overridden memberships.
 - Everything below describes the **normal calculation**.
 - IHG points are added in full whatever `semesterOnly` says.
 
@@ -557,7 +585,7 @@ override = { matric, ccaID, finalPoints, reason }
 ```
 
 for an EXISTING membership (from a leader file or the flat-points file). It sets that
-membership's `stayNet = bidNet = finalPoints` exactly, as in 4.1: no placement, multipliers,
+membership's `stayNet = bidNet = finalPoints` exactly, as in 4.1: no level bonus, multipliers,
 halving or IHG, never paired in half-CCA merging, but still ranked and weighted as one slot.
 Precedence: **override > flat > normal calculation.** The breakdown reads
 `Final points set by JCRC: X — <reason>`. An IHG row for an overridden membership is always
@@ -597,14 +625,12 @@ Run on import. The RH app uses the identical mean/SD check.
 
 Computed over the CCA's **full `basePoints`** — leaders included, semester-only members
 **unhalved** — using the **population SD (÷N)**. Bounds are inclusive with tolerance
-`1e-9`. The range is the CCA's override fields, else `meanSdDefault`; each of the four
-range fields falls back to `meanSdDefault` independently.
+`1e-9`. The range comes from the bundle's `settings` rows (2d): the CCA's `waiver` row if it
+has one, else the `default` row. `meanSdDefault` is used only while no usable bundle is loaded
+(exploration), and the panel says so.
 
 A mean or SD outside the range does not block anything (7.3).
 
-**When a points settings file (2g) is loaded** the ranges come ONLY from it: the CCA's
-`waiver` row if it has one, else the `default` row. ccas.csv range columns and the sandbox's
-`meanSdDefault` are not used.
 
 ### 7.2 ERRORS
 
@@ -620,12 +646,12 @@ Block results until each is fixed by re-importing a corrected file.
 - wrong `formatVersion` or wrong header
 - duplicate matric in residents.csv, or more than one residents.csv
 - bad `gender`, `sem2` or `aux` value
-- an ihg.csv (retired)
+- an ihg.csv (retired, `IHG_FILE_RETIRED`)
 - more leader-file `ihg` ticks than the sport's `ihgCap`
 - no RH-app bundle, more than one bundle, a value in a column its section does not use, an IHG
   column on a `sport` = `N` row, an unknown `section`, no `cca` rows, an `ihgCap` that is not
   a whole number ≥ 1, or the same `ccaID` on two `cca` rows
-- a ccas.csv (retired)
+- a ccas.csv (retired, `CCAS_FILE_RETIRED`)
 - a level entry whose `level` is not one of the `levels`, or whose tweak is out of range; two
   `levels` with the same name
 - residents.csv: `jcrc` not `N` / `FULL` / `EXCHANGE`, or `jcrc` other than `N` on a `sem2` = `Y` resident
@@ -663,7 +689,8 @@ Every issue carries `severity`, `code`, `fileName`, and where known `line`,
 `column`, `ccaID` and `matric`, plus a plain-English `message`. Line numbers count the header as
 line 1. `canCompute` is true when no error remains. Checks that need a
 reference file (residents.csv, the bundle) are skipped when that file is missing, so one mistake
-raises one issue rather than a cascade. The IHG file is optional.
+raises one issue rather than a cascade. IHG has no file of its own: it is built from the
+leader files' ticks and the bundle (2c).
 
 | Code | Sev | Raised when |
 |---|---|---|
@@ -687,7 +714,7 @@ raises one issue rather than a cascade. The IHG file is optional.
 | `DUPLICATE_MATRIC_IN_FILE` | error | same matric twice in one leader file, or twice within one `ccaID` of the flat file (the later row is ignored) |
 | `DUPLICATE_RESIDENT` | error | same matric twice in residents.csv |
 | `BAD_BASE_POINTS` | error | `basePoints` not a whole number 0–20 |
-| `BAD_ENUM` | error | bad `outgoingRole` / `incomingRole` / `type` / `ihgResult` / `placement` value |
+| `BAD_ENUM` | error | bad `outgoingRole` / `incomingRole` / `type` / `ihgResult` value |
 | `BAD_YN` | error | `semesterOnly` / `sem2` / `sport` not `Y` or `N` |
 | `BAD_GENDER` | error | `gender` not `M` or `F` |
 | `BAD_AUX` | error | `aux` not a whole number ≥ 0 |
@@ -728,8 +755,9 @@ raises one issue rather than a cascade. The IHG file is optional.
 
 The five entry codes (`BAD_FINAL_POINTS` … `DISCRETION_UNKNOWN_RESIDENT`) are returned by the
 engine's `validateOverride` / `validateDiscretion` when an entry is added; they are not raised
-by file import. `IHG_ON_FINAL_CCA` is raised by the engine (every flat or overridden
-membership) and, for flat memberships, also by file import.
+by file import. `IHG_ON_FINAL_CCA` is raised by the engine only (every flat or overridden
+membership that has an IHG row); file import cannot produce one, because a flat CCA has no
+leader file and so no ticks.
 
 `exportedAt` is not validated. Mean/SD is computed from every valid, non-duplicate leader row,
 whether or not the file has other errors.
@@ -951,8 +979,9 @@ The list is still sorted by the exact points (12.5 stays above 12.4999).
 ### E18 — Flat CCA
 
 A resident in four CCAs: Handball (base 18, High Gold), Arts & Graphics (15, Low Bronze), Welfare
-(10, Low Bronze) and one **flat CCA with `flatPoints = 12`**. The flat CCA's level is High Gold and the
-resident is an incoming Head there: both are ignored. Nets: 22, 15.5, 10.5 and a flat 12.
+(10, Low Bronze) and one **flat CCA with `flatPoints = 12`**. The bundle's `cca` row and the
+sandbox's level table say the flat CCA is High Gold, and the resident is an incoming Head there:
+both are ignored. Nets: 22, 15.5, 10.5 and a flat 12.
 
 ```
 staying = 22 + 15.5 + 12 + 10.5 = 60          (sorted 22, 15.5, 12, 10.5; weights 1, 1, 1, 1)
@@ -980,7 +1009,7 @@ bidding = 81.5   − 1 = 80.5
 
 ### E21 — Points settings file (waiver ranges)
 
-Settings file (2g): `default` 10–14 / 2–5, and a `waiver` row for CCA 9101 with 12–15 /
+The bundle's `settings` rows (2d, 2g): `default` 10–14 / 2–5, and a `waiver` row for CCA 9101 with 12–15 /
 1.5–5. Leader file for 9101 has mean **14.5** and SD **1.6**.
 
 ```
@@ -988,7 +1017,7 @@ under the default (10–14 / 2–5):  mean 14.5 > 14      → MEAN_SD_OUT_OF_RAN
 under the waiver  (12–15 / 1.5–5): 12 ≤ 14.5 ≤ 15, 1.5 ≤ 1.6 ≤ 5 → ok
 ```
 
-With the settings file loaded the CCA is `ok`; without it (sandbox's own default range) the
+With the bundle loaded the CCA is `ok`; without it (sandbox's own default range) the
 same files raise `MEAN_SD_OUT_OF_RANGE` for 9101.
 
 ## 8b. Workspace file
@@ -1005,6 +1034,10 @@ downloads explicitly. It is never written to localStorage, sessionStorage or Ind
 overrides before v2.2; older files that list ids there still open); `config` the scenario config; `finalOverrides`, `discretion` and `resolutions` the entries
 of 6.2, 6.3 and 5.6; `finalised` the penalty state or `null`. The workspace contains resident
 data and must be handled like the input files.
+
+Planned: version 2 adds `ccaLevels` (3b), `review` (edits, vetted marks, not-submitting marks)
+and `step`, and drops `meanSdOverrides`; version 1 files will still open. Until then the file is
+written as above.
 
 - **Filename:** `rhps_workspace_<YYYYMMDD-HHmm>.rhps` (local time).
 - **Encrypted form** (optional password): a JSON envelope

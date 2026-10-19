@@ -53,12 +53,12 @@ export const SETTINGS_TEXT: Readonly<Record<keyof ScenarioConfig, SettingText>> 
   auxCap: { label: 'Most AUX points counted', help: 'Anyone with more AUX is counted as having this many.' },
   ihgPoints: {
     label: 'IHG placement bonus',
-    help: 'Points for each IHG result: 1st, 2nd, 3rd, or 3rd/4th with no placement match.',
+    help: "Points for each IHG result (the result is set per sport in the RH app). They go to the members the sport's head ticked.",
   },
   ihgInSportNet: {
     label: "Count IHG bonus inside the sport's score",
     help:
-      "Off: added straight onto the total, always in full. On: added to that sport's CCA score, so it can lift the sport into the top 4 — or be cut to 50%/25% if the sport is a 5th/6th CCA. Never added to flat or final-points CCAs.",
+      "Off: added straight onto the total, always in full. On: added to the sport's CCA score (using the sport's result), so it can lift the sport into the top 4 — or be cut to 50%/25% if the sport is a 5th/6th CCA. Never added to flat or final-points CCAs.",
   },
   sem2Mode: {
     label: 'When do semester-2 residents pick rooms?',

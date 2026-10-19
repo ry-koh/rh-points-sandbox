@@ -5,6 +5,7 @@ import { Button } from '../common/controls'
 import type { Action, AppState } from '../state/store'
 import { CcaTable } from './CcaTable'
 import { DropZone } from './DropZone'
+import { loadDemoFiles, loadDemoLevels } from './demoData'
 import { FileList } from './FileList'
 import { IssuesPanel } from './IssuesPanel'
 
@@ -16,6 +17,12 @@ interface ImportScreenProps {
   readonly onViewResults: () => void
 }
 
+/** The demo files, then the demo's levels (dev only). */
+async function loadDemo(dispatch: Dispatch<Action>): Promise<void> {
+  dispatch({ type: 'addFiles', files: await loadDemoFiles() })
+  dispatch({ type: 'setCcaLevelsAll', list: await loadDemoLevels() })
+}
+
 export function ImportScreen({ state, dispatch, blockedReason, settingsCause, onViewResults }: ImportScreenProps) {
   const { report, files } = state
   const locked = state.finalised !== null
@@ -25,8 +32,8 @@ export function ImportScreen({ state, dispatch, blockedReason, settingsCause, on
         <div>
           <h1 className="text-display font-semibold tracking-tight">Import</h1>
           <p className="mt-1 max-w-2xl text-ui text-muted">
-            Drop the vetted CCA files and JCRC lists. Every file is checked here, in this browser;
-            nothing is uploaded.
+            Drop the leader files, the RH-app bundle and the residents list. Every file is checked
+            here, in this browser; nothing is uploaded. Scores are reviewed on the Review step.
           </p>
         </div>
         <Button
@@ -48,7 +55,7 @@ export function ImportScreen({ state, dispatch, blockedReason, settingsCause, on
       </div>
       {locked && (
         <p role="status" className="mt-6 flex items-center gap-2 border-l-4 border-gold bg-gold-soft px-4 py-3 text-body font-medium">
-          <Lock aria-hidden size={15} /> Finalised · settings locked. Files and overrides cannot change until the lists are unlocked on the Results screen.
+          <Lock aria-hidden size={15} /> Finalised · settings locked. Files cannot change until the lists are unlocked on the Results screen.
         </p>
       )}
       {settingsCause && (
@@ -68,16 +75,14 @@ export function ImportScreen({ state, dispatch, blockedReason, settingsCause, on
       )}
       <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,4fr)]">
         <div className="min-w-0">
-          {!locked && <DropZone onFiles={(added) => dispatch({ type: 'addFiles', files: added })} />}
-          <FileList files={files} locked={locked} onRemove={(name) => dispatch({ type: 'removeFile', name })} />
+          {!locked && <DropZone onFiles={(added) => dispatch({ type: 'addFiles', files: added })} onDemo={() => void loadDemo(dispatch)} />}
+          <FileList files={files} locked={locked} bundle={report.bundle} onRemove={(name) => dispatch({ type: 'removeFile', name })} />
         </div>
         {files.length > 0 && <IssuesPanel issues={report.issues} />}
       </div>
       <CcaTable
         rows={report.perCca}
         waivers={new Set(Object.keys(report.settings?.waivers ?? {}))}
-        locked={locked}
-        onToggleOverride={(ccaID) => dispatch({ type: 'toggleOverride', ccaID })}
       />
     </main>
   )

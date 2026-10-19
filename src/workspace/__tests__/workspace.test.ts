@@ -1,9 +1,14 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG } from '../../engine'
-import { leaderFileName, scenario } from '../../import/__tests__/fixtures'
+import { fnv1a32 } from '../../import'
+import { leaderFileName, leaderRows, matricOf, scenario } from '../../import/__tests__/fixtures'
 import {
+  LEVELS_MIGRATED_NOTE,
+  RETIRED_FILES_NOTE,
   WORKSPACE_FORMAT,
   encryptWorkspace,
+  migrateWorkspace,
   parseWorkspaceFile,
   restoreWorkspace,
   serializeWorkspace,
@@ -14,13 +19,31 @@ import {
 const TIMEOUT = 30_000
 const PASSWORD = 'correct horse'
 
+const AT = '2027-04-02T10:00:00.000Z'
+const files = scenario()
+const c1File = files.find((f) => f.name === leaderFileName('C1'))?.text ?? ''
+
 const workspace: Workspace = {
   format: WORKSPACE_FORMAT,
-  version: 1,
+  version: 2,
   savedAt: '2027-04-01T09:30:00.000Z',
-  files: scenario(),
-  meanSdOverrides: ['C1'],
+  files,
   config: { ...DEFAULT_CONFIG, headcounts: { ...DEFAULT_CONFIG.headcounts, maleGreen: 2, maleGrey: 1, sem2Green: 1 } },
+  ccaLevels: [
+    { ccaID: 'C1', level: 'High Gold', bonusOverride: null, multiplierOverride: null },
+    { ccaID: 'C2', level: 'Low Bronze', bonusOverride: 0.75, multiplierOverride: 1.1 },
+  ],
+  review: {
+    edits: [{ matric: matricOf(1), ccaID: 'C1', from: 8, to: 9, reason: 'typo', at: AT }],
+    log: [
+      { matric: matricOf(1), ccaID: 'C1', from: 8, to: 10, reason: '', at: AT, kind: 'edit' },
+      { matric: matricOf(1), ccaID: 'C1', from: 10, to: 8, reason: '', at: AT, kind: 'remove' },
+      { matric: matricOf(1), ccaID: 'C1', from: 8, to: 9, reason: 'typo', at: AT, kind: 'edit' },
+    ],
+    vetted: [{ ccaID: 'C1', fileHash: fnv1a32(c1File), at: AT }],
+    notSubmitting: [{ ccaID: 'C9', note: 'disbanded', at: AT }],
+  },
+  step: 'review',
   finalOverrides: [{ matric: 'A9900001Z', ccaID: 'C1', finalPoints: 5, reason: 'withdrawn' }],
   discretion: [{ matric: 'A9900002Z', stayingDelta: 2, biddingDelta: -1, reason: 'service' }],
   resolutions: [{ list: 'maleStaying', order: ['A9900003Z', 'A9900001Z'] }],
@@ -38,8 +61,17 @@ const codeOf = async (text: string, password?: string) => {
 }
 
 describe('plain workspace', () => {
-  it('round-trips exactly', async () => {
-    expect(await ok(serializeWorkspace(workspace))).toEqual(workspace)
+  it('round-trips exactly, every v2 field included', async () => {
+    const parsed = await parseWorkspaceFile(serializeWorkspace(workspace))
+    expect(parsed).toEqual({ ok: true, workspace, notes: [] })
+    expect(workspace.ccaLevels).toHaveLength(2)
+  })
+
+  it('is written as version 2, with the level table and no meanSdOverrides', () => {
+    const written = JSON.parse(serializeWorkspace(workspace)) as Record<string, unknown>
+    expect(written.version).toBe(2)
+    expect(written.ccaLevels).toEqual(workspace.ccaLevels)
+    expect('meanSdOverrides' in written).toBe(false)
   })
 
   it('keeps a finalised penalty state', async () => {
@@ -110,6 +142,11 @@ describe('encrypted workspace', () => {
     expect(await codeOf(JSON.stringify({ ...envelope, cipher: { name: 'AES-GCM', iv: 'AAAA' } }), PASSWORD)).toBe('CORRUPT')
   })
 
+  it('a file written now still has envelope version 1', { timeout: TIMEOUT }, async () => {
+    const envelope = JSON.parse(await encryptWorkspace(serializeWorkspace(workspace), PASSWORD)) as Record<string, any>
+    expect(envelope.version).toBe(1)
+  })
+
   it('UNSUPPORTED_VERSION for another envelope version', { timeout: TIMEOUT }, async () => {
     const envelope = JSON.parse(await encryptWorkspace('{}', PASSWORD)) as Record<string, any>
     expect(await codeOf(JSON.stringify({ ...envelope, version: 2 }), PASSWORD)).toBe('UNSUPPORTED_VERSION')
@@ -124,7 +161,8 @@ describe('rejecting other files', () => {
   })
 
   it('UNSUPPORTED_VERSION for another workspace version', async () => {
-    expect(await codeOf(JSON.stringify({ ...workspace, version: 2 }))).toBe('UNSUPPORTED_VERSION')
+    expect(await codeOf(JSON.stringify({ ...workspace, version: 3 }))).toBe('UNSUPPORTED_VERSION')
+    expect(await codeOf(JSON.stringify({ ...workspace, version: 0 }))).toBe('UNSUPPORTED_VERSION')
     expect(await codeOf(JSON.stringify({ ...workspace, version: undefined }))).toBe('UNSUPPORTED_VERSION')
   })
 
@@ -136,6 +174,97 @@ describe('rejecting other files', () => {
     expect(await codeOf(JSON.stringify({ ...workspace, resolutions: [{ list: 'bogus', order: [] }] }))).toBe('CORRUPT')
     expect(await codeOf(JSON.stringify({ ...workspace, config: { headcounts: 3 } }))).toBe('CORRUPT')
   })
+
+  it('CORRUPT for a wrong-shaped review, level table or step', async () => {
+    const review = workspace.review
+    for (const bad of [
+      { review: undefined },
+      { review: [] },
+      { review: { ...review, edits: [{ matric: 'x', ccaID: 'C1', from: 8, to: '9', reason: '', at: AT }] } },
+      { review: { ...review, log: [{ ...review.edits[0], kind: 'undo' }] } },
+      { review: { ...review, vetted: [{ ccaID: 'C1', fileHash: 1, at: AT }] } },
+      { review: { ...review, notSubmitting: [{ ccaID: 'C1', at: AT }] } },
+      { ccaLevels: undefined },
+      { ccaLevels: [{ ccaID: 'C1', level: 3, bonusOverride: null, multiplierOverride: null }] },
+      { ccaLevels: [{ ccaID: 'C1', level: null, bonusOverride: 'x', multiplierOverride: null }] },
+      { step: 'nowhere' },
+    ]) {
+      expect(await codeOf(JSON.stringify({ ...workspace, ...bad }))).toBe('CORRUPT')
+    }
+  })
+})
+
+describe('version 1 files (spec 8b migration)', () => {
+  const v1Text = readFileSync('src/workspace/__tests__/v1-fixture.json', 'utf8')
+  const v1 = JSON.parse(v1Text) as Record<string, any>
+
+  it('opens the literal v1 fixture with exactly two notes', async () => {
+    const parsed = await parseWorkspaceFile(v1Text)
+    if (!parsed.ok) throw new Error(`expected ok, got ${parsed.code}`)
+    expect(parsed.notes).toEqual([RETIRED_FILES_NOTE, LEVELS_MIGRATED_NOTE])
+    const opened = parsed.workspace
+    expect(opened.version).toBe(2)
+    expect(opened.review).toEqual({ edits: [], log: [], vetted: [], notSubmitting: [] })
+    expect(opened.ccaLevels).toEqual([])
+    expect(opened.step).toBe('import')
+    expect('meanSdOverrides' in opened).toBe(false)
+    expect(opened.files.map((f) => f.name)).toEqual(['residents.csv', 'points_C1_20260401.csv', 'points_C2_20260401.csv'])
+    expect(opened.config.levels).toEqual(DEFAULT_CONFIG.levels)
+    expect('placementBonus' in opened.config).toBe(false)
+    expect(opened.discretion).toEqual(v1.discretion)
+  })
+
+  it('restoring it passes the notes through and asks for the bundle', async () => {
+    const parsed = await parseWorkspaceFile(v1Text)
+    if (!parsed.ok) throw new Error('expected ok')
+    const restored = restoreWorkspace(parsed.workspace, parsed.notes)
+    expect(restored.notes).toEqual(parsed.notes)
+    expect(restored.report.bundle).toBeNull()
+    expect(restored.report.issues.map((i) => i.code)).not.toContain('CCAS_FILE_RETIRED')
+    expect(restored.report.issues.map((i) => i.code)).not.toContain('IHG_FILE_RETIRED')
+  })
+
+  it('waits for the bundle: nothing is listed as stale, both groups are unchecked', async () => {
+    const parsed = await parseWorkspaceFile(v1Text)
+    if (!parsed.ok) throw new Error('expected ok')
+    const restored = restoreWorkspace(parsed.workspace, parsed.notes)
+    expect(restored.notes).toHaveLength(2)
+    expect(restored.unchecked).toEqual({ review: true, computed: true })
+    expect(restored.stale).toEqual({ overrides: [], discretion: [], resolutions: [], edits: [], vetted: [], ccaLevels: [] })
+    expect(restored.workspace.discretion).toEqual(v1.discretion)
+  })
+
+  it('drops a retired file by its header whatever its name, and by its name whatever its text', () => {
+    const files = [
+      { name: 'levels.csv', text: v1.files[1].text },
+      { name: 'my-ihg.csv', text: v1.files[2].text },
+      { name: 'CCAs (old).csv', text: 'anything' },
+      { name: 'IHG.csv', text: '' },
+      { name: 'residents.csv', text: v1.files[0].text },
+    ]
+    const { raw, notes } = migrateWorkspace({ ...v1, files })
+    expect((raw.files as { name: string }[]).map((f) => f.name)).toEqual(['residents.csv'])
+    expect(notes).toEqual([RETIRED_FILES_NOTE, LEVELS_MIGRATED_NOTE])
+  })
+
+  it('adds no note when nothing was dropped and the config was already new', () => {
+    const { raw, notes } = migrateWorkspace({ ...v1, files: [v1.files[0]], config: DEFAULT_CONFIG })
+    expect(notes).toEqual([])
+    expect(raw.config).toEqual(DEFAULT_CONFIG)
+  })
+
+  it('leaves a version 2 object alone and never changes its input', () => {
+    const v2 = JSON.parse(serializeWorkspace(workspace)) as Record<string, unknown>
+    expect(migrateWorkspace(v2)).toEqual({ raw: v2, notes: [] })
+    const before = JSON.stringify(v1)
+    migrateWorkspace(v1)
+    expect(JSON.stringify(v1)).toBe(before)
+  })
+
+  it('a v1 file with a broken config is CORRUPT', async () => {
+    expect(await codeOf(JSON.stringify({ ...v1, config: { headcounts: 3 } }))).toBe('CORRUPT')
+    expect(await codeOf(JSON.stringify({ ...v1, files: 'nope' }))).toBe('CORRUPT')
+  })
 })
 
 describe('config migration on load', () => {
@@ -145,6 +274,7 @@ describe('config migration on load', () => {
     delete config.jcrcFullYearOffset
     delete config.jcrcExchangeFactor
     const loaded = await ok(JSON.stringify({ ...workspace, config }))
+    expect('ccaLevels' in loaded).toBe(true)
     expect(loaded.config.headcounts).toMatchObject({ maleGreen: 2, sem2Green: 7, sem2Grey: 0 })
     expect('sem2Spots' in loaded.config.headcounts).toBe(false)
     expect(loaded.config.jcrcFullYearOffset).toBe(DEFAULT_CONFIG.jcrcFullYearOffset)
@@ -163,31 +293,65 @@ describe('restoreWorkspace re-validates the saved files', () => {
 
   it('reports an override whose membership vanished after a changed file', () => {
     const files = workspace.files.filter((f) => f.name !== leaderFileName('C1'))
-    const restored = restoreWorkspace({ ...workspace, files, meanSdOverrides: [] })
+    const restored = restoreWorkspace({ ...workspace, files })
     expect(restored.report.canCompute).toBe(true)
     expect(restored.stale.overrides).toEqual(workspace.finalOverrides)
     expect(restored.stale.discretion).toEqual([])
   })
 
-  it('reports discretion for a resident who left the residents list', () => {
-    const files = workspace.files.map((f) =>
-      f.name === 'residents.csv' ? { ...f, text: f.text.split('\n').filter((l) => !l.startsWith('A9900002Z')).join('\n') } : f,
-    )
-    const restored = restoreWorkspace({ ...workspace, files })
-    expect(restored.stale.discretion).toEqual(workspace.discretion)
+  it('still lists discretion for a resident who is not in the residents list, when the import is good', () => {
+    const gone = { matric: 'A9999999Z', stayingDelta: 1, biddingDelta: 1, reason: 'left' }
+    const restored = restoreWorkspace({ ...workspace, discretion: [...workspace.discretion, gone] })
+    expect(restored.report.canCompute).toBe(true)
+    expect(restored.unchecked).toEqual({ review: false, computed: false })
+    expect(restored.stale.discretion).toEqual([gone])
   })
 
   it('reports a wheel resolution that no longer matches a tie group', () => {
     expect(restoreWorkspace(workspace).stale.resolutions).toEqual(workspace.resolutions)
   })
 
-  it('reports every item as stale while the saved files do not import', () => {
+  it('leaves computed entries unchecked while the import has an error, and checks review items', () => {
     const files = workspace.files.filter((f) => f.name !== 'residents.csv')
     const restored = restoreWorkspace({ ...workspace, files })
     expect(restored.report.canCompute).toBe(false)
-    expect(restored.stale.overrides).toEqual(workspace.finalOverrides)
-    expect(restored.stale.discretion).toEqual(workspace.discretion)
-    expect(restored.stale.resolutions).toEqual(workspace.resolutions)
+    expect(restored.report.bundle).not.toBeNull()
+    expect(restored.unchecked).toEqual({ review: false, computed: true })
+    expect(restored.stale.overrides).toEqual([])
+    expect(restored.stale.discretion).toEqual([])
+    expect(restored.stale.resolutions).toEqual([])
+    expect(restored.stale.ccaLevels).toEqual([])
+  })
+
+  it('has nothing unchecked when the import computes', () => {
+    expect(restoreWorkspace(workspace).unchecked).toEqual({ review: false, computed: false })
+  })
+
+  it('reports nothing about review or levels while everything still matches', () => {
+    const restored = restoreWorkspace(workspace)
+    expect(restored.stale.edits).toEqual([])
+    expect(restored.stale.vetted).toEqual([])
+    expect(restored.stale.ccaLevels).toEqual([])
+    expect(restored.notes).toEqual([])
+  })
+
+  it('lists an edit as stale when its leader file was removed', () => {
+    const files = workspace.files.filter((f) => f.name !== leaderFileName('C1'))
+    const restored = restoreWorkspace({ ...workspace, files })
+    expect(restored.stale.edits).toEqual([{ entry: workspace.review.edits[0], status: 'stale', fileValue: null }])
+  })
+
+  it('lists an edit as changed, and the vetted mark, when the file value moved', () => {
+    const moved = scenario({ leaders: { C1: leaderRows('C1', [15, 10, 12, 14, 16, 18]), C2: leaderRows('C2') } })
+    const restored = restoreWorkspace({ ...workspace, files: moved })
+    expect(restored.stale.edits).toEqual([{ entry: workspace.review.edits[0], status: 'changed', fileValue: 15 }])
+    expect(restored.stale.vetted).toEqual(workspace.review.vetted)
+  })
+
+  it('lists a level entry whose ccaID is not in the bundle', () => {
+    const extra = { ccaID: 'C7', level: 'Pass', bonusOverride: null, multiplierOverride: null }
+    const restored = restoreWorkspace({ ...workspace, ccaLevels: [...workspace.ccaLevels, extra] })
+    expect(restored.stale.ccaLevels).toEqual([extra])
   })
 
   it('does not change the workspace it was given', () => {

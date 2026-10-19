@@ -13,6 +13,20 @@ const FILTERS: readonly { value: Filter; label: string }[] = [
 
 const GENERAL = 'General'
 
+const RH_APP_HINT = 'Set it on /admin/points in the RH app, then download the bundle again.'
+
+/** A hint per code; any other error falls back to "Fix the file and drop it again." */
+const CODE_HINTS: Readonly<Partial<Record<Issue['code'], string>>> = {
+  MEAN_SD_OUT_OF_RANGE: 'Allowed. Check the scores on the Review step.',
+  TYPE_NOT_SET: RH_APP_HINT,
+  IHG_NOT_SET: RH_APP_HINT,
+  LEVEL_NOT_SET: 'Pick the level on the Review step.',
+  IHG_OVER_CAP: 'Raise the cap in the RH app and download the bundle again, or ask the head for a corrected file.',
+  UNKNOWN_LEVEL: 'Pick another level on the Review step or add it back in Settings.',
+  CCAS_FILE_RETIRED: 'Remove this file.',
+  IHG_FILE_RETIRED: 'Remove this file.',
+}
+
 function groupByFile(issues: readonly Issue[]): [string, Issue[]][] {
   const groups = new Map<string, Issue[]>()
   for (const issue of issues) {
@@ -29,16 +43,10 @@ const bySeverity = (a: Issue, b: Issue): number =>
 function IssueItem({ issue }: { readonly issue: Issue }) {
   const isError = issue.severity === 'error'
   const Icon = isError ? XCircle : AlertTriangle
-  const hint = !isError
-    ? null
-    : issue.overridden
-      ? 'Overridden — listed on every export.'
-      : issue.overridable
-        ? 'You can override this in the mean and SD table below.'
-        : 'Fix the file and drop it again.'
+  const hint = CODE_HINTS[issue.code] ?? (isError ? 'Fix the file and drop it again.' : null)
   return (
     <li className="flex gap-2 py-2">
-      <Icon aria-hidden size={15} className={`mt-0.5 shrink-0 ${isError && !issue.overridden ? 'text-error' : 'text-warning'}`} />
+      <Icon aria-hidden size={15} className={`mt-0.5 shrink-0 ${isError ? 'text-error' : 'text-warning'}`} />
       <div className="min-w-0">
         <p className="text-body break-words">{issue.message}</p>
         {hint && <p className="mt-0.5 text-cap text-muted">{hint}</p>}
@@ -49,7 +57,7 @@ function IssueItem({ issue }: { readonly issue: Issue }) {
 
 export function IssuesPanel({ issues }: { readonly issues: readonly Issue[] }) {
   const [filter, setFilter] = useState<Filter>('all')
-  const errors = issues.filter((i) => i.severity === 'error' && !i.overridden).length
+  const errors = issues.filter((i) => i.severity === 'error').length
   const warnings = issues.filter((i) => i.severity === 'warning').length
   const groups = useMemo(
     () => groupByFile(issues.filter((i) => filter === 'all' || i.severity === filter)),

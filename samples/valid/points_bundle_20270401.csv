@@ -1,0 +1,25 @@
+formatVersion,section,scope,ccaID,ccaName,matric,name,flatPoints,type,sport,ihgResult,ihgCap,meanMin,meanMax,sdMin,sdMax,note,exportedAt
+1,settings,default,,,,,,,,,,10,14,2,5,,2027-04-01T00:00:00Z
+1,settings,waiver,C03,Test CCA 03,,,,,,,,14,17,1,3,Small CCA,2027-04-01T00:00:00Z
+1,settings,waiver,C07,Test CCA 07,,,,,,,,7,10,2,6,Small CCA,2027-04-01T00:00:00Z
+1,cca,,C01,Test CCA 01,,,,1x,Y,1st,3,,,,,,2027-04-01T00:00:00Z
+1,cca,,C02,Test CCA 02,,,,1x,Y,2nd,3,,,,,,2027-04-01T00:00:00Z
+1,cca,,C03,Test CCA 03,,,,1x,N,,,,,,,,2027-04-01T00:00:00Z
+1,cca,,C04,Test CCA 04,,,,1x,Y,3rd,3,,,,,,2027-04-01T00:00:00Z
+1,cca,,C05,Test CCA 05,,,,1x,Y,3rd4th_no_match,3,,,,,,2027-04-01T00:00:00Z
+1,cca,,C06,Test CCA 06,,,,1x,Y,2nd,3,,,,,,2027-04-01T00:00:00Z
+1,cca,,C07,Test CCA 07,,,,1x,N,,,,,,,,2027-04-01T00:00:00Z
+1,cca,,C08,Test CCA 08,,,,1x,Y,1st,3,,,,,,2027-04-01T00:00:00Z
+1,cca,,C09,Test CCA 09,,,,1x,N,,,,,,,,2027-04-01T00:00:00Z
+1,cca,,C10,Test CCA 10,,,,0.5x,N,,,,,,,,2027-04-01T00:00:00Z
+1,cca,,C11,Test CCA 11,,,,0.5x,N,,,,,,,,2027-04-01T00:00:00Z
+1,cca,,C12,Test CCA 12,,,,0.5x,N,,,,,,,,2027-04-01T00:00:00Z
+1,cca,,C13,Test Flat CCA 13,,,9,1x,N,,,,,,,,2027-04-01T00:00:00Z
+1,flat,,C13,Test Flat CCA 13,A9900010Z,Test Resident 010,9,,,,,,,,,,2027-04-01T00:00:00Z
+1,flat,,C13,Test Flat CCA 13,A9900011Z,Test Resident 011,9,,,,,,,,,,2027-04-01T00:00:00Z
+1,flat,,C13,Test Flat CCA 13,A9900012Z,Test Resident 012,9,,,,,,,,,,2027-04-01T00:00:00Z
+1,flat,,C13,Test Flat CCA 13,A9900013Z,Test Resident 013,9,,,,,,,,,,2027-04-01T00:00:00Z
+1,flat,,C13,Test Flat CCA 13,A9900014Z,Test Resident 014,9,,,,,,,,,,2027-04-01T00:00:00Z
+1,flat,,C13,Test Flat CCA 13,A9900015Z,Test Resident 015,9,,,,,,,,,,2027-04-01T00:00:00Z
+1,flat,,C13,Test Flat CCA 13,A9900016Z,Test Resident 016,9,,,,,,,,,,2027-04-01T00:00:00Z
+1,flat,,C13,Test Flat CCA 13,A9900017Z,Test Resident 017,9,,,,,,,,,,2027-04-01T00:00:00Z

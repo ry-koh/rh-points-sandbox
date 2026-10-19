@@ -1,0 +1,4 @@
+formatVersion,ccaID,ccaName,matric,name,basePoints,semesterOnly,outgoingRole,incomingRole,ihg,exportedAt
+2,9201,Soccer (M),A9920101X,Test Player 01,15,N,head,none,Y,2027-04-01T09:30:00.000Z
+2,9201,Soccer (M),A9920102X,"Lim, ""Ah"" Kow",12,Y,none,vice_head,Y,2027-04-01T09:30:00.000Z
+2,9201,Soccer (M),A9920103X,Test Player 03,9,N,none,none,N,2027-04-01T09:30:00.000Z

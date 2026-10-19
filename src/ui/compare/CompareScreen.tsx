@@ -2,9 +2,10 @@ import { Download, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { compareRuns, type ScenarioConfig } from '../../engine'
 import { Button } from '../common/controls'
-import { LIST_KEYS, LIST_TITLES, downloadCsv, exportStamp, type ListKey } from '../export/exportCsv'
+import { LIST_KEYS, LIST_TITLES, downloadCsv, entryCounts, exportStamp, type ListKey } from '../export/exportCsv'
 import { ListTabs, panelId, tabId } from '../results/ListTabs'
 import type { Scenario } from '../state/scenarios'
+import { sandboxInputOf } from '../../workspace'
 import { entryOptions, type AppState } from '../state/store'
 import { CURRENT, buildComparisonCsv, configDifferences, runSide } from './compareData'
 import { CompareTable, sortRows } from './CompareTable'
@@ -39,8 +40,10 @@ export function CompareScreen({ state, scenarios }: CompareScreenProps) {
   const configB = configOf(sideB)
   const { finalOverrides, discretion, resolutions } = state
   const entries = useMemo(() => entryOptions({ finalOverrides, discretion, resolutions }), [finalOverrides, discretion, resolutions])
-  const runA = useMemo(() => runSide(state.files, state.overrides, configA, entries), [state.files, state.overrides, configA, entries])
-  const runB = useMemo(() => runSide(state.files, state.overrides, configB, entries), [state.files, state.overrides, configB, entries])
+  const { ccaLevels, review } = state
+  const sandbox = useMemo(() => sandboxInputOf({ ccaLevels, review }), [ccaLevels, review])
+  const runA = useMemo(() => runSide(state.files, configA, entries, sandbox), [state.files, configA, entries, sandbox])
+  const runB = useMemo(() => runSide(state.files, configB, entries, sandbox), [state.files, configB, entries, sandbox])
   const comparison = useMemo(() => (runA.ok && runB.ok ? compareRuns(runA.run, runB.run) : null), [runA, runB])
   const diffs = configDifferences(configA, configB)
   const query = search.trim().toLowerCase()
@@ -55,7 +58,7 @@ export function CompareScreen({ state, scenarios }: CompareScreenProps) {
         <h1 className="text-display font-semibold tracking-tight">Compare</h1>
         <SidePicker label="A" value={sideA} scenarios={scenarios} onChange={setSideA} />
         <SidePicker label="B" value={sideB} scenarios={scenarios} onChange={setSideB} />
-        <Button className="ml-auto" disabled={!comparison} onClick={() => comparison && downloadCsv(`rhps_comparison_${exportStamp(new Date())}.csv`, buildComparisonCsv(comparison, state.report.overrides, { a: labelOf(sideA), b: labelOf(sideB) }))}>
+        <Button className="ml-auto" disabled={!comparison} onClick={() => comparison && downloadCsv(`rhps_comparison_${exportStamp(new Date())}.csv`, buildComparisonCsv(comparison, state.report.outOfRange, { a: labelOf(sideA), b: labelOf(sideB) }, entryCounts(null, state.report.review), { perCca: state.report.perCca, levels: state.config.levels }))}>
           <Download aria-hidden size={15} /> Export comparison
         </Button>
       </div>

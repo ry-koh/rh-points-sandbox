@@ -27,9 +27,9 @@ export function ResultsHeader({ state, lists, dispatch, scenarios }: ResultsHead
       <Button small onClick={() => setScenariosOpen(true)}>
         <Bookmark aria-hidden size={13} /> Scenarios · <span className="num">{scenarios.scenarios.length}</span>
       </Button>
-      {!finalised && !state.report.settings && (
+      {!finalised && block !== null && (
         <p className="text-cap text-muted" role="note">
-          Using the sandbox’s own ranges. Load JCRC’s points settings file before finalising.
+          {state.report.settings ? block : 'Using the sandbox’s own ranges. Load the RH-app bundle before finalising.'}
         </p>
       )}
       <div className="ml-auto">

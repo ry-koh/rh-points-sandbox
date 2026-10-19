@@ -1,24 +1,63 @@
-import { useState } from 'react'
+import type { CcaType, IhgPlacement } from '../../engine'
 import type { CcaStatus, PerCcaReport } from '../../import'
-import { Button, Chip, ConfirmDialog, Eyebrow, type ChipTone } from '../common/controls'
+import { Chip, Eyebrow, type ChipTone } from '../common/controls'
 import { RangeBar } from './RangeBar'
 
 const STATUS: Readonly<Record<CcaStatus, { tone: ChipTone; label: string }>> = {
   ok: { tone: 'ok', label: 'ok' },
-  out_of_range: { tone: 'error', label: 'out of range' },
-  overridden: { tone: 'gold', label: 'overridden' },
+  out_of_range: { tone: 'warning', label: 'out of range' },
   missing_file: { tone: 'grey', label: 'missing file' },
   flat: { tone: 'gold', label: 'flat' },
 }
 
 const fmt = (n: number | null): string => (n === null ? '—' : n.toFixed(2))
 
+export const IHG_LABELS: Readonly<Record<IhgPlacement, string>> = {
+  '1st': '1st',
+  '2nd': '2nd',
+  '3rd': '3rd',
+  '3rd4th_no_match': '3rd–4th, no match',
+}
+
+interface NotSetFields {
+  readonly type: CcaType | null
+  readonly isSport: boolean
+  readonly ihgResult: IhgPlacement | null
+  readonly ihgCap: number | null
+  readonly flatPoints: number | null
+  readonly level: string | null
+  readonly fileName: string | null
+}
+
+/**
+ * What the RH app (type, a sport's IHG result and cap) or the sandbox (level) left unset for a CCA
+ * (D9). Flat CCAs need none of them; a CCA without a leader file needs no level.
+ */
+export function notSet(cca: NotSetFields): { readonly type: boolean; readonly ihg: boolean; readonly level: boolean } {
+  const flat = cca.flatPoints !== null
+  return {
+    type: !flat && cca.type === null,
+    ihg: !flat && cca.isSport && (cca.ihgResult === null || cca.ihgCap === null),
+    level: !flat && cca.fileName !== null && cca.level === null,
+  }
+}
+
+/** The amber "not set" chips for a CCA; nothing when everything is set. */
+export function NotSetChips({ cca }: { readonly cca: NotSetFields }) {
+  const missing = notSet(cca)
+  return (
+    <>
+      {missing.type && <Chip tone="warning">type not set</Chip>}
+      {missing.ihg && <Chip tone="warning">IHG not set</Chip>}
+      {missing.level && <Chip tone="warning">level needed</Chip>}
+    </>
+  )
+}
+
 interface CcaTableProps {
   readonly rows: readonly PerCcaReport[]
   /** ccaIDs that have a waiver in JCRC's settings file (empty when none is loaded). */
   readonly waivers: ReadonlySet<string>
-  readonly locked: boolean
-  readonly onToggleOverride: (ccaID: string) => void
 }
 
 function Th({ children, right = false }: { readonly children: string; readonly right?: boolean }) {
@@ -35,13 +74,9 @@ function Th({ children, right = false }: { readonly children: string; readonly r
 function Row({
   cca,
   waived,
-  locked,
-  onAsk,
 }: {
   readonly cca: PerCcaReport
   readonly waived: boolean
-  readonly locked: boolean
-  readonly onAsk: (cca: PerCcaReport) => void
 }) {
   const status = STATUS[cca.status]
   return (
@@ -62,19 +97,10 @@ function Row({
         <MeanSdCells cca={cca} waived={waived} />
       )}
       <td className="py-2 pr-4">
-        <Chip tone={status.tone}>{status.label}</Chip>
-      </td>
-      <td className="py-2 text-right">
-        {cca.status === 'out_of_range' && (
-          <Button small disabled={locked} onClick={() => onAsk(cca)}>
-            Override
-          </Button>
-        )}
-        {cca.status === 'overridden' && (
-          <Button small variant="ghost" disabled={locked} onClick={() => onAsk(cca)}>
-            Undo override
-          </Button>
-        )}
+        <div className="flex flex-wrap gap-1">
+          <Chip tone={status.tone}>{status.label}</Chip>
+          <NotSetChips cca={cca} />
+        </div>
       </td>
     </tr>
   )
@@ -107,11 +133,8 @@ function MeanSdCells({ cca, waived }: { readonly cca: PerCcaReport; readonly wai
   )
 }
 
-export function CcaTable({ rows, waivers, locked, onToggleOverride }: CcaTableProps) {
-  const [asking, setAsking] = useState<PerCcaReport | null>(null)
+export function CcaTable({ rows, waivers }: CcaTableProps) {
   if (rows.length === 0) return null
-  const undo = asking?.status === 'overridden'
-  const close = (): void => setAsking(null)
   return (
     <section aria-labelledby="cca-table-title" className="mt-10">
       <div className="flex items-baseline justify-between border-b-2 border-ink pb-2">
@@ -134,47 +157,15 @@ export function CcaTable({ rows, waivers, locked, onToggleOverride }: CcaTablePr
               <Th>Allowed</Th>
               <Th>{' '}</Th>
               <Th>Status</Th>
-              <Th>{' '}</Th>
             </tr>
           </thead>
           <tbody>
             {rows.map((cca) => (
-              <Row key={cca.ccaID} cca={cca} waived={waivers.has(cca.ccaID)} locked={locked} onAsk={setAsking} />
+              <Row key={cca.ccaID} cca={cca} waived={waivers.has(cca.ccaID)} />
             ))}
           </tbody>
         </table>
       </div>
-      <ConfirmDialog
-        open={asking !== null}
-        title={undo ? `Undo the override for ${asking?.name ?? ''}?` : `Override ${asking?.name ?? ''}?`}
-        confirmLabel={undo ? 'Undo override' : 'Override mean/SD check'}
-        onCancel={close}
-        onConfirm={() => {
-          if (asking) onToggleOverride(asking.ccaID)
-          close()
-        }}
-      >
-        {asking && (
-          <>
-            <p>
-              Mean <span className="num">{fmt(asking.mean)}</span> (allowed{' '}
-              <span className="num">
-                {asking.range.meanMin}–{asking.range.meanMax}
-              </span>
-              ), SD <span className="num">{fmt(asking.sd)}</span> (allowed{' '}
-              <span className="num">
-                {asking.range.sdMin}–{asking.range.sdMax}
-              </span>
-              ).
-            </p>
-            <p className="mt-2 text-muted">
-              {undo
-                ? 'The CCA will block results again until its file is fixed.'
-                : 'Results will use these scores as they are. The override is listed at the top of every export.'}
-            </p>
-          </>
-        )}
-      </ConfirmDialog>
     </section>
   )
 }

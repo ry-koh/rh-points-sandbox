@@ -1,18 +1,18 @@
-formatVersion,ccaID,ccaName,matric,name,basePoints,semesterOnly,outgoingRole,incomingRole,exportedAt
-1,C10,Test CCA 10,A9900005Z,Test Resident 005,12,N,none,none,2027-04-01T00:00:00Z
-1,C10,Test CCA 10,A9900068Z,Test Resident 068,7,N,none,head,2027-04-01T00:00:00Z
-1,C10,Test CCA 10,A9900023Z,Test Resident 023,15,N,none,none,2027-04-01T00:00:00Z
-1,C10,Test CCA 10,A9900010Z,Test Resident 010,11,N,head,none,2027-04-01T00:00:00Z
-1,C10,Test CCA 10,A9900054Z,Test Resident 054,10,N,vice_head,none,2027-04-01T00:00:00Z
-1,C10,Test CCA 10,A9900061Z,Test Resident 061,18,N,none,none,2027-04-01T00:00:00Z
-1,C10,Test CCA 10,A9900034Z,Test Resident 034,6,N,none,none,2027-04-01T00:00:00Z
-1,C10,Test CCA 10,A9900027Z,Test Resident 027,11,N,none,none,2027-04-01T00:00:00Z
-1,C10,Test CCA 10,A9900080Z,Test Resident 080,11,N,none,none,2027-04-01T00:00:00Z
-1,C10,Test CCA 10,A9900041Z,Test Resident 041,14,N,none,none,2027-04-01T00:00:00Z
-1,C10,Test CCA 10,A9900029Z,Test Resident 029,11,N,none,none,2027-04-01T00:00:00Z
-1,C10,Test CCA 10,A9900073Z,Test Resident 073,15,N,none,none,2027-04-01T00:00:00Z
-1,C10,Test CCA 10,A9900055Z,Test Resident 055,17,N,none,none,2027-04-01T00:00:00Z
-1,C10,Test CCA 10,A9900018Z,Test Resident 018,10,N,none,none,2027-04-01T00:00:00Z
-1,C10,Test CCA 10,A9900032Z,Test Resident 032,13,N,none,none,2027-04-01T00:00:00Z
-1,C10,Test CCA 10,A9900074Z,Test Resident 074,12,N,none,none,2027-04-01T00:00:00Z
-1,C10,Test CCA 10,A9900062Z,Test Resident 062,13,N,none,none,2027-04-01T00:00:00Z
+formatVersion,ccaID,ccaName,matric,name,basePoints,semesterOnly,outgoingRole,incomingRole,ihg,exportedAt
+2,C10,Test CCA 10,A9900005Z,Test Resident 005,12,N,none,none,N,2027-04-01T00:00:00Z
+2,C10,Test CCA 10,A9900068Z,Test Resident 068,7,N,none,head,N,2027-04-01T00:00:00Z
+2,C10,Test CCA 10,A9900023Z,Test Resident 023,15,N,none,none,N,2027-04-01T00:00:00Z
+2,C10,Test CCA 10,A9900010Z,Test Resident 010,11,N,head,none,N,2027-04-01T00:00:00Z
+2,C10,Test CCA 10,A9900054Z,Test Resident 054,10,N,vice_head,none,N,2027-04-01T00:00:00Z
+2,C10,Test CCA 10,A9900061Z,Test Resident 061,18,N,none,none,N,2027-04-01T00:00:00Z
+2,C10,Test CCA 10,A9900034Z,Test Resident 034,6,N,none,none,N,2027-04-01T00:00:00Z
+2,C10,Test CCA 10,A9900027Z,Test Resident 027,11,N,none,none,N,2027-04-01T00:00:00Z
+2,C10,Test CCA 10,A9900080Z,Test Resident 080,11,N,none,none,N,2027-04-01T00:00:00Z
+2,C10,Test CCA 10,A9900041Z,Test Resident 041,14,N,none,none,N,2027-04-01T00:00:00Z
+2,C10,Test CCA 10,A9900029Z,Test Resident 029,11,N,none,none,N,2027-04-01T00:00:00Z
+2,C10,Test CCA 10,A9900073Z,Test Resident 073,15,N,none,none,N,2027-04-01T00:00:00Z
+2,C10,Test CCA 10,A9900055Z,Test Resident 055,17,N,none,none,N,2027-04-01T00:00:00Z
+2,C10,Test CCA 10,A9900018Z,Test Resident 018,10,N,none,none,N,2027-04-01T00:00:00Z
+2,C10,Test CCA 10,A9900032Z,Test Resident 032,13,N,none,none,N,2027-04-01T00:00:00Z
+2,C10,Test CCA 10,A9900074Z,Test Resident 074,12,N,none,none,N,2027-04-01T00:00:00Z
+2,C10,Test CCA 10,A9900062Z,Test Resident 062,13,N,none,none,N,2027-04-01T00:00:00Z

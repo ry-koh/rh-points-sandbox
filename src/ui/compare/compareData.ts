@@ -1,6 +1,6 @@
-import { computeAll, type Comparison, type EntryOptions, type PipelineResult, type ScenarioConfig } from '../../engine'
-import { validateImport, type SourceFile } from '../../import'
-import { LIST_KEYS, POINTS_DECIMALS, headerLines, toCsvLine } from '../export/exportCsv'
+import { computeAll, type Comparison, type EntryOptions, type Level, type PipelineResult, type ScenarioConfig } from '../../engine'
+import { validateImport, type SandboxInput, type SourceFile } from '../../import'
+import { LIST_KEYS, POINTS_DECIMALS, headerLines, toCsvLine, type EntryCounts, type LevelLineData } from '../export/exportCsv'
 import { CONFIG_KEYS } from '../state/configShape'
 import { blockReason } from '../shell/blockReason'
 
@@ -10,15 +10,16 @@ export type SideRun = { readonly ok: true; readonly run: PipelineResult } | { re
 
 /**
  * Runs one side of a comparison on the imported files without touching the live results.
- * Both sides use the same final-points overrides, discretion and wheel results (`entries`).
+ * Both sides use the same final-points overrides, discretion and wheel results (`entries`), and
+ * the same level table, score edits and not-submitting marks (`sandbox`).
  */
 export function runSide(
   files: readonly SourceFile[],
-  overrides: readonly string[],
   config: ScenarioConfig,
   entries: EntryOptions,
+  sandbox: Partial<SandboxInput> = {},
 ): SideRun {
-  const report = validateImport(files, config, overrides.map((ccaID) => ({ ccaID })))
+  const report = validateImport(files, config, sandbox)
   if (!report.canCompute || !report.input) {
     return { ok: false, error: `the files do not pass with these settings (${blockReason(report, files.length) ?? 'blocked'})` }
   }
@@ -36,9 +37,35 @@ export interface ConfigDifference {
 }
 
 const show = (value: unknown): string => JSON.stringify(value)
+const describeLevel = (level: Level): string => `bonus ${level.bonus}, ×${level.multiplier}`
+const names = (levels: readonly Level[]): string => levels.map((l) => l.name).join(', ')
+
+/** One row per changed level (R51): a number that differs, a level added or removed, or a new order. */
+function levelDifferences(a: readonly Level[], b: readonly Level[]): ConfigDifference[] {
+  const byName = (levels: readonly Level[]) =>
+    new Map(levels.filter((l, i) => levels.findIndex((x) => x.name === l.name) === i).map((l) => [l.name, l]))
+  const inA = byName(a)
+  const inB = byName(b)
+  const changed = [...inA.values()].flatMap((la): ConfigDifference[] => {
+    const lb = inB.get(la.name)
+    if (!lb) return [{ key: `levels: ${la.name}`, a: describeLevel(la), b: 'removed' }]
+    return [
+      ...(la.bonus === lb.bonus ? [] : [{ key: `levels: ${la.name} bonus`, a: String(la.bonus), b: String(lb.bonus) }]),
+      ...(la.multiplier === lb.multiplier ? [] : [{ key: `levels: ${la.name} multiplier`, a: String(la.multiplier), b: String(lb.multiplier) }]),
+    ]
+  })
+  const added = [...inB.values()]
+    .filter((lb) => !inA.has(lb.name))
+    .map((lb) => ({ key: `levels: ${lb.name}`, a: 'not a level', b: `added (${describeLevel(lb)})` }))
+  const rows = [...changed, ...added]
+  // Same levels in another order (or a repeated name): name the lists rather than say nothing.
+  return rows.length > 0 ? rows : [{ key: 'levels changed', a: names(a), b: names(b) }]
+}
 
 export function configDifferences(a: ScenarioConfig, b: ScenarioConfig): ConfigDifference[] {
-  return CONFIG_KEYS.filter((key) => show(a[key]) !== show(b[key])).map((key) => ({ key, a: show(a[key]), b: show(b[key]) }))
+  return CONFIG_KEYS.filter((key) => show(a[key]) !== show(b[key])).flatMap((key) =>
+    key === 'levels' ? levelDifferences(a.levels, b.levels) : [{ key, a: show(a[key]), b: show(b[key]) }],
+  )
 }
 
 const signed = (n: number | null, digits: number): string =>
@@ -50,14 +77,16 @@ export const COMPARE_COLUMNS = ['list', 'matric', 'name', 'statusA', 'statusB', 
 /** Every row of every list, A against B, after the usual export header lines. */
 export function buildComparisonCsv(
   comparison: Comparison,
-  overrides: readonly { readonly name: string }[],
+  outOfRange: readonly { readonly name: string }[],
   labels: { readonly a: string; readonly b: string },
+  counts?: EntryCounts,
+  levelData?: LevelLineData,
 ): string {
   const rows = LIST_KEYS.flatMap((list) =>
     comparison[list].rows.map((r) =>
       toCsvLine([list, r.matric, r.name, r.statusA, r.statusB, String(r.rankA ?? ''), String(r.rankB ?? ''), signed(r.rankDelta, 0), fixed(r.pointsA), fixed(r.pointsB), signed(r.pointsDelta, POINTS_DECIMALS)]),
     ),
   )
-  const lines = [...headerLines(overrides, null), `# A: ${labels.a} · B: ${labels.b}`, COMPARE_COLUMNS.join(','), ...rows]
+  const lines = [...headerLines(outOfRange, null, counts, levelData), `# A: ${labels.a} · B: ${labels.b}`, COMPARE_COLUMNS.join(','), ...rows]
   return `${lines.join('\n')}\n`
 }

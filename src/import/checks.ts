@@ -2,14 +2,13 @@ import { MAX_EXHAUSTIVE_HALVES, RANGE_TOLERANCE, checkMeanSd, resolveRange } fro
 import type { MeanSdRange, ScenarioConfig } from '../engine'
 import { makeIssue } from './parseCommon'
 import type {
+  BaseCcaReport,
   CcaRow,
   FlatRow,
-  IhgRow,
   Issue,
   LeaderRow,
-  OverrideRecord,
+  OutOfRangeRecord,
   ParseResult,
-  PerCcaReport,
   ResidentRow,
 } from './types'
 
@@ -31,7 +30,7 @@ export interface CheckedLeader {
   readonly rows: readonly LeaderRow[]
 }
 
-/** A flat-points file after the cross-file checks: one group per flat CCA (spec 2e). */
+/** Flat member rows (the bundle's, or a standalone flat-points file's): one group per flat CCA (spec 2e). */
 export interface FlatFile {
   readonly fileName: string
   readonly result: ParseResult<FlatRow>
@@ -42,19 +41,6 @@ export interface CheckedFlat {
   readonly ccaID: string
   readonly flatPoints: number
   readonly rows: readonly FlatRow[]
-}
-
-export function checkCcaRows(ccas: Loaded<CcaRow>, config: ScenarioConfig): Issue[] {
-  const tierNames = new Set(config.outgoingTiers.map((tier) => tier.name))
-  return ccas.result.rows
-    .filter((cca) => cca.outgoingTier !== null && !tierNames.has(cca.outgoingTier))
-    .map((cca) =>
-      makeIssue('UNKNOWN_TIER', ccas.fileName, `outgoingTier "${cca.outgoingTier}" is not one of the known tiers (${[...tierNames].join(', ')}).`, {
-        line: cca.line,
-        column: 'outgoingTier',
-        ccaID: cca.ccaID,
-      }),
-    )
 }
 
 export function checkResidentRows(residents: Loaded<ResidentRow>, config: ScenarioConfig): Issue[] {
@@ -92,7 +78,7 @@ export function checkLeaderFile(
 }
 
 /**
- * Checks each flat CCA of the flat file: it must exist in ccas.csv, must not also have a leader
+ * Checks each flat CCA of the flat rows: it must be in the bundle, must not also have a leader
  * file, must carry one value, and its members must be known and not repeated.
  */
 export function checkFlatFile(
@@ -142,80 +128,6 @@ export function checkFlatFile(
   return { issues, checked }
 }
 
-export function checkIhgRows(
-  ihg: Loaded<IhgRow>,
-  residents: Loaded<ResidentRow> | null,
-  ccas: Loaded<CcaRow> | null,
-): { readonly issues: Issue[]; readonly rows: IhgRow[] } {
-  const matrics = new Set(residents?.result.seenKeys ?? [])
-  const ccaIDs = new Set(ccas?.result.seenKeys ?? [])
-  const issues: Issue[] = []
-  const rows = ihg.result.rows.filter((row) => {
-    const details = { line: row.line, matric: row.matric, ccaID: row.ccaID }
-    if (residents && !matrics.has(row.matric)) {
-      issues.push(makeIssue('IHG_UNKNOWN_MATRIC', ihg.fileName, `${row.matric} is not in the residents list.`, { ...details, column: 'matric' }))
-      return false
-    }
-    if (ccas && !ccaIDs.has(row.ccaID)) {
-      issues.push(makeIssue('IHG_UNKNOWN_CCA', ihg.fileName, `CCA "${row.ccaID}" is not listed in ${ccas.fileName}.`, { ...details, column: 'ccaID' }))
-      return false
-    }
-    return true
-  })
-  return { issues, rows }
-}
-
-/** An IHG row for a flat membership is always ignored, whatever ihgInSportNet says (spec 4.1). */
-export function ihgOnFlatWarnings(ihg: Loaded<IhgRow>, flats: readonly CheckedFlat[]): Issue[] {
-  const members = new Set(flats.flatMap((f) => f.rows.map((row) => `${row.matric}|${f.ccaID}`)))
-  return ihg.result.rows
-    .filter((row) => members.has(`${row.matric}|${row.ccaID}`))
-    .map((row) =>
-      makeIssue('IHG_ON_FINAL_CCA', ihg.fileName, `${row.matric} has IHG points for ${row.ccaID}, which has flat points, so the IHG row is ignored.`, {
-        line: row.line,
-        matric: row.matric,
-        ccaID: row.ccaID,
-      }),
-    )
-}
-
-export function ihgNonMemberWarnings(
-  ihg: Loaded<IhgRow>,
-  leaders: readonly CheckedLeader[],
-  flats: readonly CheckedFlat[] = [],
-): Issue[] {
-  const members = new Set([
-    ...leaders.flatMap((l) => l.rows.map((row) => `${row.matric}|${l.ccaID}`)),
-    ...flats.flatMap((f) => f.rows.map((row) => `${row.matric}|${f.ccaID}`)),
-  ])
-  return ihg.result.rows
-    .filter((row) => !members.has(`${row.matric}|${row.ccaID}`))
-    .map((row) =>
-      makeIssue('IHG_NON_MEMBER', ihg.fileName, `${row.matric} has IHG points for ${row.ccaID} but is not a member of it, so they stay flat.`, {
-        line: row.line,
-        matric: row.matric,
-        ccaID: row.ccaID,
-      }),
-    )
-}
-
-/** Outgoing leaders need the tier (tier mode) or the multiplier (manual mode) to be filled in. */
-export function checkOutgoing(
-  ccas: Loaded<CcaRow>,
-  leaders: readonly CheckedLeader[],
-  config: ScenarioConfig,
-): Issue[] {
-  const field = config.outgoingMode === 'tier' ? 'outgoingTier' : 'outgoingMultiplier'
-  return ccas.result.rows.flatMap((cca) => {
-    const blank = (config.outgoingMode === 'tier' ? cca.outgoingTier : cca.outgoingMultiplier) === null
-    const leader = leaders.find((l) => l.ccaID === cca.ccaID)
-    const hasOutgoing = leader?.rows.some((row) => row.outgoingRole !== 'none') ?? false
-    if (!blank || !hasOutgoing) return []
-    const text = `${cca.ccaID} has an outgoing leader, but ${field} is blank in ${ccas.fileName} (the outgoing mode is "${config.outgoingMode}").`
-    return [makeIssue('MISSING_OUTGOING_MULTIPLIER', ccas.fileName, text, { line: cca.line, column: field, ccaID: cca.ccaID })]
-  })
-}
-
 export function leaderWarnings(
   ccas: Loaded<CcaRow>,
   leaders: readonly CheckedLeader[],
@@ -255,7 +167,7 @@ function meanSdMessage(cca: CcaRow, n: number, mean: number, sd: number, range: 
 /** A flat CCA is not mean/SD checked and never counts as missing a file (spec 2e). */
 export function flatStats(cca: CcaRow, flat: CheckedFlat, config: ScenarioConfig): CcaStats {
   const range = resolveRange(cca, config.meanSdDefault)
-  const report: PerCcaReport = {
+  const report: BaseCcaReport = {
     ccaID: cca.ccaID,
     name: cca.ccaName,
     range,
@@ -266,38 +178,37 @@ export function flatStats(cca: CcaRow, flat: CheckedFlat, config: ScenarioConfig
     status: 'flat',
     flatPoints: flat.flatPoints,
   }
-  return { report, issue: null, override: null }
+  return { report, issue: null, outOfRange: null }
 }
 
 export interface CcaStats {
-  readonly report: PerCcaReport
+  readonly report: BaseCcaReport
   readonly issue: Issue | null
-  readonly override: OverrideRecord | null
+  readonly outOfRange: OutOfRangeRecord | null
 }
 
-/** Mean/SD for one CCA over its valid leader rows; honours a per-CCA override. */
+/** Mean/SD for one CCA over its valid leader rows. */
 export function ccaStats(
   cca: CcaRow,
   leader: CheckedLeader | undefined,
   config: ScenarioConfig,
-  overridden: boolean,
 ): CcaStats {
   const range = resolveRange(cca, config.meanSdDefault)
   const base = { ccaID: cca.ccaID, name: cca.ccaName, range, flatPoints: null }
   if (!leader) {
-    const report: PerCcaReport = { ...base, fileName: null, n: 0, mean: null, sd: null, status: 'missing_file' }
-    return { report, issue: null, override: null }
+    const report: BaseCcaReport = { ...base, fileName: null, n: 0, mean: null, sd: null, status: 'missing_file' }
+    return { report, issue: null, outOfRange: null }
   }
   const scores = leader.rows.map((row) => row.basePoints)
   const check = checkMeanSd(scores, range, RANGE_TOLERANCE)
   const n = scores.length
   const mean = n === 0 ? null : check.mean
   const sd = n === 0 ? null : check.sd
-  const status = check.ok && n > 0 ? 'ok' : overridden ? 'overridden' : 'out_of_range'
-  const report: PerCcaReport = { ...base, fileName: leader.fileName, n, mean, sd, status }
-  if (status === 'ok') return { report, issue: null, override: null }
+  const status = check.ok && n > 0 ? 'ok' : 'out_of_range'
+  const report: BaseCcaReport = { ...base, fileName: leader.fileName, n, mean, sd, status }
+  if (status === 'ok') return { report, issue: null, outOfRange: null }
   const text = meanSdMessage(cca, n, check.mean, check.sd, range)
-  const issue = { ...makeIssue('MEAN_SD_OUT_OF_RANGE', leader.fileName, text, { ccaID: cca.ccaID }), ...(overridden ? { overridden: true } : {}) }
-  const override = overridden ? { ccaID: cca.ccaID, name: cca.ccaName, fileName: leader.fileName, mean, sd, range } : null
-  return { report, issue, override }
+  const issue = makeIssue('MEAN_SD_OUT_OF_RANGE', leader.fileName, text, { ccaID: cca.ccaID })
+  const outOfRange = { ccaID: cca.ccaID, name: cca.ccaName, fileName: leader.fileName, mean, sd, range }
+  return { report, issue, outOfRange }
 }

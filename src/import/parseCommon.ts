@@ -3,7 +3,6 @@ import type { CsvRow, Issue, IssueCode, ParsedCsv } from './types'
 export const GENDERS = ['M', 'F'] as const
 export const ROLES = ['none', 'head', 'vice_head'] as const
 export const CCA_TYPES = ['1x', '0.5x'] as const
-export const PLACEMENTS = ['pass', 'bronze', 'silver', 'gold'] as const
 export const IHG_PLACEMENTS = ['1st', '2nd', '3rd', '3rd4th_no_match'] as const
 export const JCRC_VALUES = ['N', 'FULL', 'EXCHANGE'] as const
 
@@ -19,8 +18,14 @@ const WARNING_CODES: ReadonlySet<IssueCode> = new Set<IssueCode>([
   'IHG_NON_MEMBER',
   'MANY_HALF_CCAS',
   'IHG_ON_FINAL_CCA',
-  'CCAS_RANGE_IGNORED',
   'SETTINGS_UNKNOWN_CCA',
+  'MEAN_SD_OUT_OF_RANGE',
+  'TYPE_NOT_SET',
+  'LEVEL_NOT_SET',
+  'LEVEL_UNKNOWN_CCA',
+  'IHG_NOT_SET',
+  'IHG_TICK_IGNORED',
+  'IHG_NO_TICKS',
 ])
 
 type IssueDetails = Partial<Pick<Issue, 'line' | 'column' | 'ccaID' | 'matric'>>
@@ -37,7 +42,6 @@ export function makeIssue(
   return {
     severity: WARNING_CODES.has(code) ? 'warning' : 'error',
     code,
-    overridable: code === 'MEAN_SD_OUT_OF_RANGE',
     fileName,
     ...details,
     message: `${where}${text}`,

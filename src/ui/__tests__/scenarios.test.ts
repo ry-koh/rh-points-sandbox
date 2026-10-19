@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, type ScenarioConfig } from '../../engine'
+import { OLD_LEVEL_KEYS, goldBonus, oldLevelConfig, tiers } from '../../engine/__tests__/migrateConfigFixtures'
+import { readConfig } from '../state/configShape'
 import { parseScenarioFile, readScenarioList, serialiseScenario, type Scenario } from '../state/scenarios'
 import { SCENARIOS_KEY, loadScenarios, saveScenarios, type SettingsStore } from '../state/settingsStorage'
 
@@ -65,6 +67,33 @@ describe('scenario files', () => {
     })
     expect(parsed.file.config.sem2Factor).toBe(3)
     expect(parsed.file.config.jcrcExchangeFactor).toBe(DEFAULT_CONFIG.jcrcExchangeFactor)
+  })
+
+  it('builds levels from an old scenario file with a placement bonus and tiers (R43)', () => {
+    const oldConfig = oldLevelConfig({
+      ...goldBonus(5),
+      ...tiers([{ name: 'Tier A', multiplier: 1.3 }, { name: 'Gold B', multiplier: 1.6 }]),
+    })
+    const read = readConfig(oldConfig)
+    expect(read).toMatchObject({ ok: true, migrated: ['levels'], defaulted: [] })
+    const parsed = parseScenarioFile(JSON.stringify({ version: 1, name: 'AY26 strict', config: oldConfig }), 'x')
+    if (!parsed.ok) throw new Error('expected the old scenario to load')
+    expect(parsed.file.config.levels).toEqual([
+      { name: 'Tier A', bonus: 0, multiplier: 1.3 },
+      { name: 'Gold B', bonus: 5, multiplier: 1.6 },
+    ])
+    expect(OLD_LEVEL_KEYS.filter((key) => key in parsed.file.config)).toEqual([])
+  })
+
+  it('reports no migration for a scenario that already has levels', () => {
+    expect(readConfig(config)).toMatchObject({ ok: true, migrated: [] })
+  })
+
+  it('rejects a scenario whose levels repeat a name or have a blank one', () => {
+    const level = { name: 'Gold', bonus: 4, multiplier: 2 }
+    expect(readConfig({ ...config, levels: [level, level] }).ok).toBe(false)
+    expect(readConfig({ ...config, levels: [{ ...level, name: '  ' }] }).ok).toBe(false)
+    expect(readConfig({ ...config, levels: [{ ...level, bonus: Number.NaN }] }).ok).toBe(false)
   })
 
   it('migrates old scenarios kept in storage too', () => {

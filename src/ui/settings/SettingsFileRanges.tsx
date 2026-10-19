@@ -14,7 +14,7 @@ export function SettingsFileRanges({ settings }: { readonly settings: LoadedSett
   return (
     <div className="px-1 pb-2">
       <p className="flex items-center gap-1.5 py-2 text-body font-medium">
-        <Lock aria-hidden size={13} /> From JCRC settings file (exported {exportedDate(settings.exportedAt)})
+        <Lock aria-hidden size={13} /> From the RH-app bundle (exported {exportedDate(settings.exportedAt)})
       </p>
       <dl className="grid grid-cols-[1fr_auto] gap-y-1 text-body">
         {(Object.keys(MEAN_SD_LABELS) as (keyof typeof MEAN_SD_LABELS)[]).map((key) => (
@@ -25,7 +25,7 @@ export function SettingsFileRanges({ settings }: { readonly settings: LoadedSett
         ))}
       </dl>
       <p className="pt-2 text-cap text-muted">
-        These can only change by loading a new settings file. {Object.keys(settings.waivers).length} waiver
+        These can only change by loading a new bundle. {Object.keys(settings.waivers).length} waiver
         {Object.keys(settings.waivers).length === 1 ? '' : 's'} apply on top.
       </p>
     </div>

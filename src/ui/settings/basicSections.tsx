@@ -1,6 +1,6 @@
 import { BASE_POINTS_MAX, DEFAULT_CONFIG } from '../../engine'
 import { FACTOR_SLIDER, MULTIPLIER_SLIDER, NumberField, SegmentedField, ToggleField } from './fields'
-import { HEADCOUNT_LABELS, MEAN_SD_LABELS, PLACEMENT_LABELS, SEM2_MODE_OPTIONS, SETTINGS_TEXT as T } from './labels'
+import { HEADCOUNT_LABELS, MEAN_SD_LABELS, SEM2_MODE_OPTIONS, SETTINGS_TEXT as T } from './labels'
 import { ObjectFields } from './ObjectFields'
 import type { SectionProps } from './Section'
 
@@ -17,20 +17,6 @@ export function HeadcountsFields({ config, update }: SectionProps) {
       integer
       labels={HEADCOUNT_LABELS}
       help={T.headcounts.help}
-    />
-  )
-}
-
-export function PlacementFields({ config, update }: SectionProps) {
-  return (
-    <ObjectFields
-      value={config.placementBonus}
-      defaults={D.placementBonus}
-      onChange={(next) => update('placementBonus', next)}
-      min={0}
-      step={0.5}
-      labels={PLACEMENT_LABELS}
-      help={T.placementBonus.help}
     />
   )
 }

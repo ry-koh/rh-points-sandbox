@@ -1,32 +1,40 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { DEFAULT_CONFIG } from './engine'
 import { validateImport } from './import'
+import { ChecklistScreen } from './ui/checklist/ChecklistScreen'
 import { CompareScreen } from './ui/compare/CompareScreen'
 import { ImportScreen } from './ui/import/ImportScreen'
 import { PublishScreen } from './ui/publish/PublishScreen'
 import { ResultsScreen } from './ui/results/ResultsScreen'
+import { ReviewScreen } from './ui/review/ReviewScreen'
+import { SummaryScreen } from './ui/summary/SummaryScreen'
+import { levelUsageOf } from './ui/settings/SettingsPanel'
 import { blockReason } from './ui/shell/blockReason'
 import { TopBar, type Screen } from './ui/shell/TopBar'
+import { stepLocks } from './ui/state/stepLocks'
 import { useAppStore } from './ui/state/useAppStore'
 import { useScenarios } from './ui/state/useScenarios'
+import { WORKFLOW_STEPS, sandboxInputOf } from './workspace'
 import { hasResidentData } from './ui/state/workspaceState'
 import { WorkspaceControls } from './ui/workspace/WorkspaceControls'
 
 export function App() {
   const { state, dispatch } = useAppStore()
   const scenarios = useScenarios()
-  const [screen, setScreen] = useState<Screen>('import')
+  const screen = state.step
+  const setScreen = useCallback((step: Screen) => dispatch({ type: 'setStep', step }), [dispatch])
   // Settings sections' open/closed state lives in memory so it survives screen changes.
   const [openSections, setOpenSections] = useState<ReadonlySet<string>>(() => new Set(['headcounts']))
   const reason = blockReason(state.report, state.files.length)
   // When the files pass with default settings, the current settings caused the block:
   // keep Results (and its settings panel) reachable so they can be changed back.
+  const { ccaLevels, review } = state
   const settingsCause = useMemo(
     () =>
       reason !== null &&
       state.files.length > 0 &&
-      validateImport(state.files, DEFAULT_CONFIG, state.overrides.map((ccaID) => ({ ccaID }))).canCompute,
-    [reason, state.files, state.overrides],
+      validateImport(state.files, DEFAULT_CONFIG, sandboxInputOf({ ccaLevels, review })).canCompute,
+    [reason, state.files, ccaLevels, review],
   )
   // Closing the tab with unsaved resident data loses it: ask the browser to warn.
   const warnOnLeave = state.dirty && hasResidentData(state)
@@ -39,14 +47,10 @@ export function App() {
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
   }, [warnOnLeave])
-  const resultsLock = settingsCause ? null : reason
-  const locks: Record<Screen, string | null> = {
-    import: null,
-    results: resultsLock,
-    publish: resultsLock,
-    compare: reason !== null ? 'Load data that passes the checks first' : scenarios.scenarios.length === 0 ? 'Save a scenario first' : null,
-  }
-  const shown: Screen = locks[screen] === null ? screen : 'import'
+  const locks: Record<Screen, string | null> = stepLocks(state, scenarios.scenarios.length, settingsCause)
+  // A locked step falls back to the first open one.
+  const shown: Screen = locks[screen] === null ? screen : (WORKFLOW_STEPS.find((step) => locks[step] === null) ?? 'import')
+  const levelUsage = useMemo(() => levelUsageOf(ccaLevels), [ccaLevels])
   const fullHeight = shown !== 'import'
 
   return (
@@ -67,6 +71,19 @@ export function App() {
           onViewResults={() => setScreen('results')}
         />
       )}
+      {shown === 'checklist' && (
+        <ChecklistScreen state={state} dispatch={dispatch} reviewLock={locks.review} onContinue={() => setScreen('review')} />
+      )}
+      {shown === 'review' && (
+        <ReviewScreen
+          state={state}
+          dispatch={dispatch}
+          openSections={openSections}
+          onOpenSectionsChange={setOpenSections}
+          levelUsage={levelUsage}
+        />
+      )}
+      {shown === 'summary' && <SummaryScreen state={state} dispatch={dispatch} />}
       {shown === 'results' && (
         <ResultsScreen
           state={state}

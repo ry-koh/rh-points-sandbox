@@ -1,6 +1,7 @@
 import { X } from 'lucide-react'
 import { useMemo } from 'react'
-import type { SourceFile } from '../../import'
+import type { LoadedBundle, SourceFile } from '../../import'
+import { localTime } from '../checklist/ChecklistScreen'
 import { Chip, Eyebrow } from '../common/controls'
 import { KIND_LABELS, describeFile } from '../state/fileInfo'
 
@@ -8,9 +9,11 @@ interface FileListProps {
   readonly files: readonly SourceFile[]
   readonly locked: boolean
   readonly onRemove: (name: string) => void
+  /** The loaded bundle, whose export time shows under its row. */
+  readonly bundle: LoadedBundle | null
 }
 
-export function FileList({ files, locked, onRemove }: FileListProps) {
+export function FileList({ files, locked, onRemove, bundle }: FileListProps) {
   const infos = useMemo(() => files.map(describeFile), [files])
   if (infos.length === 0) {
     return <p className="mt-4 text-body text-muted">No files yet.</p>
@@ -32,6 +35,9 @@ export function FileList({ files, locked, onRemove }: FileListProps) {
             <tr key={info.name} className="border-b border-rule last:border-b-0 hover:bg-ink/[0.03]">
               <td className="max-w-0 truncate py-1.5 pr-3 font-mono text-cap" title={info.name}>
                 {info.name}
+                {info.kind === 'bundle' && bundle?.fileName === info.name && (
+                  <div className="truncate font-sans text-muted">exported {localTime(bundle.exportedAt)}</div>
+                )}
               </td>
               <td className="w-28 py-1.5 pr-3">
                 {info.kind ? (

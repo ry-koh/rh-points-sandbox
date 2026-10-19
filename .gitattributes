@@ -3,3 +3,4 @@
 samples/app-export/*.csv -text
 samples/app-export/flat/*.csv -text
 samples/app-export/settings/*.csv -text
+samples/app-export/bundle/*.csv -text

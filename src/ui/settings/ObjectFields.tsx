@@ -14,7 +14,7 @@ interface ObjectFieldsProps<T extends Readonly<Record<keyof T, number>>> {
   readonly help?: string
 }
 
-/** One number field per key of a settings object (e.g. placement bonus per level). */
+/** One number field per key of a settings object (e.g. the headcount of each list, or the IHG points per result; levels are in their own table). */
 export function ObjectFields<T extends Readonly<Record<keyof T, number>>>(props: ObjectFieldsProps<T>) {
   const { value, defaults, labels, onChange } = props
   const keys = Object.keys(labels) as (keyof T & string)[]

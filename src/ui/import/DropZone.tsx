@@ -2,10 +2,12 @@ import { FlaskConical, Upload } from 'lucide-react'
 import { useRef, useState, type DragEvent } from 'react'
 import type { SourceFile } from '../../import'
 import { Button } from '../common/controls'
-import { DEMO_AVAILABLE, loadDemoFiles } from './demoData'
+import { DEMO_AVAILABLE } from './demoData'
 
 interface DropZoneProps {
   readonly onFiles: (files: readonly SourceFile[]) => void
+  /** Loads the synthetic demo (dev only). */
+  readonly onDemo: () => void
 }
 
 const isCsv = (file: File): boolean => file.name.toLowerCase().endsWith('.csv')
@@ -18,7 +20,7 @@ async function readAll(list: FileList | null): Promise<{ files: SourceFile[]; sk
   return { files, skipped: all.filter((f) => !isCsv(f)).map((f) => f.name) }
 }
 
-export function DropZone({ onFiles }: DropZoneProps) {
+export function DropZone({ onFiles, onDemo }: DropZoneProps) {
   const input = useRef<HTMLInputElement>(null)
   const [over, setOver] = useState(false)
   const [skipped, setSkipped] = useState<readonly string[]>([])
@@ -51,8 +53,8 @@ export function DropZone({ onFiles }: DropZoneProps) {
         <div className="min-w-0 flex-1">
           <div className="text-lead font-medium">Drop CSV files here</div>
           <div className="text-body text-muted">
-            Leader exports, residents.csv, ccas.csv and ihg.csv. A file with the same name replaces the
-            earlier one.
+            Leader exports, the RH-app bundle and residents.csv. A file with the same name replaces
+            the earlier one.
           </div>
         </div>
         <div className="flex shrink-0 flex-col gap-2">
@@ -60,7 +62,7 @@ export function DropZone({ onFiles }: DropZoneProps) {
             Choose files
           </Button>
           {DEMO_AVAILABLE && (
-            <Button small variant="ghost" onClick={() => void loadDemoFiles().then(onFiles)}>
+            <Button small variant="ghost" onClick={onDemo}>
               <FlaskConical aria-hidden size={14} /> Load demo data
             </Button>
           )}

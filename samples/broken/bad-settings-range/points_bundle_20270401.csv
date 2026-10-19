@@ -1,0 +1,5 @@
+formatVersion,section,scope,ccaID,ccaName,matric,name,flatPoints,type,sport,ihgResult,ihgCap,meanMin,meanMax,sdMin,sdMax,note,exportedAt
+1,settings,default,,,,,,,,,,10,14,2,5,,2027-04-01T00:00:00Z
+1,settings,waiver,C1,Test CCA One,,,,,,,,low,15,1.5,5,Small CCA,2027-04-01T00:00:00Z
+1,cca,,C1,Test CCA One,,,,1x,N,,,,,,,,2027-04-01T00:00:00Z
+1,cca,,C2,Test CCA Two,,,,0.5x,N,,,,,,,,2027-04-01T00:00:00Z

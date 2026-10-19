@@ -2,7 +2,8 @@ import { FLAT_FORMAT_VERSION } from '../engine'
 import { RowReader, makeIssue, wellShapedRows } from './parseCommon'
 import type { FlatRow, Issue, ParsedCsv, ParseResult } from './types'
 
-function readRow(read: RowReader): FlatRow {
+/** Reads one member row of a flat CCA (the standalone file, spec 2e, and the bundle's `flat` rows). */
+export function readFlatRow(read: RowReader): FlatRow {
   return {
     line: read.line,
     ccaID: read.text('ccaID'),
@@ -14,7 +15,7 @@ function readRow(read: RowReader): FlatRow {
 }
 
 /**
- * Parses the flat-points file (spec 2e): one row per member per flat CCA. `seenKeys` lists the
+ * Parses the standalone flat-points file (spec 2e): one row per member per flat CCA. `seenKeys` lists the
  * ccaIDs on the rows (even rows dropped for another bad field), in first-seen order.
  */
 export function parseFlat(fileName: string, csv: ParsedCsv): ParseResult<FlatRow> {
@@ -35,7 +36,7 @@ export function parseFlat(fileName: string, csv: ParsedCsv): ParseResult<FlatRow
       }
       continue
     }
-    const parsed = readRow(read)
+    const parsed = readFlatRow(read)
     if (!read.failed) rows.push(parsed)
   }
   return { rows, seenKeys: ccaIDs, issues }

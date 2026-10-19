@@ -2,12 +2,12 @@ import { Download, Search } from 'lucide-react'
 import { useState, type Dispatch } from 'react'
 import { removePenalty, type Lists, type PenaltyKey } from '../../engine'
 import { Button } from '../common/controls'
-import type { DrawerEditing } from '../drawer/Editors'
 import { ResidentDrawer } from '../drawer/ResidentDrawer'
 import { LIST_KEYS, LIST_TITLES, buildListCsv, downloadCsv, entryCounts, exportFileName, type ListKey } from '../export/exportCsv'
 import { PenaltiesStrip } from '../penalty/PenaltiesStrip'
 import { PenaltyDialog } from '../penalty/PenaltyDialog'
-import { SettingsPanel } from '../settings/SettingsPanel'
+import { SettingsPanel, levelUsageOf } from '../settings/SettingsPanel'
+import { drawerEditing } from '../state/editing'
 import { entryOptions, type Action, type AppState, type PenaltyLogEntry } from '../state/store'
 import type { ScenarioStore } from '../state/useScenarios'
 import { AdjustmentsStrip } from './AdjustmentsStrip'
@@ -33,28 +33,12 @@ interface ResultsScreenProps {
 function exportLists(lists: Lists, keys: readonly ListKey[], state: AppState): void {
   const now = new Date()
   const penalties = state.finalised ? state.finalised.log.length : null
-  const counts = entryCounts(state.results)
-  for (const key of keys) downloadCsv(exportFileName(key, now), buildListCsv(lists[key], state.report.overrides, penalties, counts))
+  const counts = entryCounts(state.results, state.report.review)
+  for (const key of keys) downloadCsv(exportFileName(key, now), buildListCsv(lists[key], state.report.outOfRange, penalties, counts, { perCca: state.report.perCca, levels: state.config.levels }))
 }
 
 const focusRow = (matric: string): void => {
   window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-row-matric="${CSS.escape(matric)}"]`)?.focus())
-}
-
-/** Final-points and discretion editing for the drawer; locked while finalised. */
-function drawerEditing(state: AppState, dispatch: Dispatch<Action>): DrawerEditing | null {
-  const input = state.report.input
-  if (!input) return null
-  return {
-    locked: state.finalised !== null,
-    input,
-    overrides: state.finalOverrides,
-    discretion: state.discretion,
-    setOverride: (entry) => dispatch({ type: 'setFinalOverride', entry }),
-    removeOverride: (matric, ccaID) => dispatch({ type: 'removeFinalOverride', matric, ccaID }),
-    setDiscretion: (entry) => dispatch({ type: 'setDiscretion', entry }),
-    removeDiscretion: (matric) => dispatch({ type: 'removeDiscretion', matric }),
-  }
 }
 
 export function ResultsScreen(props: ResultsScreenProps) {
@@ -97,6 +81,8 @@ export function ResultsScreen(props: ResultsScreenProps) {
         onChange={(next) => dispatch({ type: 'setConfig', config: next })}
         openSections={openSections}
         onOpenSectionsChange={onOpenSectionsChange}
+        levelUsage={levelUsageOf(state.ccaLevels)}
+        levelChange={state.lastLevelChange}
       />
       <main className="flex min-h-0 min-w-0 flex-col">
         <ResultsHeader state={state} lists={lists} dispatch={dispatch} scenarios={scenarios} />

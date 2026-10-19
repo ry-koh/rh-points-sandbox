@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG } from '../../engine'
+import { OLD_LEVEL_KEYS, oldLevelConfig } from '../../engine/__tests__/migrateConfigFixtures'
 import { SETTINGS_KEY, loadSettings, saveSettings, type SettingsStore } from '../state/settingsStorage'
 
 function memoryStore(initial: Record<string, string> = {}): SettingsStore & { data: Record<string, string> } {
@@ -62,6 +63,14 @@ describe('settings persistence', () => {
     expect(loaded.jcrcFullYearOffset).toBe(DEFAULT_CONFIG.jcrcFullYearOffset)
     expect(loaded.jcrcExchangeFactor).toBe(DEFAULT_CONFIG.jcrcExchangeFactor)
     expect('sem2Spots' in loaded.headcounts).toBe(false)
+  })
+
+  it('migrates settings saved before levels existed (placement bonus and outgoing tiers)', () => {
+    const old = oldLevelConfig({ sem2Factor: 3 })
+    const loaded = loadSettings(memoryStore({ [SETTINGS_KEY]: JSON.stringify(old) }))
+    expect(loaded.sem2Factor).toBe(3)
+    expect(loaded.levels).toEqual(DEFAULT_CONFIG.levels)
+    expect(OLD_LEVEL_KEYS.filter((key) => key in loaded)).toEqual([])
   })
 
   it('survives storage that throws', () => {

@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, computeAll } from '../../engine'
 import { deepFreeze } from '../../engine/__tests__/helpers'
+import { parseCsv } from '../csv'
+import { parseFlat } from '../parseFlat'
 import { validateImport } from '../validate'
 import type { ImportReport, IssueCode, SourceFile } from '../types'
 import {
+  BUNDLE_FILE_NAME,
+  DEMO_LEVELS,
   FLAT_COLS,
-  FLAT_FILE_NAME,
   baseCcas,
   baseResidents,
   flatCca,
@@ -18,12 +21,12 @@ import {
 } from './fixtures'
 
 const run = (files: readonly SourceFile[], config = DEFAULT_CONFIG): ImportReport =>
-  validateImport(files, config, [])
+  validateImport(files, config, { ccaLevels: DEMO_LEVELS })
 const codesOf = (report: ImportReport): string[] => [...new Set(report.issues.map((i) => i.code))].sort()
 
-/** C1 and C2 have leader files, C3 is a flat CCA with flat points for residents 1..6. */
-const flatScenario = (flat: readonly Record<string, string>[] | null = flatRows()) =>
-  scenario({ ccas: [...baseCcas(), flatCca()], flat })
+/** C1 and C2 have leader files; C3 is a flat CCA whose member rows (residents 1..6) are in the bundle. */
+const flatScenario = (flat: readonly Record<string, string>[] = flatRows()) =>
+  scenario({ ccas: [...baseCcas(), flatCca('C3', flat[0]?.flatPoints ?? '12')], flat })
 
 describe('a valid flat-points import', () => {
   const report = run(flatScenario())
@@ -35,7 +38,7 @@ describe('a valid flat-points import', () => {
 
   it('reports the flat CCA as flat, with its value and member count, and no mean/SD', () => {
     const flat = report.perCca.find((c) => c.ccaID === 'C3')
-    expect(flat).toMatchObject({ status: 'flat', n: 6, mean: null, sd: null, flatPoints: 12, fileName: FLAT_FILE_NAME })
+    expect(flat).toMatchObject({ status: 'flat', n: 6, mean: null, sd: null, flatPoints: 12, fileName: BUNDLE_FILE_NAME })
   })
 
   it('assembles flat memberships for the engine', () => {
@@ -57,13 +60,14 @@ describe('a valid flat-points import', () => {
     expect(run(flatScenario(flatRows('C3', '0'))).issues).toEqual([])
   })
 
-  it('treats the flat file as optional', () => {
+  it('a flat CCA with no member rows is still flat, with no members and no NO_LEADER_FILE', () => {
     const noFlat = run(scenario({ ccas: [...baseCcas(), flatCca()] }))
-    expect(codesOf(noFlat)).toEqual(['NO_LEADER_FILE'])
+    expect(noFlat.issues).toEqual([])
+    expect(noFlat.perCca.find((c) => c.ccaID === 'C3')).toMatchObject({ status: 'flat', n: 0 })
   })
 
-  it('recognises the file by its header whatever it is called', () => {
-    const files = flatScenario().map((f) => (f.name === FLAT_FILE_NAME ? { ...f, name: 'whatever.csv' } : f))
+  it('recognises the bundle by its header whatever it is called', () => {
+    const files = flatScenario().map((f) => (f.name === BUNDLE_FILE_NAME ? { ...f, name: 'whatever.csv' } : f))
     expect(run(files).issues).toEqual([])
   })
 
@@ -90,7 +94,7 @@ const CASES: Case[] = [
   { name: 'BAD_FLAT_POINTS (blank)', files: flatScenario(patchRow(flatRows(), -1, { flatPoints: '' })), codes: ['BAD_FLAT_POINTS'] },
   { name: 'FLAT_VALUE_MISMATCH', files: flatScenario(patchRow(flatRows(), -1, { flatPoints: '13' })), codes: ['FLAT_VALUE_MISMATCH'] },
   {
-    name: 'DUPLICATE_FLAT_FILE',
+    name: 'DUPLICATE_FLAT_FILE (a standalone flat file beside the bundle)',
     files: [...flatScenario(), { name: 'flat_points_20270402.csv', text: toCsv(FLAT_COLS, flatRows()) }],
     codes: ['DUPLICATE_FLAT_FILE'],
   },
@@ -103,9 +107,9 @@ const CASES: Case[] = [
   },
   { name: 'BAD_FORMAT_VERSION', files: flatScenario(patchRow(flatRows(), 0, { formatVersion: '2' })), codes: ['BAD_FORMAT_VERSION'] },
   {
-    name: 'BAD_HEADER (flat file name, wrong columns)',
-    files: flatScenario().map((f) => (f.name === FLAT_FILE_NAME ? { ...f, text: f.text.replace('flatPoints', 'flat') } : f)),
-    codes: ['BAD_HEADER', 'NO_LEADER_FILE'],
+    name: 'BAD_HEADER (bundle name, wrong columns)',
+    files: flatScenario().map((f) => (f.name === BUNDLE_FILE_NAME ? { ...f, text: f.text.replace('flatPoints', 'flat') } : f)),
+    codes: ['BAD_HEADER'],
   },
 ]
 
@@ -118,35 +122,13 @@ describe('one issue code per flat mistake', () => {
 
   it('does not report the same matric twice across different flat CCAs', () => {
     const rows = [...flatRows('C3'), ...flatRows('C4', '9')]
-    const report = run(scenario({ ccas: [...baseCcas(), flatCca('C3'), flatCca('C4')], flat: rows }))
+    const report = run(scenario({ ccas: [...baseCcas(), flatCca('C3'), flatCca('C4', '9')], flat: rows }))
     expect(report.issues).toEqual([])
   })
 
   it('names the line, ccaID and matric on a bad flat value', () => {
     const [issue] = run(flatScenario(patchRow(flatRows(), 2, { flatPoints: 'x' }))).issues
-    expect(issue).toMatchObject({ code: 'BAD_FLAT_POINTS', line: 4, column: 'flatPoints', ccaID: 'C3', matric: matricOf(3) })
-  })
-})
-
-describe('IHG on a flat membership', () => {
-  const ihg = [{ matric: matricOf(1), ccaID: 'C3', placement: '1st' }]
-
-  it('warns IHG_ON_FINAL_CCA when ihgInSportNet is on, and does not block', () => {
-    const report = run(scenario({ ccas: [...baseCcas(), flatCca()], flat: flatRows(), ihg }), { ...DEFAULT_CONFIG, ihgInSportNet: true })
-    expect(codesOf(report)).toEqual(['IHG_ON_FINAL_CCA'])
-    expect(report.canCompute).toBe(true)
-    expect(report.issues[0]?.severity).toBe('warning')
-  })
-
-  it('warns IHG_ON_FINAL_CCA when ihgInSportNet is off too (the row is always ignored)', () => {
-    const report = run(scenario({ ccas: [...baseCcas(), flatCca()], flat: flatRows(), ihg }))
-    expect(codesOf(report)).toEqual(['IHG_ON_FINAL_CCA'])
-    expect(report.canCompute).toBe(true)
-  })
-
-  it('does not call a flat member a non-member', () => {
-    const report = run(scenario({ ccas: [...baseCcas(), flatCca()], flat: flatRows(), ihg }), { ...DEFAULT_CONFIG, ihgInSportNet: true })
-    expect(codesOf(report)).not.toContain('IHG_NON_MEMBER')
+    expect(issue).toMatchObject({ code: 'BAD_FLAT_POINTS', line: 8, column: 'flatPoints', ccaID: 'C3', matric: matricOf(3) })
   })
 })
 
@@ -191,5 +173,14 @@ describe('the jcrc column in residents.csv', () => {
     const residents = patchRow(baseResidents(), 0, { jcrc: 'FULL' })
     const report = run(scenario({ residents, leaders: { C1: leaderRows('C1'), C2: leaderRows('C2') } }))
     expect(report.issues).toEqual([])
+  })
+})
+
+describe('the standalone flat-points file parser', () => {
+  it('BAD_FORMAT_VERSION once for a file in another version; seenKeys still lists the CCA', () => {
+    const rows = flatRows().map((row) => ({ ...row, formatVersion: '2' }))
+    const result = parseFlat('flat_points_20270401.csv', parseCsv(toCsv(FLAT_COLS, rows)))
+    expect(result.issues.map((i) => i.code)).toEqual(['BAD_FORMAT_VERSION'])
+    expect(result.seenKeys).toEqual(['C3'])
   })
 })

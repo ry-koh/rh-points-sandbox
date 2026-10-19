@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, compareRuns, computeAll, type ListRow } from '../../engine'
 import { makeInput } from '../../engine/__tests__/helpers'
-import { EXPORT_COLUMNS, buildListCsv, exportFileName, meanSdOverridesLine } from '../export/exportCsv'
+import { EXPORT_COLUMNS, buildListCsv, entryCounts, exportFileName, levelsLine, meanSdOutOfRangeLine, tweaksLine } from '../export/exportCsv'
 import { buildComparisonCsv } from '../compare/compareData'
 import { bandRows } from '../results/bands'
 
@@ -16,64 +16,134 @@ const { lists } = computeAll(
   config,
 )
 
+const LEVELS = [
+  { name: 'Gold', bonus: 4, multiplier: 1.3 },
+  { name: 'High Silver', bonus: 2, multiplier: 1.2 },
+]
+const cca = (ccaID: string, name: string, level: string | null, patch: Record<string, unknown> = {}) => ({
+  ccaID, name, fileName: `points_${ccaID}.csv`, status: 'ok' as const, level, bonusOverride: null, multiplierOverride: null, ...patch,
+})
+const soccer = cca('C05', 'Soccer', 'Gold', { multiplierOverride: 1.31 })
+const rugby = cca('C07', 'Rugby', 'Gold')
+
+describe('levels and tweaks lines', () => {
+  it('groups CCAs by level in Settings order, names inside, "not set" last', () => {
+    const perCca = [cca('C09', 'Chess', null), cca('C02', 'Band', 'High Silver'), soccer, cca('C04', 'Archery', 'Gold')]
+    expect(levelsLine(perCca, LEVELS)).toBe('# levels: Gold: C04, C05; High Silver: C02; not set: C09')
+  })
+
+  it('leaves out CCAs without a leader file and flat CCAs', () => {
+    const perCca = [cca('C01', 'Flat', null, { status: 'flat' }), cca('C03', 'Quiet', null, { fileName: null }), rugby]
+    expect(levelsLine(perCca, LEVELS)).toBe('# levels: Gold: C07')
+    expect(levelsLine([], LEVELS)).toBe('# levels: none')
+  })
+
+  it('writes a tweak as the CCA, its level, the tweaked number and the level number', () => {
+    expect(tweaksLine([soccer], LEVELS)).toBe('# level tweaks: Soccer (C05): Gold, multiplier 1.31 (level 1.3)')
+    const both = cca('C02', 'Band', 'High Silver', { bonusOverride: 2.5, multiplierOverride: 1.25 })
+    expect(tweaksLine([both], LEVELS)).toBe('# level tweaks: Band (C02): High Silver, bonus 2.5 (level 2), multiplier 1.25 (level 1.2)')
+  })
+
+  it('joins tweaks with " | " and says none when there are none', () => {
+    const bonus = cca('C02', 'Band', 'High Silver', { bonusOverride: 3 })
+    expect(tweaksLine([soccer, bonus], LEVELS)).toBe(
+      '# level tweaks: Soccer (C05): Gold, multiplier 1.31 (level 1.3) | Band (C02): High Silver, bonus 3 (level 2)',
+    )
+    expect(tweaksLine([rugby], LEVELS)).toBe('# level tweaks: none')
+  })
+
+  it('counts only the applied review edits', () => {
+    const edit = (status: 'applied' | 'changed' | 'stale') => ({ entry: { matric: 'A', ccaID: 'C1', from: 1, to: 2, reason: '', at: '' }, status, fileValue: 1 })
+    const review = { edits: [edit('applied'), edit('changed'), edit('stale'), edit('applied')], flatIds: [] }
+    expect(entryCounts(null, review).reviewEdits).toBe(2)
+    expect(entryCounts(null).reviewEdits).toBe(0)
+  })
+})
+
 describe('CSV export', () => {
-  it('starts with the three comment lines, then the column header', () => {
+  it('starts with the six comment lines, then the column header', () => {
     const lines = buildListCsv(lists.maleStaying, []).split('\n')
-    expect(lines[0]).toBe('# mean/SD overrides: none')
-    expect(lines[1]).toBe('# final-points overrides: 0')
-    expect(lines[2]).toBe('# discretion adjustments: 0')
-    expect(lines[3]).toBe('rank,position,matric,name,points,status,tieFlags,labels')
+    expect(lines.slice(0, 6)).toEqual([
+      '# mean/SD out of range: none',
+      '# final-points overrides: 0',
+      '# discretion adjustments: 0',
+      '# review edits: 0',
+      '# levels: none',
+      '# level tweaks: none',
+    ])
+    expect(lines[6]).toBe('rank,position,matric,name,points,status,tieFlags,labels')
     expect(EXPORT_COLUMNS).toHaveLength(8)
   })
 
+  it('writes the review, levels and tweaks lines before the finalised line', () => {
+    const counts = { finalOverrides: 0, discretion: 0, reviewEdits: 4 }
+    const lines = buildListCsv(lists.maleStaying, [], 1, counts, { perCca: [soccer, rugby], levels: LEVELS }).split(NL)
+    expect(lines.slice(3, 7)).toEqual([
+      '# review edits: 4',
+      '# levels: Gold: C07, C05',
+      '# level tweaks: Soccer (C05): Gold, multiplier 1.31 (level 1.3)',
+      '# finalised: yes · penalties: 1',
+    ])
+  })
+
+  it('never puts a score or a resident name in a header line', () => {
+    const csv = buildListCsv(lists.maleStaying, [], 0, { finalOverrides: 1, discretion: 1, reviewEdits: 2 }, { perCca: [soccer], levels: LEVELS })
+    const header = csv.split(NL).filter((line) => line.startsWith('#')).join(NL)
+    expect(header).not.toMatch(/A99\d{5}Z/)
+  })
+
   it('counts the final-points overrides and discretion adjustments in force', () => {
-    const lines = buildListCsv(lists.maleStaying, [], null, { finalOverrides: 3, discretion: 2 }).split('\n')
+    const lines = buildListCsv(lists.maleStaying, [], null, { finalOverrides: 3, discretion: 2, reviewEdits: 0 }).split('\n')
     expect(lines.slice(0, 3)).toEqual([
-      '# mean/SD overrides: none',
+      '# mean/SD out of range: none',
       '# final-points overrides: 3',
       '# discretion adjustments: 2',
     ])
   })
 
-  it('names every overridden CCA', () => {
-    expect(meanSdOverridesLine(['Test CCA 03', 'Test CCA 07'])).toBe('# mean/SD overrides: Test CCA 03, Test CCA 07')
-    expect(buildListCsv([], [{ name: 'Test CCA 03' }]).split('\n')[0]).toBe('# mean/SD overrides: Test CCA 03')
+  it('names every out-of-range CCA', () => {
+    expect(meanSdOutOfRangeLine(['Test CCA 03', 'Test CCA 07'])).toBe('# mean/SD out of range: Test CCA 03, Test CCA 07')
+    expect(buildListCsv([], [{ name: 'Test CCA 03' }]).split('\n')[0]).toBe('# mean/SD out of range: Test CCA 03')
   })
 
   it('writes one row per resident with 3-decimal points, status and tie flags', () => {
     const lines = buildListCsv(lists.maleStaying, []).trimEnd().split('\n')
-    expect(lines).toHaveLength(4 + 3)
-    expect(lines[4]).toBe('1,1,A9900001Z,A9900001Z,15.000,green,,')
-    expect(lines[5]).toBe('2,2,A9900002Z,A9900002Z,12.000,grey,TIE grey/white — 1 of 2 seats,')
+    expect(lines).toHaveLength(7 + 3)
+    expect(lines[7]).toBe('1,1,A9900001Z,A9900001Z,15.000,green,,')
+    expect(lines[8]).toBe('2,2,A9900002Z,A9900002Z,12.000,grey,TIE grey/white — 1 of 2 seats,')
   })
 
   it('quotes cells containing commas or quotes', () => {
     const row: ListRow = { ...(lists.maleStaying[0] as ListRow), name: 'Resident, "Test"', labels: ['sem-2', 'informational'] }
-    const line = buildListCsv([row], []).split('\n')[4]
+    const line = buildListCsv([row], []).split('\n')[7]
     expect(line).toContain('"Resident, ""Test"""')
     expect(line?.endsWith('sem-2; informational')).toBe(true)
   })
 
-  it('adds the finalised line after the three comment lines while finalised', () => {
+  it('adds the finalised line after the other comment lines while finalised', () => {
     const lines = buildListCsv(lists.maleStaying, [{ name: 'Test CCA 03' }], 2).split(NL)
-    expect(lines.slice(0, 5)).toEqual([
-      '# mean/SD overrides: Test CCA 03',
+    expect(lines.slice(0, 8)).toEqual([
+      '# mean/SD out of range: Test CCA 03',
       '# final-points overrides: 0',
       '# discretion adjustments: 0',
+      '# review edits: 0',
+      '# levels: none',
+      '# level tweaks: none',
       '# finalised: yes · penalties: 2',
       'rank,position,matric,name,points,status,tieFlags,labels',
     ])
-    expect(buildListCsv(lists.maleStaying, [], 0).split(NL)[3]).toBe('# finalised: yes · penalties: 0')
+    expect(buildListCsv(lists.maleStaying, [], 0).split(NL)[6]).toBe('# finalised: yes · penalties: 0')
   })
 
   it('starts a comparison export with the comment lines', () => {
     const run = computeAll(makeInput([{ id: 'A9900001Z', base: 15 }]), config)
     const lines = buildComparisonCsv(compareRuns(run, run), [], { a: 'Current settings', b: 'Draft' }).split(NL)
-    expect(lines[0]).toBe('# mean/SD overrides: none')
+    expect(lines[0]).toBe('# mean/SD out of range: none')
     expect(lines[1]).toBe('# final-points overrides: 0')
     expect(lines[2]).toBe('# discretion adjustments: 0')
-    expect(lines[3]).toBe('# A: Current settings · B: Draft')
-    expect(lines[4]?.startsWith('list,matric,name,statusA,statusB')).toBe(true)
+    expect(lines.slice(3, 6)).toEqual(['# review edits: 0', '# levels: none', '# level tweaks: none'])
+    expect(lines[6]).toBe('# A: Current settings · B: Draft')
+    expect(lines[7]?.startsWith('list,matric,name,statusA,statusB')).toBe(true)
   })
 
   it('names files rhps_<list>_<YYYYMMDD-HHmm>.csv', () => {

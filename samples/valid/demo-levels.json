@@ -1,0 +1,74 @@
+[
+  {
+    "ccaID": "C01",
+    "level": "Unsatisfactory",
+    "bonusOverride": null,
+    "multiplierOverride": null
+  },
+  {
+    "ccaID": "C02",
+    "level": "High Bronze",
+    "bonusOverride": null,
+    "multiplierOverride": null
+  },
+  {
+    "ccaID": "C03",
+    "level": "Low Gold",
+    "bonusOverride": null,
+    "multiplierOverride": null
+  },
+  {
+    "ccaID": "C04",
+    "level": "Pass",
+    "bonusOverride": null,
+    "multiplierOverride": null
+  },
+  {
+    "ccaID": "C05",
+    "level": "Low Silver",
+    "bonusOverride": null,
+    "multiplierOverride": null
+  },
+  {
+    "ccaID": "C06",
+    "level": "High Gold",
+    "bonusOverride": null,
+    "multiplierOverride": null
+  },
+  {
+    "ccaID": "C07",
+    "level": "Low Bronze",
+    "bonusOverride": null,
+    "multiplierOverride": null
+  },
+  {
+    "ccaID": "C08",
+    "level": "High Silver",
+    "bonusOverride": null,
+    "multiplierOverride": null
+  },
+  {
+    "ccaID": "C09",
+    "level": "Unsatisfactory",
+    "bonusOverride": null,
+    "multiplierOverride": null
+  },
+  {
+    "ccaID": "C10",
+    "level": "High Bronze",
+    "bonusOverride": null,
+    "multiplierOverride": null
+  },
+  {
+    "ccaID": "C11",
+    "level": "Low Gold",
+    "bonusOverride": null,
+    "multiplierOverride": null
+  },
+  {
+    "ccaID": "C12",
+    "level": "Pass",
+    "bonusOverride": null,
+    "multiplierOverride": null
+  }
+]

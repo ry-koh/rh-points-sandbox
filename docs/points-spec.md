@@ -1,4 +1,57 @@
-# RH Hall Points Spec — v2.1
+# RH Hall Points Spec — v2.3
+
+**Changes in v2.3**
+
+- The **RH-app bundle** (2d) replaces ccas.csv: it carries the CCA list, the mean/SD ranges and
+  the flat members. ccas.csv is retired (`CCAS_FILE_RETIRED`).
+- ihg.csv is retired (`IHG_FILE_RETIRED`). IHG recipients are the members the sport's head
+  ticked in the RH app (the leader file's `ihg` column); the sport's result and cap come from the
+  bundle.
+- The leader export is **formatVersion 2** (adds `ihg`); version 1 is still read.
+- A CCA's `type` is set in the RH app and is read-only in the sandbox. The sport flag, IHG
+  result and cap are set in the RH app, for sports only.
+- **Levels** (3, 3b) replace the placement bonus and the outgoing tiers. Each CCA's level, and
+  its optional tweaks, are picked in the sandbox on the Review step and saved in the workspace.
+  An older config that still has `placementBonus` / `outgoingTiers` is migrated (3).
+- The mean/SD ranges come from the bundle's `settings` rows. The standalone settings (2g) and
+  flat-points (2e) files are older exports, superseded by the bundle: recognised, but beside a
+  bundle they are `DUPLICATE_SETTINGS_FILE` / `DUPLICATE_FLAT_FILE` and ignored.
+- Issue codes added: `CCAS_FILE_RETIRED`, `IHG_FILE_RETIRED`, `MISSING_BUNDLE_FILE`,
+  `DUPLICATE_BUNDLE_FILE`, `BAD_BUNDLE_FILE`, `BAD_IHG_CAP`, `DUPLICATE_CCA`, `IHG_OVER_CAP`,
+  `IHG_NOT_SET`, `IHG_TICK_IGNORED`, `IHG_NO_TICKS`, `TYPE_NOT_SET`, `LEVEL_NOT_SET`,
+  `UNKNOWN_LEVEL`, `BAD_LEVEL_TWEAK`, `DUPLICATE_LEVEL_NAME`, `LEVEL_UNKNOWN_CCA`. The
+  `CCAS_RANGE_IGNORED` sentence in 2g is removed: there are no ccas.csv ranges to ignore.
+- Spec text corrected to match the code: `IHG_ON_FINAL_CCA` is raised by the engine only (a flat
+  CCA has no leader file, so a tick can never reach one); the engine guard stays.
+- The planned workspace version 2 (`ccaLevels`, `review`, `step`) is noted in 8b.
+- The guided workflow (1): **review edits** (6.4) change a member's base score before the
+  mean/SD check and the engine, and apply only while the leader file still has the score the
+  edit started from; the **checklist and vetting** (6.5) are built from the bundle's CCA list,
+  and a vetted mark is tied to the hash of the leader file it vetted. No reviewer is recorded.
+  A CCA marked "not submitting" raises no `NO_LEADER_FILE`. Review codes added (returned by
+  `validateReviewEdit`, not raised by import): `BAD_REVIEW_POINTS`, `REVIEW_UNKNOWN_MEMBERSHIP`,
+  `REVIEW_FLAT_CCA`, `REVIEW_NO_CHANGE`, and `MISSING_REASON` for a review reason that is too long.
+- **Finalise gate** (6.6): beside the bundle and an error-free import, Finalise now needs nothing
+  "not set" (a blank type, a sport without an IHG result or cap, a CCA without a level), a complete
+  checklist and every CCA that has a leader file vetted. One message names every item.
+- **Export header lines** (6.6): every list and comparison export adds `# review edits: N`,
+  `# levels: ...` and `# level tweaks: ...` after the out-of-range, override and discretion lines.
+  They never carry a score or a resident's name.
+- **Open workspace** (8b) lists the migration notes, a missing bundle and, once they can be checked, every stale score
+  edit, vetted mark and level entry (until then, one calm line). Save workspace says what it holds.
+
+**Changes in v2.2**
+
+- A mean or SD outside the CCA's range is a **warning**, not an error: it never blocks. It is
+  listed on the Import and Results screens and on every export (`# mean/SD out of range: …`).
+- The per-CCA mean/SD **override is removed** (the Override button, the `overridable` and
+  `overridden` issue fields, the `overridden` CCA status and `report.overrides`). The import
+  report lists the CCAs instead as `report.outOfRange`.
+- The §7.4 table loses its Overridable column.
+- Finalise lists needs the JCRC points settings file (2g) and an import without errors (the bundle
+  of v2.3 took over the settings file's job; the full gate is in 6.6).
+- Workspace files (8b) no longer carry `meanSdOverrides` (version 2); a v1 file that carries ids
+  there still opens and the ids are dropped.
 
 Authoritative rules for the Raffles Hall AY26-27 points system. Where this document and the
 CLAUDE.md summary differ, this document wins. Every number below is a **config variable**
@@ -13,18 +66,31 @@ RH app (CCA leaders)  ->  CSV export  ->  email to portfolio head  ->  vetted
       ->  sandbox (JCRC)  ->  5 lists
 ```
 
-1. CCA leaders allocate base points (whole numbers 0–20) to members in the RH app. The app
+1. CCA leaders allocate base points (whole numbers 0–20) to members in the RH app. A sport's
+   head also ticks the members who get the IHG points (at most the sport's cap). The app
    checks the CCA's mean/SD range in the browser and only then lets the leader export.
    Points are never sent to or stored on the RH-app server.
 2. The leader emails the CSV to their portfolio head, who vets it.
-3. JCRC loads all vetted CSVs plus its own files (residents, IHG, CCA settings, and the
-   optional flat-points file, and the **points settings file** exported from the RH app, 2g)
-   into the offline sandbox, adjusts the scenario config, and gets
-   five lists: **male staying, male bidding, female staying, female bidding, sem-2 staying**.
-   Bidding lists are ordered colour first (green, grey, white), see 5.3.
-4. JCRC may then enter, directly in the sandbox, **final-points overrides** (6.2) and
-   **discretion points** (6.3), settle boundary ties by **wheel resolutions** (5.6), and
-   produce the **published lists** (5.7). A **workspace file** (8b) saves all of it.
+3. JCRC works through the offline sandbox in six steps:
+   1. **Import**: the **RH-app bundle** (2d: the CCA list with each CCA's type, sport flag,
+      IHG result and cap, the mean/SD ranges and the flat members), the leader CSVs and JCRC's
+      residents list.
+   2. **Checklist** (6.5): every CCA in the bundle has its leader file, is flat, or is marked
+      "not submitting" (optional note). Review stays locked until nothing is missing.
+   3. **Review** (6.4): CCAs in alphabetical order. JCRC may change a member's base score
+      (whole number 0–20, optional reason; every change is logged), sees the mean/SD against
+      the range (out of range is allowed), picks the CCA's level (3b) and marks it vetted.
+   4. **Summary**: per resident, the inputs only (reviewed scores, roles, AUX, IHG ticks);
+      **discretion points** (6.3) are given here.
+   5. **Results**: the scenario config and the five lists, **male staying, male bidding,
+      female staying, female bidding, sem-2 staying** (bidding lists colour first, 5.3);
+      **final-points overrides** (6.2) and **wheel resolutions** (5.6).
+   6. **Publish**: the **published lists** (5.7).
+
+   **Finalise lists** (Results) is allowed only when the gate in 6.6 passes: nothing "not set",
+   a complete checklist, every CCA with a leader file vetted and an import without errors.
+
+   A **workspace file** (8b) saves all of it at any step.
 
 The **matric number** is the join key across every file.
 
@@ -40,8 +106,8 @@ Filename: `points_<ccaID>_<YYYYMMDD>.csv`. One file per CCA.
 
 | Column | Type / allowed values |
 |---|---|
-| `formatVersion` | integer, must equal `1` |
-| `ccaID` | string, must exist in ccas.csv, identical on every row |
+| `formatVersion` | `1` (10 columns, no `ihg`) or `2` (adds `ihg`); must match the file's columns |
+| `ccaID` | string, must be a `cca` row of the bundle, identical on every row |
 | `ccaName` | string |
 | `matric` | matric pattern above |
 | `name` | string |
@@ -49,7 +115,10 @@ Filename: `points_<ccaID>_<YYYYMMDD>.csv`. One file per CCA.
 | `semesterOnly` | `Y` / `N` |
 | `outgoingRole` | `none` / `head` / `vice_head` |
 | `incomingRole` | `none` / `head` / `vice_head` |
+| `ihg` | version 2 only, after `incomingRole`: `Y` / `N`, this member receives the sport's IHG points (meaningful only for a sports CCA) |
 | `exportedAt` | ISO 8601 timestamp |
+
+The RH app writes version 2; a file's `formatVersion` must match its columns.
 
 ### (b) residents.csv — JCRC
 
@@ -62,37 +131,56 @@ Filename: `points_<ccaID>_<YYYYMMDD>.csv`. One file per CCA.
 | `aux` | integer ≥ 0 |
 | `jcrc` | `N` / `FULL` / `EXCHANGE` (required; see 4.6). `FULL` or `EXCHANGE` together with `sem2` = `Y` is an error |
 
-### (c) ihg.csv — JCRC / Sports
+### (c) ihg.csv — retired
 
-| Column | Type / allowed values |
+ihg.csv (spec ≤ v2.2) is retired: `IHG_FILE_RETIRED`. IHG rows are built from the leader files'
+`ihg` ticks and the bundle's `ihgResult` for that sport; more ticks than `ihgCap` is
+`IHG_OVER_CAP`; a sport with a leader file and no result or cap is `IHG_NOT_SET`.
+
+### (d) RH-app bundle — produced by the RH app (JCRC)
+
+Filename: `points_bundle_<YYYYMMDD>.csv`. UTF-8, CRLF line endings, RFC 4180 quoting, the
+apostrophe formula guard on `ccaName`, `name` and `note` (kept verbatim for display). One file
+carries the CCA list, the mean/SD ranges and the flat members. Header exactly (18 columns):
+
+```
+formatVersion,section,scope,ccaID,ccaName,matric,name,flatPoints,type,sport,ihgResult,ihgCap,meanMin,meanMax,sdMin,sdMax,note,exportedAt
+```
+
+Rows come in this order: `settings` rows (the default row, then waivers by `ccaID`), `cca`
+rows (by `ccaID`), `flat` rows (by `ccaID`, members in the app's order). `formatVersion`,
+`section` and `exportedAt` are filled on every row; every other column must be blank unless the
+row's section uses it (`BAD_BUNDLE_FILE`, naming the line and column).
+
+| Section | Columns it uses | Rules |
+|---|---|---|
+| `settings` | `scope`, `ccaID`, `ccaName`, `meanMin`, `meanMax`, `sdMin`, `sdMax`, `note` | as the settings file's rows (2g): exactly one `default` row, then `waiver` rows with the effective range |
+| `cca` | `ccaID`, `ccaName`, `flatPoints`, `type`, `sport`, `ihgResult`, `ihgCap` | one row per CCA, `ccaID` unique (`DUPLICATE_CCA`); at least one `cca` row |
+| `flat` | `ccaID`, `ccaName`, `matric`, `name`, `flatPoints` | as the flat-points file's rows (2e) |
+
+| `cca` column | Type / allowed values |
 |---|---|
-| `matric` | matric pattern |
-| `ccaID` | string (the sport's ccaID) |
-| `placement` | `1st` / `2nd` / `3rd` / `3rd4th_no_match` |
-
-A resident may have several rows; their IHG points are summed.
-
-### (d) ccas.csv — JCRC
-
-| Column | Type / allowed values |
-|---|---|
-| `ccaID` | string, unique |
+| `ccaID` | string, unique among the `cca` rows |
 | `ccaName` | string |
-| `type` | `1x` / `0.5x` |
-| `placement` | `pass` / `bronze` / `silver` / `gold` |
-| `outgoingTier` | blank, or a tier name from `outgoingTiers` |
-| `outgoingMultiplier` | blank, or a number > 0 |
-| `meanMin`, `meanMax`, `sdMin`, `sdMax` | blank, or a number |
+| `flatPoints` | blank, or a number ≥ 0 (the CCA is flat; its `flat` rows must carry the same value, `FLAT_VALUE_MISMATCH`) |
+| `type` | `1x` / `0.5x`, or blank = not set in RH-app (`1x` is assumed, `TYPE_NOT_SET`; never for a flat CCA) |
+| `sport` | `Y` / `N`, never blank |
+| `ihgResult` | blank, or `1st` / `2nd` / `3rd` / `3rd4th_no_match`; only on a `sport` = `Y` row (`BAD_BUNDLE_FILE`) |
+| `ihgCap` | blank, or a whole number ≥ 1 (`BAD_IHG_CAP`, read as blank); only on a `sport` = `Y` row (`BAD_BUNDLE_FILE`) |
 
-A **blank range field means "use the default"** (`meanSdDefault`). That is how a waiver is
-stored: a waived CCA simply carries its own non-blank override values. Each of the four
-fields falls back independently.
+`formatVersion` must equal `1` (`BAD_FORMAT_VERSION`). A file is detected by its header (or,
+failing that, a `points_bundle_` file name). The bundle is required (`MISSING_BUNDLE_FILE`);
+a second one is `DUPLICATE_BUNDLE_FILE`. It takes precedence over the standalone files: beside
+a bundle, a standalone settings (2g) or flat-points (2e) file is `DUPLICATE_SETTINGS_FILE` /
+`DUPLICATE_FLAT_FILE` and is ignored. A `cca` row with `flatPoints` and no `flat` rows is a
+flat CCA with no members.
 
-**While a points settings file (2g) is loaded, these four range columns are ignored**: the
-mean/SD ranges come only from the settings file, and the affected CCAs get one
-`CCAS_RANGE_IGNORED` warning.
+ccas.csv (spec ≤ v2.2) is retired: `CCAS_FILE_RETIRED`.
 
 ### (e) flat-points file — produced by the RH app (JCRC), optional
+
+Older standalone export, recognised but superseded by the bundle (needs a bundle for the CCA
+list; beside one it is a duplicate).
 
 Filename: `flat_points_<YYYYMMDD>.csv`. UTF-8, CRLF line endings, RFC 4180 quoting. **One file
 covers every flat CCA**; one row per member per flat CCA. Header exactly:
@@ -104,7 +192,7 @@ formatVersion,ccaID,ccaName,matric,name,flatPoints,exportedAt
 | Column | Type / allowed values |
 |---|---|
 | `formatVersion` | integer, must equal `1` |
-| `ccaID` | string, must exist in ccas.csv, and must NOT also have a leader file |
+| `ccaID` | string, must be a `cca` row of the bundle, and must NOT also have a leader file |
 | `ccaName` | string |
 | `matric` | matric pattern |
 | `name` | string |
@@ -113,11 +201,14 @@ formatVersion,ccaID,ccaName,matric,name,flatPoints,exportedAt
 
 JCRC sets the flat value per CCA in the RH app; the sandbox only **reads** it. It is not a
 sandbox setting. A file is detected by its header (or, failing that, a `flat_points_` file
-name). The file is optional. A flat CCA's `type`, `placement` and outgoing columns in
-ccas.csv are ignored for the points (the CCA still needs a ccas.csv row). A flat CCA is
-**not** mean/SD checked and does **not** raise `NO_LEADER_FILE`.
+name). The file is optional. A flat CCA's type and level are ignored for the points
+(the CCA still needs a `cca` row in the bundle). A flat CCA is **not** mean/SD checked and does
+**not** raise `NO_LEADER_FILE`.
 
 ### (g) points settings file — produced by the RH app (JCRC)
+
+Older standalone export, recognised but superseded by the bundle (needs a bundle for the CCA
+list; beside one it is a duplicate).
 
 Filename: `points_settings_<YYYYMMDD>.csv`. UTF-8, CRLF line endings, RFC 4180 quoting.
 Config only: it holds no names of people, no matrics and no scores. Header exactly:
@@ -142,17 +233,17 @@ Exactly **one** `default` row, then zero or more `waiver` rows. Every range valu
 app), so no fallback is applied when reading. A file is detected by its header (or, failing
 that, a `points_settings_` file name).
 
-**Effect.** While the file is loaded, the mean/SD check (7.1) of every leader file uses ONLY
-these ranges: the `default` row for a CCA with no waiver row, the waiver row's range for a
-waived CCA. The sandbox's own `meanSdDefault` setting is not used for the check and is shown
-read-only ("From JCRC settings file"); loading a scenario does not change it. Ranges in
-ccas.csv are ignored (`CCAS_RANGE_IGNORED`). A waiver row for a `ccaID` not in ccas.csv is
+**Effect.** These rows are the bundle's `settings` rows (2d). While a bundle is loaded, the
+mean/SD check (7.1) of every leader file uses ONLY these ranges: the `default` row for a CCA
+with no waiver row, the waiver row's range for a waived CCA. The sandbox's own `meanSdDefault`
+setting is not used for the check and is shown read-only ("From the RH-app bundle"); loading a
+scenario does not change it. A waiver row for a `ccaID` not in the bundle's `cca` rows is
 ignored (`SETTINGS_UNKNOWN_CCA`). A waiver on a flat CCA is harmless: flat CCAs are not
 mean/SD checked.
 
-**Finalise lists is refused until the file is loaded**: "Load JCRC's points settings file
-before finalising." Before that, the sandbox may be used to explore with its own ranges and
-shows a note saying so. The file is optional for everything except finalising.
+**Finalise lists is refused until the bundle is loaded**: "Load the RH-app bundle before
+finalising." While no usable `settings` rows are loaded, the sandbox uses its own ranges and
+shows a note saying so. The rest of the gate is in 6.6.
 
 ## 3. Scenario config (JSON)
 
@@ -161,13 +252,11 @@ The scenario JSON holds **settings only, never resident data**.
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `meanSdDefault` | `{meanMin, meanMax, sdMin, sdMax}` | `{10, 14, 2, 5}` **PLACEHOLDER** | Hall-wide allowed mean/SD range, inclusive |
-| `placementBonus` | `{pass, bronze, silver, gold}` | `{0, 0.5, 1.5, 4}` | Flat points per placement level |
+| `levels` | `[{name, bonus, multiplier}]` | Unsatisfactory 0 / 0.8, Pass 0 / 1.0, Low Bronze 0.5 / 1.05, High Bronze 0.5 / 1.15, Low Silver 1.5 / 1.25, High Silver 1.5 / 1.5, Low Gold 4 / 1.75, High Gold 4 / 2.0 (bonus / multiplier) **PLACEHOLDER** | CCA levels, keyed by name (unique, non-blank). `bonus` is added once to every member's net (never multiplied); `multiplier` is the outgoing leaders' multiplier (bidding only) |
 | `halfCcaBaseFactor` | number | `0.5` | Base factor for `0.5x` CCAs |
-| `halfCcaPlacementHalved` | boolean | `false` | Halve the placement bonus for `0.5x` CCAs |
+| `halfCcaPlacementHalved` | boolean | `false` | Halve the level bonus for `0.5x` CCAs (the key name is kept for old files) |
 | `semesterOnlyFactor` | number | `0.5` | Base factor for semester-only members of `1x` CCAs |
 | `incomingMultiplier` | `{head, vice_head}` | `{1.2, 1.2}` | Multiplier for incoming roles (staying and bidding) |
-| `outgoingMode` | `"tier"` \| `"manual"` | `"tier"` | Where the outgoing multiplier comes from |
-| `outgoingTiers` | `[{name, multiplier}]` | Unsatisfactory 0.8, Pass 1.0, Low Bronze 1.05, High Bronze 1.15, Low Silver 1.25, High Silver 1.5, Low Gold 1.75, High Gold 2.0 **PLACEHOLDER** | Tier table for `"tier"` mode |
 | `stackingMode` | `"max"` \| `"additive"` \| `"multiplicative"` | `"max"` | How outgoing and incoming roles combine in the same CCA (bidding) |
 | `droppedRoleBase` | number | `8` | Base ceiling for a dropped incoming role |
 | `auxTable` | 11 numbers (AUX 0..10) | `[-10,-8,-6,-4,-2,0,2,4,6,8,10]` | AUX count to hall points |
@@ -183,15 +272,49 @@ The scenario JSON holds **settings only, never resident data**.
 | `jcrcFullYearOffset` | number | `1` | JCRC (full year) value is H + this (4.6) |
 | `jcrcExchangeFactor` | number | `0.75` | JCRC (exchange) value is H × this (4.6) |
 
-Per-CCA values live in ccas.csv (type, placement, outgoing tier/multiplier, range overrides).
-`outgoingMode` selects which of `outgoingTier` / `outgoingMultiplier` is read.
+Each CCA has one `level` (a name from `levels`, or none) and two optional tweaks,
+`bonusOverride` and `multiplierOverride`, that win over the level's numbers for that CCA only.
+Type, sport flag, IHG result and cap come from the bundle (set in the RH app on /admin/points).
+Each CCA's level and optional tweaks are set in the sandbox (Review step) and saved in the
+workspace (3b, 8b); they are never in the scenario config or in a file. The levels THEMSELVES
+(names and numbers) are scenario config.
 
 **Migration.** A config or scenario file saved under v1.x has `headcounts.sem2Spots`. When
 read, it becomes `sem2Green = sem2Spots` and `sem2Grey = 0`; the `jcrc*` keys take their
-defaults when missing.
+defaults when missing. A config saved before levels existed has `placementBonus`,
+`outgoingMode` and `outgoingTiers` instead of `levels`. When read, `levels` is built from them:
+one level per `outgoingTiers` row (name and multiplier kept) whose bonus is the old
+`placementBonus` value for the first metal word in its name (`gold` / `silver` / `bronze`,
+any case; otherwise `pass`). With no tiers, the default `levels` are used, their bonuses still
+taken from `placementBonus` when it is present. The three old keys are dropped; a config that
+already has `levels` is left as it is. The reader reports that `levels` was migrated.
 
 Overrides (6.2), discretion (6.3) and wheel resolutions (5.6) are **resident data**, not
 config. They are never part of the scenario JSON.
+
+## 3b. Per-CCA sandbox values (levels)
+
+Each CCA's level is picked in the sandbox (on the Review step) and saved in the workspace
+file; it is not read from any input file. One entry per CCA:
+
+| Field | Type / allowed values |
+|---|---|
+| `ccaID` | a `cca` row of the bundle |
+| `level` | null, or the name of one of `levels` (3) |
+| `bonusOverride` | null, or a number ≥ 0 (this CCA's members' bonus instead of the level's) |
+| `multiplierOverride` | null, or a number > 0 (this CCA's outgoing multiplier instead of the level's) |
+
+| Code | Sev | Meaning |
+|---|---|---|
+| `LEVEL_NOT_SET` | warning | a non-flat CCA with a leader file has no entry (or one with nothing set): bonus 0 and ×1 are assumed |
+| `UNKNOWN_LEVEL` | error | `level` is not one of the `levels`; the CCA is handed to the engine with no level |
+| `BAD_LEVEL_TWEAK` | error | a tweak is not a finite number in its range |
+| `DUPLICATE_LEVEL_NAME` | error | two `levels` in Settings share a name |
+| `LEVEL_UNKNOWN_CCA` | warning | an entry names a CCA that is not in the bundle; the entry is ignored |
+
+A level renamed in Settings carries its CCAs with it (8b); a level removed while CCAs use it is
+an error until they are re-picked. Editing a level's bonus or multiplier in Settings clears that
+number's tweak on every CCA at that level, so they follow the new value (8b).
 
 ## 4. Formulas
 
@@ -214,13 +337,15 @@ Notation: resident `r`, CCA `c`, membership `m = (r, c)` taken from the leader f
 
 - A membership with a **final-points override** (6.2) has `stayNet = bidNet = finalPoints`.
 - A membership of a **flat CCA** (2e) has `stayNet = bidNet = flatPoints`.
-- Both are **final**: exactly that value, with no placement bonus, no leader multipliers,
+- Both are **final**: exactly that value, with no level bonus, no leader multipliers,
   no semester-only or half-CCA factors and no IHG (even when `ihgInSportNet` is on). They are
   **never paired** by half-CCA merging, even in a `0.5x` CCA. They still occupy one slot in the
   staying ranking and take that slot's weight. An IHG row for such a membership is **always
   ignored** (whatever `ihgInSportNet` says, so it is neither in the net nor flat) with the
-  warning `IHG_ON_FINAL_CCA`, to avoid counting IHG twice.
+  warning `IHG_ON_FINAL_CCA`, to avoid counting IHG twice. A flat CCA has no leader file, so a
+  tick can never reach one; the guard is in the engine and applies to overridden memberships.
 - Everything below describes the **normal calculation**.
+- IHG points are added in full whatever `semesterOnly` says.
 
 **effBase**
 
@@ -241,8 +366,8 @@ effBase = base
 
 ```
 inMult  = incomingMultiplier[incomingRole]            if incomingRole != none else 1
-outMult = outgoing multiplier of c                    if outgoingRole != none else 1
-          # tier mode: outgoingTiers[c.outgoingTier]; manual mode: c.outgoingMultiplier
+outMult = c.multiplierOverride ?? levels[c.level].multiplier ?? 1
+                                                      if outgoingRole != none else 1
           # shared by every outgoing leader of c
 stayMult = inMult                                     # outgoing is never used for staying
 
@@ -254,10 +379,10 @@ else:
     bidMult = inMult if incomingRole != none, else outMult if outgoingRole != none, else 1
 ```
 
-**Placement and IHG**
+**Level bonus and IHG**
 
 ```
-placement = placementBonus[c.placement]
+bonus     = (c.bonusOverride ?? levels[c.level].bonus ?? 0)
             * (0.5 if c.type == "0.5x" and halfCcaPlacementHalved else 1)
 ihgNet    = ihgInSportNet ? sum(ihgPoints[row.placement] for ihg rows of r where row.ccaID == c.ccaID) : 0
 ```
@@ -265,9 +390,12 @@ ihgNet    = ihgInSportNet ? sum(ihgPoints[row.placement] for ihg rows of r where
 **Net per membership**
 
 ```
-stayNet = effBase * stayMult + placement + ihgNet
-bidNet  = effBase * bidMult  + placement + ihgNet
+stayNet = effBase * stayMult + bonus + ihgNet
+bidNet  = effBase * bidMult  + bonus + ihgNet
 ```
+
+A CCA with **no level** gets bonus 0 and ×1 (import flags it). A level name that is not in
+`levels` is an error: the engine refuses to compute (`CCA <id>: unknown level "<name>"`).
 
 ### 4.2 Per-resident values
 
@@ -487,7 +615,7 @@ override = { matric, ccaID, finalPoints, reason }
 ```
 
 for an EXISTING membership (from a leader file or the flat-points file). It sets that
-membership's `stayNet = bidNet = finalPoints` exactly, as in 4.1: no placement, multipliers,
+membership's `stayNet = bidNet = finalPoints` exactly, as in 4.1: no level bonus, multipliers,
 halving or IHG, never paired in half-CCA merging, but still ranked and weighted as one slot.
 Precedence: **override > flat > normal calculation.** The breakdown reads
 `Final points set by JCRC: X — <reason>`. An IHG row for an overridden membership is always
@@ -519,130 +647,248 @@ keep it. The breakdown reads `JCRC discretion: +2 staying / −1 bidding — <re
 - It is **stale** (ignored and reported) if the resident disappears after a re-import.
 - Discretion is resident data (workspace file only, 8b).
 
+### 6.4 Review edits
+
+On the Review step JCRC may change a member's base score. An edit is entered directly in the
+sandbox (no input file):
+
+```
+edit = { matric, ccaID, from, to, reason, at }
+```
+
+`from` is the leader file's `basePoints` when the edit was made, `to` the reviewed score, `at`
+the time. The reason is optional. **No reviewer is recorded** (no name, initials or `by` field
+on edits, log entries or marks).
+
+- `validateReviewEdit` returns `BAD_REVIEW_POINTS` (`to` not a whole number 0–20),
+  `MISSING_REASON` (reason over 200 characters; an empty reason is fine), `REVIEW_FLAT_CCA`
+  (a flat CCA: its value is set in the RH app), `REVIEW_UNKNOWN_MEMBERSHIP` (no such member in
+  that CCA's leader file) or `REVIEW_NO_CHANGE` (`to` equals `from`), checked in that order.
+- At most one per `(matric, ccaID)`: setting again **replaces** it. Every edit and every
+  removal is kept in a log (`kind` `edit` / `remove`, old → new, reason, time).
+- Each edit is judged against the loaded leader files on every import:
+  - **applied** while the file's value for that member still equals `from`: the member's
+    `basePoints` becomes `to`;
+  - **changed** when the file's value is no longer `from` (a corrected file arrived): the edit
+    is NOT applied and the file's value is used; it is shown on Review and when a workspace is
+    opened, until removed or set again;
+  - **stale** when the membership is gone (or a later edit for it replaces this one).
+- Precedence: an edit changes `basePoints` BEFORE everything else. The mean/SD check (7.1),
+  the IHG ticks and the engine (4) all see the same reviewed scores. A final-points override
+  (6.2) still wins at compute; the mean/SD uses the reviewed base, never the override.
+- An edit changes the score only. Semester-only, roles and IHG ticks are not editable in the
+  sandbox; a wrong tick or role needs a corrected leader file.
+- Edits are resident data (workspace file only, 8b).
+
+### 6.5 Checklist and vetting
+
+The checklist is the **bundle's CCA list** (2d), in review order: by name (case- and
+accent-insensitive, numbers in numeric order), then `ccaID`. Without a bundle it is empty. Each
+CCA has one status:
+
+| Status | When |
+|---|---|
+| `present` | its leader file is loaded (even if some rows have errors) |
+| `flat` | a flat CCA (2e); it never needs a file |
+| `not_submitting` | JCRC marked it "not submitting" (optional note) and no file is loaded |
+| `superseded` | marked "not submitting", but a file was loaded: the file wins; clear the mark |
+| `missing` | none of the above |
+
+The checklist is complete when it lists at least one CCA and none is `missing`. A "not
+submitting" mark suppresses that CCA's `NO_LEADER_FILE` warning and nothing else. A mark for a
+`ccaID` the bundle does not list is ignored. Each row also shows the CCA's type, sport flag,
+IHG result and cap (blank = "not set in RH-app"), level and flat value.
+
+**Vetting.** Each CCA can be marked vetted on Review. The mark stores the FNV-1a (32-bit, 8
+lowercase hex characters) hash of the CCA's **leader file text**, exactly as loaded, so CRLF
+and LF copies differ. The import report carries each CCA's current `fileHash` (null with no
+leader file). Only a CCA **with** a leader file can be vetted: flat and not-submitting CCAs have
+no scores to review, are never vetted and never block Finalise. A mark counts (`vetted`) while
+the hashes match; `file_changed` when the file changed; `gone` when the CCA has no leader file
+or is no longer in the report. The bundle is never hashed: downloading it again never un-vets a CCA.
+Unvetted CCAs block only Finalise. No reviewer is recorded on a mark.
+
+### 6.6 Finalise gate and export header lines
+
+**The gate.** `finaliseBlock` returns the first reason that applies, in this order, or null:
+
+1. No usable bundle: "Load the RH-app bundle before finalising."
+2. Anything **not set**, as ONE message built from the groups that have items, for example
+   "Set these in the RH app and download the bundle again — type: RHag, Flag; IHG result or cap:
+   Touch Rugby (W). Pick a level on the Review step for: Soccer (M)." The groups: a blank `type`
+   on a non-flat CCA; a sport with a leader file and no IHG result or no cap; a CCA with a leader
+   file and no level. Flat and not-submitting CCAs never count; a CCA with no leader file counts
+   for type only.
+3. Checklist incomplete (6.5): "Complete the checklist before finalising."
+4. Unvetted: "Vet every CCA before finalising (n of N vetted)." N counts only CCAs with a leader
+   file (flat and not-submitting CCAs have nothing to vet); a vetted mark whose file changed does
+   not count.
+5. Import errors: "Fix the import errors before finalising."
+
+**Export header lines.** Every list export and the comparison export start with comment lines
+in this order: `# mean/SD out of range: ...`, `# final-points overrides: N`,
+`# discretion adjustments: N`, `# review edits: N` (applied edits only), `# levels: ...`,
+`# level tweaks: ...`, and, only while finalised, `# finalised: yes · penalties: N`.
+
+- `# levels:` is grouped by level in Settings order, CCAs by name inside each group (written as
+  `ccaID`), `not set` last, `none` when there are no CCAs, all on one line:
+  `# levels: Gold: C01, C04; High Silver: C02; not set: C09`. It covers CCAs with a leader file.
+- `# level tweaks:` lists each tweaked CCA, joined with ` | `, or `none`:
+  `# level tweaks: Soccer (C05): Gold, multiplier 1.31 (level 1.3)`; a bonus tweak reads
+  `bonus 2.5 (level 2)`.
+- No header line holds a score, a matric or a resident's name.
+
 ## 7. Validation
 
 Run on import. The RH app uses the identical mean/SD check.
 
 ### 7.1 Mean/SD
 
-Computed over the CCA's **full `basePoints`** — leaders included, semester-only members
+Computed over the CCA's **full `basePoints`** (after review edits, 6.4) — leaders included, semester-only members
 **unhalved** — using the **population SD (÷N)**. Bounds are inclusive with tolerance
-`1e-9`. The range is the CCA's override fields, else `meanSdDefault`; each of the four
-range fields falls back to `meanSdDefault` independently.
+`1e-9`. The range comes from the bundle's `settings` rows (2d): the CCA's `waiver` row if it
+has one, else the `default` row. `meanSdDefault` is used only while no usable bundle is loaded
+(exploration), and the panel says so.
 
-**When a points settings file (2g) is loaded** the ranges come ONLY from it: the CCA's
-`waiver` row if it has one, else the `default` row. ccas.csv range columns and the sandbox's
-`meanSdDefault` are not used.
+A mean or SD outside the range does not block anything (7.3).
+
 
 ### 7.2 ERRORS
 
-Block results until each is fixed by re-importing a corrected file. **Mean/SD out of range is
-the only overridable error**: JCRC may override it explicitly, per CCA, and every override is
-listed on all outputs. Every other error is **non-overridable** and must be fixed by
-re-importing a corrected file; override attempts for them are ignored.
+Block results until each is fixed by re-importing a corrected file.
 
-- mean/SD out of range
 - unknown matric (not in residents.csv)
 - duplicate matric within a leader file
 - `basePoints` not an integer in 0–20
 - bad enum or Y/N value
 - mixed `ccaID` within one file
-- `ccaID` not in ccas.csv
+- `ccaID` not in the bundle
 - two files for the same `ccaID`
 - wrong `formatVersion` or wrong header
-- an outgoing leader in a CCA whose outgoing tier/multiplier is blank for the active `outgoingMode`
-- duplicate matric in residents.csv
+- duplicate matric in residents.csv, or more than one residents.csv
 - bad `gender`, `sem2` or `aux` value
-- ihg.csv `matric` not in residents.csv
-- ihg.csv `ccaID` not in ccas.csv
-- an `outgoingTier` name in ccas.csv that is not in `outgoingTiers`
-- an `outgoingMultiplier` in ccas.csv that is not a positive number
+- an ihg.csv (retired, `IHG_FILE_RETIRED`)
+- more leader-file `ihg` ticks than the sport's `ihgCap`
+- no RH-app bundle, more than one bundle, a value in a column its section does not use, an IHG
+  column on a `sport` = `N` row, an unknown `section`, no `cca` rows, an `ihgCap` that is not
+  a whole number ≥ 1, or the same `ccaID` on two `cca` rows
+- a ccas.csv (retired, `CCAS_FILE_RETIRED`)
+- a level entry whose `level` is not one of the `levels`, or whose tweak is out of range; two
+  `levels` with the same name
 - residents.csv: `jcrc` not `N` / `FULL` / `EXCHANGE`, or `jcrc` other than `N` on a `sem2` = `Y` resident
-- flat-points file: `ccaID` not in ccas.csv, `ccaID` that also has a leader file, `flatPoints`
-  not a number ≥ 0, rows of one `ccaID` with different `flatPoints`, more than one flat file,
-  and the usual matric checks (bad, unknown, duplicate within one `ccaID`)
+- flat rows: `ccaID` not in the bundle, `ccaID` that also has a leader file, `flatPoints`
+  not a number ≥ 0, rows of one `ccaID` with different `flatPoints` (or a value other than the
+  `cca` row's), a standalone flat file beside the bundle, and the usual matric checks (bad,
+  unknown, duplicate within one `ccaID`)
 - points settings file: not exactly one `default` row, a `scope` other than `default` /
   `waiver`, a waiver row without a `ccaID`, a range value that is not a number or is outside
   0–20 (mean) / 0–10 (SD) or has min above max, the same `ccaID` on two waiver rows, a wrong
-  `formatVersion`, and more than one settings file
+  `formatVersion`, and a standalone settings file beside the bundle
 
 ### 7.3 WARNINGS
 
 Shown, do not block.
 
-- a CCA in ccas.csv with no leader file
+- mean or SD outside the CCA's range (allowed; shown on Import and Review)
+- a CCA in the bundle with no leader file, unless it is marked "not submitting" (6.5)
+- a non-flat CCA whose `type` is blank in the bundle (1x is assumed)
+- a non-flat CCA with a leader file and no level picked (bonus 0 and ×1 are assumed)
+- a level entry for a CCA that is not in the bundle (the entry is ignored)
 - `semesterOnly` on a `0.5x` CCA (the tick is ignored)
 - `aux` above `auxCap`
-- IHG for a non-member when `ihgInSportNet` is on
+- IHG for a non-member when `ihgInSportNet` is on (engine only)
+- a sport with a leader file and no IHG result or cap (its ticks get no IHG points yet)
+- `ihg` ticks in a leader file of a CCA that is not a sport in the bundle (ignored)
+- a sport with an IHG result and no member ticked
 - more than 10 `0.5x` memberships for one resident
 - an IHG row for a flat or overridden membership (the row is always ignored)
-- ccas.csv range columns that are ignored because a points settings file is loaded
-- a settings-file waiver for a `ccaID` that is not in ccas.csv (the row is ignored)
+- a waiver for a `ccaID` that is not in the bundle (the row is ignored)
 
 ### 7.4 Issue codes
 
-Every issue carries `severity`, `code`, `overridable`, `fileName`, and where known `line`,
+Every issue carries `severity`, `code`, `fileName`, and where known `line`,
 `column`, `ccaID` and `matric`, plus a plain-English `message`. Line numbers count the header as
-line 1. `canCompute` is true when no error remains except overridden ones. Checks that need a
-reference file (residents.csv, ccas.csv) are skipped when that file is missing, so one mistake
-raises one issue rather than a cascade. The IHG file is optional.
+line 1. `canCompute` is true when no error remains. Checks that need a
+reference file (residents.csv, the bundle) are skipped when that file is missing, so one mistake
+raises one issue rather than a cascade. IHG has no file of its own: it is built from the
+leader files' ticks and the bundle (2c).
 
-| Code | Sev | Overridable | Raised when |
-|---|---|---|---|
-| `UNRECOGNISED_FILE` | error | no | header matches no file kind and the file name gives no hint |
-| `CSV_SYNTAX` | error | no | unterminated quote, or a row whose cell count differs from the header |
-| `BAD_HEADER` | error | no | file name says leader (`points_*`) / flat (`flat_points_*`) / residents / ihg / ccas but the header columns are not exactly right (a residents.csv without the `jcrc` column lands here) |
-| `BAD_FORMAT_VERSION` | error | no | leader, flat or settings `formatVersion` is not `1` |
-| `MIXED_CCA_ID` | error | no | one leader file contains more than one `ccaID` |
-| `DUPLICATE_CCA_FILE` | error | no | two leader files for the same `ccaID` |
-| `MISSING_RESIDENTS_FILE` | error | no | no residents.csv |
-| `MISSING_CCAS_FILE` | error | no | no ccas.csv |
-| `DUPLICATE_RESIDENTS_OR_CCAS_FILE` | error | no | more than one residents, ccas or ihg file |
-| `DUPLICATE_FLAT_FILE` | error | no | more than one flat-points file (the extra copy is ignored) |
-| `BAD_MATRIC` | error | no | matric does not match `^A\d{7}[A-Z]$` after uppercasing |
-| `UNKNOWN_MATRIC` | error | no | leader matric not in residents.csv |
-| `DUPLICATE_MATRIC_IN_FILE` | error | no | same matric twice in one leader file, or twice within one `ccaID` of the flat file (the later row is ignored) |
-| `DUPLICATE_RESIDENT` | error | no | same matric twice in residents.csv |
-| `BAD_BASE_POINTS` | error | no | `basePoints` not a whole number 0–20 |
-| `BAD_ENUM` | error | no | bad `outgoingRole` / `incomingRole` / `type` / `placement` value |
-| `BAD_YN` | error | no | `semesterOnly` / `sem2` not `Y` or `N` |
-| `BAD_GENDER` | error | no | `gender` not `M` or `F` |
-| `BAD_AUX` | error | no | `aux` not a whole number ≥ 0 |
-| `UNKNOWN_CCA` | error | no | leader file or flat-file `ccaID` not in ccas.csv |
-| `BAD_JCRC` | error | no | `jcrc` not `N`, `FULL` or `EXCHANGE` |
-| `JCRC_AND_SEM2` | error | no | `jcrc` is `FULL` or `EXCHANGE` and `sem2` is `Y` for the same resident |
-| `BAD_FLAT_POINTS` | error | no | `flatPoints` not a number ≥ 0 |
-| `FLAT_VALUE_MISMATCH` | error | no | rows of one flat `ccaID` carry different `flatPoints` |
-| `FLAT_AND_LEADER_FILE` | error | no | a `ccaID` has both a flat-points row and a leader file |
-| `BAD_FINAL_POINTS` | error | no | (override entry) `finalPoints` is not a finite number |
-| `MISSING_REASON` | error | no | (override or discretion entry) reason empty or over 200 characters |
-| `OVERRIDE_UNKNOWN_MEMBERSHIP` | error | no | (override entry) no such membership |
-| `BAD_DISCRETION_POINTS` | error | no | (discretion entry) a delta is not a finite number |
-| `DISCRETION_UNKNOWN_RESIDENT` | error | no | (discretion entry) no such resident |
-| `IHG_UNKNOWN_MATRIC` | error | no | ihg.csv matric not in residents.csv |
-| `IHG_UNKNOWN_CCA` | error | no | ihg.csv `ccaID` not in ccas.csv |
-| `UNKNOWN_TIER` | error | no | `outgoingTier` not blank and not in `outgoingTiers` |
-| `BAD_MANUAL_MULTIPLIER` | error | no | `outgoingMultiplier` not blank and not a positive number |
-| `MISSING_OUTGOING_MULTIPLIER` | error | no | a CCA has an outgoing leader but the field for the active `outgoingMode` is blank |
-| `DUPLICATE_CCA` | error | no | same `ccaID` twice in ccas.csv |
-| `BAD_RANGE` | error | no | a mean/SD range field in ccas.csv is not blank and not a number; or a settings-file range value is not a number, is outside 0–20 (mean) / 0–10 (SD), or has min above max |
-| `BAD_SETTINGS_FILE` | error | no | settings file without exactly one `default` row, with a `scope` other than `default` / `waiver`, or a waiver row without a `ccaID` |
-| `DUPLICATE_WAIVER` | error | no | the same `ccaID` on two waiver rows of the settings file (the later row is ignored) |
-| `DUPLICATE_SETTINGS_FILE` | error | no | more than one settings file (the extra copy is ignored) |
-| `MEAN_SD_OUT_OF_RANGE` | error | **yes** | mean or population SD outside the CCA's range (also raised for a leader file with no members) |
-| `NO_LEADER_FILE` | warning | – | a CCA in ccas.csv has no leader file and is not a flat CCA |
-| `SEMESTER_ONLY_ON_HALF_CCA` | warning | – | `semesterOnly` = `Y` on a `0.5x` CCA (ignored) |
-| `AUX_ABOVE_CAP` | warning | – | `aux` above `auxCap` |
-| `IHG_NON_MEMBER` | warning | – | IHG row for a CCA the resident is not in, only when `ihgInSportNet` is on |
-| `MANY_HALF_CCAS` | warning | – | a resident has more than 10 `0.5x` memberships |
-| `CCAS_RANGE_IGNORED` | warning | – | a settings file is loaded and ccas.csv has range values for one or more CCAs; they are ignored (the message lists the CCAs) |
-| `SETTINGS_UNKNOWN_CCA` | warning | – | a settings-file waiver names a `ccaID` not in ccas.csv; the row is ignored |
-| `IHG_ON_FINAL_CCA` | warning | – | an IHG row for a flat or overridden membership; the row is always ignored, whatever `ihgInSportNet` says |
+| Code | Sev | Raised when |
+|---|---|---|
+| `UNRECOGNISED_FILE` | error | header matches no file kind and the file name gives no hint |
+| `CSV_SYNTAX` | error | unterminated quote, or a row whose cell count differs from the header |
+| `BAD_HEADER` | error | file name says bundle (`points_bundle_*`) / leader (`points_*`) / flat (`flat_points_*`) / residents but the header columns are not exactly right (a residents.csv without the `jcrc` column lands here) |
+| `BAD_FORMAT_VERSION` | error | bundle, flat or settings `formatVersion` is not `1`; leader `formatVersion` is not `1` or `2`, or does not match its columns (`ihg` column = `2`, none = `1`) |
+| `MIXED_CCA_ID` | error | one leader file contains more than one `ccaID` |
+| `DUPLICATE_CCA_FILE` | error | two leader files for the same `ccaID` |
+| `MISSING_RESIDENTS_FILE` | error | no residents.csv |
+| `MISSING_BUNDLE_FILE` | error | no RH-app bundle |
+| `DUPLICATE_BUNDLE_FILE` | error | more than one bundle (the extra copy is ignored; remove the older one) |
+| `BAD_BUNDLE_FILE` | error | a bundle value in a column its section does not use, an `ihgResult` / `ihgCap` on a `sport` = `N` row, an unknown `section`, a `cca` row without a `ccaID`, or no `cca` rows at all |
+| `BAD_IHG_CAP` | error | a bundle `ihgCap` that is not blank and not a whole number ≥ 1 (read as blank) |
+| `CCAS_FILE_RETIRED` | error | a ccas.csv (by its header or a `ccas` file name); its rows are not read |
+| `IHG_FILE_RETIRED` | error | an ihg.csv (by its header or an `ihg` file name); its rows are not read |
+| `DUPLICATE_RESIDENTS_FILE` | error | more than one residents file |
+| `DUPLICATE_FLAT_FILE` | error | a standalone flat-points file beside the bundle, or more than one without a bundle (the extra copy is ignored) |
+| `BAD_MATRIC` | error | matric does not match `^A\d{7}[A-Z]$` after uppercasing |
+| `UNKNOWN_MATRIC` | error | leader matric not in residents.csv |
+| `DUPLICATE_MATRIC_IN_FILE` | error | same matric twice in one leader file, or twice within one `ccaID` of the flat file (the later row is ignored) |
+| `DUPLICATE_RESIDENT` | error | same matric twice in residents.csv |
+| `BAD_BASE_POINTS` | error | `basePoints` not a whole number 0–20 |
+| `BAD_ENUM` | error | bad `outgoingRole` / `incomingRole` / `type` / `ihgResult` value |
+| `BAD_YN` | error | `semesterOnly` / `sem2` / `sport` not `Y` or `N` |
+| `BAD_GENDER` | error | `gender` not `M` or `F` |
+| `BAD_AUX` | error | `aux` not a whole number ≥ 0 |
+| `UNKNOWN_CCA` | error | leader file or flat-row `ccaID` not in the bundle |
+| `BAD_JCRC` | error | `jcrc` not `N`, `FULL` or `EXCHANGE` |
+| `JCRC_AND_SEM2` | error | `jcrc` is `FULL` or `EXCHANGE` and `sem2` is `Y` for the same resident |
+| `BAD_FLAT_POINTS` | error | `flatPoints` not a number ≥ 0 |
+| `FLAT_VALUE_MISMATCH` | error | rows of one flat `ccaID` carry different `flatPoints`, or a value other than its `cca` row's (or that row's is blank) |
+| `FLAT_AND_LEADER_FILE` | error | a `ccaID` has both flat points (member rows, or `flatPoints` on its `cca` row) and a leader file |
+| `BAD_FINAL_POINTS` | error | (override entry) `finalPoints` is not a finite number |
+| `MISSING_REASON` | error | (override or discretion entry) reason empty or over 200 characters; (review edit) reason over 200 characters |
+| `OVERRIDE_UNKNOWN_MEMBERSHIP` | error | (override entry) no such membership |
+| `BAD_DISCRETION_POINTS` | error | (discretion entry) a delta is not a finite number |
+| `DISCRETION_UNKNOWN_RESIDENT` | error | (discretion entry) no such resident |
+| `BAD_REVIEW_POINTS` | error | (review edit, 6.4) `to` not a whole number 0–20 |
+| `REVIEW_FLAT_CCA` | error | (review edit) the CCA is flat |
+| `REVIEW_UNKNOWN_MEMBERSHIP` | error | (review edit) no such member in that CCA's leader file |
+| `REVIEW_NO_CHANGE` | error | (review edit) `to` equals `from` |
+| `IHG_OVER_CAP` | error | a sport's leader file has more `ihg` ticks than its `ihgCap`; that CCA gets no IHG entries |
+| `UNKNOWN_LEVEL` | error | (level entry, 3b) `level` not one of the `levels` |
+| `BAD_LEVEL_TWEAK` | error | (level entry, 3b) `bonusOverride` not a number ≥ 0, or `multiplierOverride` not a number > 0 |
+| `DUPLICATE_LEVEL_NAME` | error | two `levels` in Settings have the same name |
+| `DUPLICATE_CCA` | error | same `ccaID` on two `cca` rows of the bundle (the later row is ignored) |
+| `BAD_RANGE` | error | a settings range value (bundle or settings file) is not a number, is outside 0–20 (mean) / 0–10 (SD), or has min above max |
+| `BAD_SETTINGS_FILE` | error | settings rows (bundle or settings file) without exactly one `default` row, with a `scope` other than `default` / `waiver`, or a waiver row without a `ccaID` |
+| `DUPLICATE_WAIVER` | error | the same `ccaID` on two waiver rows of the settings file (the later row is ignored) |
+| `DUPLICATE_SETTINGS_FILE` | error | a standalone settings file beside the bundle, or more than one without a bundle (the extra copy is ignored) |
+| `MEAN_SD_OUT_OF_RANGE` | warning | mean or population SD outside the CCA's range (also raised for a leader file with no members) |
+| `NO_LEADER_FILE` | warning | a CCA in the bundle has no leader file, is not a flat CCA and is not marked "not submitting" (6.5) |
+| `TYPE_NOT_SET` | warning | a non-flat `cca` row with a blank `type` (1x is assumed) |
+| `LEVEL_NOT_SET` | warning | (3b) a non-flat CCA with a leader file and no level or tweak picked (bonus 0 and ×1 are assumed) |
+| `LEVEL_UNKNOWN_CCA` | warning | (3b) a level entry for a CCA not in the bundle; the entry is ignored |
+| `IHG_NOT_SET` | warning | a non-flat `sport` = `Y` CCA with a leader file and a blank `ihgResult` or `ihgCap`; its ticks get no IHG points yet |
+| `IHG_TICK_IGNORED` | warning | `ihg` = `Y` ticks in the leader file of a `sport` = `N` CCA; the ticks are ignored |
+| `IHG_NO_TICKS` | warning | a sport with an `ihgResult` and a cap whose leader file ticks nobody |
+| `SEMESTER_ONLY_ON_HALF_CCA` | warning | `semesterOnly` = `Y` on a `0.5x` CCA (ignored) |
+| `AUX_ABOVE_CAP` | warning | `aux` above `auxCap` |
+| `IHG_NON_MEMBER` | warning | (engine) IHG entry for a CCA the resident is not in, only when `ihgInSportNet` is on; not raised by file import |
+| `MANY_HALF_CCAS` | warning | a resident has more than 10 `0.5x` memberships |
+| `SETTINGS_UNKNOWN_CCA` | warning | a waiver names a `ccaID` not in the bundle; the row is ignored |
+| `IHG_ON_FINAL_CCA` | warning | an IHG row for a flat or overridden membership; the row is always ignored, whatever `ihgInSportNet` says |
 
 The five entry codes (`BAD_FINAL_POINTS` … `DISCRETION_UNKNOWN_RESIDENT`) are returned by the
 engine's `validateOverride` / `validateDiscretion` when an entry is added; they are not raised
-by file import. `IHG_ON_FINAL_CCA` is raised by the engine (every flat or overridden
-membership) and, for flat memberships, also by file import.
+by file import. `IHG_ON_FINAL_CCA` is raised by the engine only (every flat or overridden
+membership that has an IHG row); file import cannot produce one, because a flat CCA has no
+leader file and so no ticks.
+
+The five review codes (`BAD_REVIEW_POINTS`, `MISSING_REASON`, `REVIEW_FLAT_CCA`,
+`REVIEW_UNKNOWN_MEMBERSHIP`, `REVIEW_NO_CHANGE`) are returned by `validateReviewEdit` when an
+edit is entered (6.4); they are not raised by file import, which reports each edit's status
+(`applied` / `changed` / `stale`) in `report.review` instead. `NO_LEADER_FILE` is not raised for
+a CCA marked "not submitting" on the checklist (6.5).
 
 `exportedAt` is not validated. Mean/SD is computed from every valid, non-duplicate leader row,
 whether or not the file has other errors.
@@ -656,14 +902,14 @@ config. Every value below was independently recomputed; there were no mismatches
 
 Resident is a plain member of six `1x` CCAs.
 
-| CCA | base | placement | net = base + bonus |
+| CCA | base | level (bonus) | net = base + bonus |
 |---|---|---|---|
-| Handball | 18 | Gold (4) | 22 |
-| Arts & Graphics | 15 | Bronze (0.5) | 15.5 |
-| Welfare | 10 | Bronze (0.5) | 10.5 |
-| Unplugged | 9 | Silver (1.5) | 10.5 |
-| Rhebels | 8 | Gold (4) | 12 |
-| Social | 7 | Gold (4) | 11 |
+| Handball | 18 | High Gold (+4) | 22 |
+| Arts & Graphics | 15 | Low Bronze (+0.5) | 15.5 |
+| Welfare | 10 | Low Bronze (+0.5) | 10.5 |
+| Unplugged | 9 | Low Silver (+1.5) | 10.5 |
+| Rhebels | 8 | High Gold (+4) | 12 |
+| Social | 7 | High Gold (+4) | 11 |
 
 Sort by net: 22, 15.5, 12, 11, 10.5, 10.5. Weights 1, 1, 1, 1, 0.5, 0.25:
 
@@ -682,7 +928,7 @@ Unplugged 9, Rhebels 8, Social 7, then apply weights to their nets in that order
 ```
 
 It is wrong because the weights are meant to reward the resident's *best contributions*:
-Rhebels (net 12) and Social (net 11) beat Welfare and Unplugged (10.5) once placement is
+Rhebels (net 12) and Social (net 11) beat Welfare and Unplugged (10.5) once the level bonus is
 added, yet the base order pushes them into the discounted slots. 67.25 < 68.375 because a
 lower-value CCA sits in a full-weight slot. Ranking by net is the rule.
 
@@ -704,7 +950,7 @@ Handball: `18 * 1.2 + 4 = 25.6`. Nets: 25.6, 15.5, 12, 11, 10.5, 10.5.
 
 ### E4 — Bidding, outgoing Head of Handball at x2.0 (99.5)
 
-Handball: `18 * 2.0 + 4 = 40`.
+Outgoing Head of Handball at ×2.0 (High Gold). Handball: `18 * 2.0 + 4 = 40`.
 
 ```
 40 + 15.5 + 10.5 + 10.5 + 12 + 11 = 99.5
@@ -723,13 +969,13 @@ If the frozen green cut-off is above 58.375, the resident is removed.
 
 ### E6 — Half-CCA merging
 
-`1x` nets: 20, 15, 12, 9. `0.5x` memberships (placement not halved):
+`1x` nets: 20, 15, 12, 9. `0.5x` memberships (level bonus not halved):
 
-| CCA | base | effBase (x0.5) | placement | stayNet |
+| CCA | base | effBase (x0.5) | level (bonus) | stayNet |
 |---|---|---|---|---|
-| P | 16 | 8 | gold 4 | 12 |
-| Q | 12 | 6 | bronze 0.5 | 6.5 |
-| R | 10 | 5 | pass 0 | 5 |
+| P | 16 | 8 | High Gold (+4) | 12 |
+| Q | 12 | 6 | Low Bronze (+0.5) | 6.5 |
+| R | 10 | 5 | Pass (+0) | 5 |
 
 Weights 1, 1, 1, 1, 0.5, 0.25, 0.125 (position 7 is the tail: 0.25 / 2).
 
@@ -742,7 +988,7 @@ Weights 1, 1, 1, 1, 0.5, 0.25, 0.125 (position 7 is the tail: 0.25 / 2).
 
 Chosen pairing: **P+Q = 71.25**.
 
-### E7 — Semester-only member of a 1x Silver CCA, base 14
+### E7 — Semester-only member of a 1x Low Silver CCA, base 14
 
 Mean/SD check uses 14 (unhalved). For points: `effBase = 14 * 0.5 = 7`,
 `stayNet = 7 + 1.5 = 8.5`.
@@ -757,9 +1003,9 @@ deviations² = 51.020, 51.020, 4.592, 0.735, 8.163, 23.592, 61.735 -> sum 200.85
 variance = 200.857 / 7 = 28.694, population SD = 5.357
 ```
 
-With defaults (mean 10–14, SD 2–5): mean passes; **SD 5.357 > 5 fails** → ERROR.
+With defaults (mean 10–14, SD 2–5): mean passes; **SD 5.357 > 5 fails** → `MEAN_SD_OUT_OF_RANGE` warning; nothing blocks.
 
-### E9 — Stacking (base 18, Gold, incoming 1.2 + outgoing 2.0)
+### E9 — Stacking (base 18, High Gold, incoming 1.2 + outgoing 2.0)
 
 | stackingMode | bidMult | bidNet |
 |---|---|---|
@@ -863,9 +1109,10 @@ The list is still sorted by the exact points (12.5 stays above 12.4999).
 
 ### E18 — Flat CCA
 
-A resident in four CCAs: Handball (base 18, Gold), Arts & Graphics (15, Bronze), Welfare (10,
-Bronze) and one **flat CCA with `flatPoints = 12`**. ccas.csv says the flat CCA is Gold and the
-resident is an incoming Head there: both are ignored. Nets: 22, 15.5, 10.5 and a flat 12.
+A resident in four CCAs: Handball (base 18, High Gold), Arts & Graphics (15, Low Bronze), Welfare
+(10, Low Bronze) and one **flat CCA with `flatPoints = 12`**. The bundle's `cca` row and the
+sandbox's level table say the flat CCA is High Gold, and the resident is an incoming Head there:
+both are ignored. Nets: 22, 15.5, 10.5 and a flat 12.
 
 ```
 staying = 22 + 15.5 + 12 + 10.5 = 60          (sorted 22, 15.5, 12, 10.5; weights 1, 1, 1, 1)
@@ -893,7 +1140,7 @@ bidding = 81.5   − 1 = 80.5
 
 ### E21 — Points settings file (waiver ranges)
 
-Settings file (2g): `default` 10–14 / 2–5, and a `waiver` row for CCA 9101 with 12–15 /
+The bundle's `settings` rows (2d, 2g): `default` 10–14 / 2–5, and a `waiver` row for CCA 9101 with 12–15 /
 1.5–5. Leader file for 9101 has mean **14.5** and SD **1.6**.
 
 ```
@@ -901,7 +1148,7 @@ under the default (10–14 / 2–5):  mean 14.5 > 14      → MEAN_SD_OUT_OF_RAN
 under the waiver  (12–15 / 1.5–5): 12 ≤ 14.5 ≤ 15, 1.5 ≤ 1.6 ≤ 5 → ok
 ```
 
-With the settings file loaded the CCA is `ok`; without it (sandbox's own default range) the
+With the bundle loaded the CCA is `ok`; without it (sandbox's own default range) the
 same files raise `MEAN_SD_OUT_OF_RANGE` for 9101.
 
 ## 8b. Workspace file
@@ -910,14 +1157,40 @@ A **workspace** is everything needed to resume a session, saved only as a file t
 downloads explicitly. It is never written to localStorage, sessionStorage or IndexedDB.
 
 ```
-{ format: "rhps-workspace", version: 1, savedAt, files: [{name, text}],
-  meanSdOverrides, config, finalOverrides, discretion, resolutions, finalised }
+{ format: "rhps-workspace", version: 2, savedAt, files: [{name, text}], config,
+  ccaLevels, review: { edits, log, vetted, notSubmitting }, step,
+  finalOverrides, discretion, resolutions, finalised }
 ```
 
-`files` are the imported CSVs as text; `meanSdOverrides` the per-CCA mean/SD overrides (CCA
-ids); `config` the scenario config; `finalOverrides`, `discretion` and `resolutions` the entries
-of 6.2, 6.3 and 5.6; `finalised` the penalty state or `null`. The workspace contains resident
-data and must be handled like the input files.
+`files` are the imported CSVs as text; `config` the scenario config; `ccaLevels` the per-CCA
+level entries (3b); `review` the Review step's state: `edits` (one active score edit per
+matric + ccaID, 6.4), `log` (every edit set or removed, oldest first: the edit fields plus
+`kind` `edit` / `remove`; a removal reads from the edited value back to the file value),
+`vetted` (ccaID, leader-file hash, time; 6.5) and `notSubmitting` (ccaID, optional note, time;
+6.5); `step` the open step (`import`, `checklist`, `review`, `summary`, `results`, `publish`,
+`compare`); `finalOverrides`, `discretion` and `resolutions` the entries of 6.2, 6.3 and 5.6;
+`finalised` the penalty state or `null`. No reviewer is recorded anywhere. The workspace contains
+resident data and must be handled like the input files. Moving between steps is not an unsaved
+change; every other change to these fields is.
+
+**Version 1 files** (written before the guided workflow) are read and migrated on open:
+`meanSdOverrides` is dropped; `ccaLevels` and `review` start empty and `step` is `import`; every
+file whose header is the retired ccas.csv or ihg.csv header (2.2 and earlier), or whose name
+starts with `ccas` or `ihg` (any case), is dropped, never converted; and the config is migrated
+as in section 3. Opening shows up to two notes, each at most once:
+- when a file was dropped: "ccas.csv and ihg.csv were removed: load the RH-app bundle and new
+  leader files, then pick each CCA's level on the Review step."
+- when the config had the old placement bonus and tiers: "The settings' levels were built from
+  the old placement bonus and tiers; check them in Settings."
+
+Version 1 and 2 are read; version 2 is written; any other version is `UNSUPPORTED_VERSION`.
+
+**Levels and the level table.** Renaming a level in Settings renames it in every CCA's entry
+(only when exactly one level's name changed and the old name was unique among the levels);
+removing a level, reordering, a reset or a loaded scenario does not touch the entries (an entry
+on a missing level is `UNKNOWN_LEVEL`, 3b). Editing one level's bonus (or multiplier) sets the
+bonus (or multiplier) tweak to blank on every CCA at that level, so they follow the new value,
+and Settings says how many tweaks were cleared.
 
 - **Filename:** `rhps_workspace_<YYYYMMDD-HHmm>.rhps` (local time).
 - **Encrypted form** (optional password): a JSON envelope
@@ -925,20 +1198,29 @@ data and must be handled like the input files.
   iterations: 310000, salt, verifier }, cipher: { name: "AES-GCM", iv }, data }` with `salt`,
   `iv` and `data` base64. The key is the 256-bit PBKDF2 output; `verifier` is the base64 SHA-256
   of `"rhps-workspace-verifier:"` followed by the key bytes, so a wrong password and a damaged
-  file can be told apart. Web Crypto only; no dependency.
+  file can be told apart. Web Crypto only; no dependency. The envelope keeps its own `version: 1`
+  (its layout did not change with workspace version 2); the workspace inside carries its own.
 - **Reading** returns the workspace or one code: `NOT_A_WORKSPACE` (not JSON, or not one of the
   two formats), `UNSUPPORTED_VERSION`, `PASSWORD_REQUIRED` (encrypted, no password given),
   `WRONG_PASSWORD`, `CORRUPT` (a missing or wrong-shaped field, a damaged ciphertext).
-- **Loading** migrates the config (section 3) and **re-runs the import validation on the saved
-  files**. Final-points overrides, discretion entries and wheel resolutions that no longer match
-  (6.2, 6.3, 5.6) are reported as stale and never applied silently.
+- **Loading** migrates the file and config (above, section 3) and **re-runs the import
+  validation on the saved files** with the saved level table, edits and not-submitting marks.
+  Final-points overrides, discretion entries and wheel resolutions that no longer match (6.2,
+  6.3, 5.6), score edits that are `changed` or `stale` (6.4), vetted marks that no longer count
+  (6.5) and level entries for CCAs not in the bundle are reported, with the migration notes, and
+  never applied silently.
+  What cannot be checked yet is **not** reported as stale: with no usable bundle the score edits,
+  vetted marks and level entries are `unchecked.review`; while the import cannot compute the
+  overrides, discretion entries and wheel resolutions are `unchecked.computed`. The open summary
+  then shows one line saying they will be checked once the bundle is loaded (or once the import
+  has no errors). Nothing is deleted or applied by this.
 
 ## 9. Open items for JCRC
 
 PLACEHOLDER values to confirm:
 
 - `meanSdDefault` — {meanMin 10, meanMax 14, sdMin 2, sdMax 5}
-- `outgoingTiers` — tier names and multipliers (Unsatisfactory 0.8 … High Gold 2.0)
+- `levels` — level names, bonuses and multipliers (Unsatisfactory 0 / 0.8 … High Gold 4 / 2.0)
 - `headcounts` — maleGreen, maleGrey, femaleGreen, femaleGrey, sem2Green, sem2Grey (all 0 until set)
 - `jcrcFullYearOffset` (1) and `jcrcExchangeFactor` (0.75)
 
@@ -946,7 +1228,7 @@ Rule decisions to confirm:
 
 - **`droppedRoleBase` rule** — `min(base, 8)` (current) versus setting the base to 8.
 - **`semesterOnly` on `0.5x` CCAs** — currently ignored with a warning (alternative: apply both factors).
-- **`halfCcaPlacementHalved`** — default `false`; confirm whether `0.5x` CCAs halve their placement bonus.
+- **`halfCcaPlacementHalved`** — default `false`; confirm whether `0.5x` CCAs halve their level bonus.
 - **Flat CCAs and halving or merging** — a flat CCA is never halved and never paired (it is
   final, 4.1). Confirm whether a flat `0.5x` CCA should ever be halved or merged.
 - **Sem-2 room-pick mode** — `"separate"` (default) versus `"merged"` with `sem2Factor` 2.

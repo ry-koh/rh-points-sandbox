@@ -110,8 +110,8 @@ describe('E14: colour-first bidding order', () => {
     { id: 'E', base: 50, outgoing: 'head' },
     { id: 'F', base: 40 },
   ]
-  const input = makeInput(rows, { outgoingMultiplier: 2 })
-  const cfg = configWith({ maleGreen: 2, maleGrey: 2 }, { outgoingMode: 'manual' })
+  const input = makeInput(rows, { multiplierOverride: 2 })
+  const cfg = configWith({ maleGreen: 2, maleGrey: 2 })
   const { maleStaying, maleBidding } = computeAll(input, cfg).lists
 
   it('has the staying order and bands of the example', () => {

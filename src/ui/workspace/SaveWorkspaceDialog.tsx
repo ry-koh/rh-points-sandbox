@@ -65,7 +65,8 @@ export function SaveWorkspaceDialog({ open, state, dispatch, onClose }: SaveWork
       }
     >
       <p>
-        Saves the imported files, settings, overrides, discretion, wheel results and penalties into one
+        Saves the imported files, settings, overrides, discretion, wheel results and penalties, plus the
+        checklist, score edits and log, vetted marks, CCA levels and tweaks, and the current step, into one
         file on this computer, so you can carry on later with Open workspace.
       </p>
       <label className="mt-3 flex items-center gap-2 text-body font-medium">

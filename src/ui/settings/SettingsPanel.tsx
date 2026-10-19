@@ -1,7 +1,8 @@
-import { Lock } from 'lucide-react'
+import { Lock, X } from 'lucide-react'
 import { useState, type ComponentType } from 'react'
 import { DEFAULT_CONFIG, type ScenarioConfig } from '../../engine'
-import type { LoadedSettings } from '../../import'
+import type { CcaLevelEntry, LoadedSettings } from '../../import'
+import type { LevelChange } from '../state/store'
 import { Button, ConfirmDialog } from '../common/controls'
 import {
   DroppedRoleFields,
@@ -10,14 +11,13 @@ import {
   IhgFields,
   JcrcFields,
   MeanSdFields,
-  PlacementFields,
   Sem2Fields,
 } from './basicSections'
 import { differs } from './fields'
 import { SECTION_TITLES as S } from './labels'
 import { Section, type SectionProps } from './Section'
 import { SettingsFileRanges } from './SettingsFileRanges'
-import { AuxFields, LeaderFields, WeightsFields } from './tableSections'
+import { AuxFields, LeaderFields, LevelsTable, WeightsFields } from './tableSections'
 
 interface SectionDef {
   readonly id: string
@@ -29,8 +29,8 @@ interface SectionDef {
 /** Every key of the scenario config (spec §3) appears in exactly one section. */
 export const SECTIONS: readonly SectionDef[] = [
   { id: 'headcounts', title: S.headcounts, keys: ['headcounts'], Body: HeadcountsFields },
-  { id: 'placement', title: S.placement, keys: ['placementBonus'], Body: PlacementFields },
-  { id: 'leaders', title: S.leaders, keys: ['incomingMultiplier', 'outgoingMode', 'outgoingTiers', 'stackingMode'], Body: LeaderFields },
+  { id: 'levels', title: S.levels, keys: ['levels'], Body: LevelsTable },
+  { id: 'leaders', title: S.leaders, keys: ['incomingMultiplier', 'stackingMode'], Body: LeaderFields },
   { id: 'weights', title: S.weights, keys: ['stayingWeights', 'stayingWeightTail'], Body: WeightsFields },
   { id: 'half', title: S.half, keys: ['halfCcaBaseFactor', 'halfCcaPlacementHalved', 'mergeHalfCcas', 'semesterOnlyFactor'], Body: HalfCcaFields },
   { id: 'dropped', title: S.dropped, keys: ['droppedRoleBase'], Body: DroppedRoleFields },
@@ -52,9 +52,24 @@ interface SettingsPanelProps {
   readonly onChange: (config: ScenarioConfig) => void
   readonly openSections: ReadonlySet<string>
   readonly onOpenSectionsChange: (open: ReadonlySet<string>) => void
+  /** How many CCAs use each level, by name; shown in the Levels table. */
+  readonly levelUsage?: Readonly<Record<string, number>>
+  /** The last level edit that cleared tweaks (D21), said beside the Levels table. */
+  readonly levelChange?: LevelChange | null
+  /** Shown as a close button when the panel is opened from another screen. */
+  readonly onClose?: () => void
 }
 
-export function SettingsPanel({ config, locked, settings, onChange, openSections, onOpenSectionsChange }: SettingsPanelProps) {
+/** How many CCAs use each level, by name (R44). */
+export function levelUsageOf(ccaLevels: readonly CcaLevelEntry[]): Record<string, number> {
+  const usage: Record<string, number> = {}
+  for (const entry of ccaLevels) {
+    if (entry.level !== null) usage[entry.level] = (usage[entry.level] ?? 0) + 1
+  }
+  return usage
+}
+
+export function SettingsPanel({ config, locked, settings, onChange, openSections, onOpenSectionsChange, levelUsage, levelChange = null, onClose }: SettingsPanelProps) {
   const [confirmReset, setConfirmReset] = useState(false)
   const update: SectionProps['update'] = (key, value) => onChange({ ...config, [key]: value })
   const totalChanged = countChanged(config, Object.keys(DEFAULT_CONFIG) as (keyof ScenarioConfig)[])
@@ -74,6 +89,17 @@ export function SettingsPanel({ config, locked, settings, onChange, openSections
         <Button small variant="ghost" disabled={locked || totalChanged === 0} onClick={() => setConfirmReset(true)}>
           Reset all
         </Button>
+        {onClose && (
+          <button
+            type="button"
+            aria-label="Close settings"
+            title="Close settings"
+            onClick={onClose}
+            className="motion rounded-[3px] p-1 text-muted hover:bg-ink/5 hover:text-ink"
+          >
+            <X aria-hidden size={15} />
+          </button>
+        )}
       </div>
       {locked && (
         <p className="flex items-center gap-1.5 border-b border-rule bg-gold-soft px-4 py-2 text-body font-medium">
@@ -84,6 +110,7 @@ export function SettingsPanel({ config, locked, settings, onChange, openSections
         {SECTIONS.map(({ id, title, keys, Body }) => (
           <Section
             key={id}
+            id={`settings-section-${id}`}
             title={title}
             open={openSections.has(id)}
             changed={id === 'meanSd' && settings ? 0 : countChanged(config, keys)}
@@ -94,7 +121,11 @@ export function SettingsPanel({ config, locked, settings, onChange, openSections
               <SettingsFileRanges settings={settings} />
             ) : (
               <fieldset disabled={locked} className={locked ? 'opacity-70' : ''}>
-                <Body config={config} update={update} />
+                {id === 'levels' ? (
+                  <LevelsTable config={config} update={update} usage={levelUsage} change={levelChange} />
+                ) : (
+                  <Body config={config} update={update} />
+                )}
               </fieldset>
             )}
           </Section>

@@ -1,7 +1,8 @@
 import { ArrowRight, Lock, ShieldCheck } from 'lucide-react'
 import { Fragment, type ReactNode } from 'react'
+import type { WorkflowStep } from '../../workspace'
 
-export type Screen = 'import' | 'results' | 'publish' | 'compare'
+export type Screen = WorkflowStep
 
 interface TopBarProps {
   readonly screen: Screen
@@ -15,6 +16,9 @@ interface TopBarProps {
 
 const STEPS: readonly { readonly screen: Screen; readonly label: string }[] = [
   { screen: 'import', label: 'Import' },
+  { screen: 'checklist', label: 'Checklist' },
+  { screen: 'review', label: 'Review' },
+  { screen: 'summary', label: 'Summary' },
   { screen: 'results', label: 'Results' },
   { screen: 'publish', label: 'Publish' },
   { screen: 'compare', label: 'Compare' },
@@ -34,7 +38,7 @@ function StepButton({ index, label, active, disabledReason, onClick }: {
       onClick={onClick}
       disabled={disabled}
       aria-current={active ? 'step' : undefined}
-      title={disabled ? `${label} is locked: ${disabledReason}` : undefined}
+      title={disabled ? `${label} is locked: ${disabledReason}` : label}
       className={`motion relative flex h-14 items-center gap-2 px-1 text-ui font-medium ${
         active ? 'text-ink' : disabled ? 'text-muted/60' : 'text-muted hover:text-ink'
       }`}
@@ -42,7 +46,8 @@ function StepButton({ index, label, active, disabledReason, onClick }: {
       <span className={`num flex h-5 w-5 items-center justify-center rounded-full text-cap ${active ? 'bg-raffles text-white' : 'border border-current'}`}>
         {index}
       </span>
-      {label}
+      {/* Seven labels need ~1440px: below 2xl only the numbers show and the label stays in the tooltip and for screen readers. */}
+      <span className="sr-only 2xl:not-sr-only">{label}</span>
       {disabled && <span className="sr-only">(locked: {disabledReason})</span>}
       <span className={`motion absolute inset-x-0 -bottom-px h-[3px] bg-raffles ${active ? 'opacity-100' : 'opacity-0'}`} />
     </button>
@@ -53,15 +58,15 @@ export function TopBar({ screen, locks, finalised, onNavigate, actions }: TopBar
   return (
     <header className="sticky top-0 z-30 border-b border-rule bg-paper/95 backdrop-blur-sm">
       <div className="h-1 bg-raffles" />
-      <div className="mx-auto flex max-w-[1920px] items-center gap-8 px-6">
+      <div className="mx-auto flex max-w-[1920px] items-center gap-6 px-6 2xl:gap-8">
         <div className="flex items-baseline gap-3">
-          <span className="text-title font-semibold tracking-tight">RH Points Sandbox</span>
-          <span className="hidden text-cap text-muted xl:inline">Raffles Hall · AY26/27</span>
+          <span className="text-title font-semibold tracking-tight whitespace-nowrap">RH Points Sandbox</span>
+          <span className="hidden text-cap whitespace-nowrap text-muted min-[1920px]:inline">Raffles Hall · AY26/27</span>
         </div>
-        <nav aria-label="Steps" className="flex items-center gap-3">
+        <nav aria-label="Steps" className="flex items-center gap-2 xl:gap-2.5">
           {STEPS.map((step, i) => (
             <Fragment key={step.screen}>
-              {i > 0 && <ArrowRight aria-hidden size={14} className="text-muted" />}
+              {i > 0 && <ArrowRight aria-hidden size={12} className="shrink-0 text-muted" />}
               <StepButton
                 index={i + 1}
                 label={step.label}
@@ -84,7 +89,7 @@ export function TopBar({ screen, locks, finalised, onNavigate, actions }: TopBar
             title="Files are read in this browser tab only. Nothing is uploaded; reloading the page clears all resident data."
           >
             <ShieldCheck aria-hidden size={14} />
-            <span className="hidden 2xl:inline">Data stays on this computer</span>
+            <span className="hidden whitespace-nowrap min-[1920px]:inline">Data stays on this computer</span>
           </div>
         </div>
       </div>

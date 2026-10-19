@@ -1,8 +1,11 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, computeAll, type ListRow, type PipelineInput, type ScenarioConfig } from '../../engine'
+import { parseCsv } from '../csv'
+import { LEADER_V1_COLUMNS } from '../detect'
 import { validateImport } from '../validate'
-import type { SourceFile } from '../types'
+import type { CcaLevelEntry, SourceFile } from '../types'
+import { DEMO_LEVELS } from './fixtures'
 
 // Vitest runs from the project root, so sample paths are relative to it.
 const VALID_DIR = 'samples/valid'
@@ -10,12 +13,21 @@ const BROKEN_DIR = 'samples/broken'
 const SEM2_GREEN = 3
 const SEM2_GREY = 3
 const GREY = 4
+/** The one broken case that is about the level table itself, so it runs with no levels. */
+const NO_LEVELS_CASE = 'level-not-set'
 
 function loadCsvFiles(dir: string): SourceFile[] {
   return readdirSync(dir)
     .filter((name) => name.endsWith('.csv'))
     .sort()
     .map((name) => ({ name, text: readFileSync(`${dir}/${name}`, 'utf8') }))
+}
+
+/** The sandbox's level table for the valid sample (entered in the sandbox, never an input file). */
+function demoLevels(dir: string): CcaLevelEntry[] {
+  const parsed: unknown = JSON.parse(readFileSync(`${dir}/demo-levels.json`, 'utf8'))
+  if (!Array.isArray(parsed)) throw new Error(`${dir}/demo-levels.json must be an array`)
+  return parsed as CcaLevelEntry[]
 }
 
 function expectedCodes(dir: string): string[] {
@@ -49,11 +61,54 @@ function configAroundTie(input: PipelineInput): ScenarioConfig {
 
 describe('samples/valid', () => {
   const files = loadCsvFiles(VALID_DIR)
-  const report = validateImport(files, DEFAULT_CONFIG, [])
+  const ccaLevels = demoLevels(VALID_DIR)
+  const report = validateImport(files, DEFAULT_CONFIG, { ccaLevels })
 
   it('has no errors', () => {
     expect(report.issues.filter((issue) => issue.severity === 'error')).toEqual([])
     expect(report.canCompute).toBe(true)
+  })
+
+  it('holds the bundle and a level for every non-flat CCA, and no retired or standalone files', () => {
+    expect(report.bundle?.fileName).toBe('points_bundle_20270401.csv')
+    expect(report.issues.map((i) => i.code)).not.toContain('LEVEL_NOT_SET')
+    expect(ccaLevels).toHaveLength(12)
+    expect(files.filter((f) => /^(ccas|ihg|points_settings_|flat_points_)/.test(f.name))).toEqual([])
+  })
+
+  it("builds IHG from the six sports' ticks, one ticked member each (never above the cap of 3)", () => {
+    expect(report.input?.ihg).toEqual([
+      { matric: 'A9900005Z', ccaID: 'C01', placement: '1st' },
+      { matric: 'A9900035Z', ccaID: 'C02', placement: '2nd' },
+      { matric: 'A9900078Z', ccaID: 'C04', placement: '3rd' },
+      { matric: 'A9900004Z', ccaID: 'C05', placement: '3rd4th_no_match' },
+      { matric: 'A9900043Z', ccaID: 'C06', placement: '2nd' },
+      { matric: 'A9900026Z', ccaID: 'C08', placement: '1st' },
+    ])
+    expect(report.perCca.filter((c) => c.ihgTicked > 0).map((c) => c.ccaID)).toEqual(['C01', 'C02', 'C04', 'C05', 'C06', 'C08'])
+  })
+
+  it('still imports a formatVersion-1 leader file (as main wrote points_C01) beside the bundle', () => {
+    // main's points_C01 is this sample's file without the ihg column, at formatVersion 1.
+    const v2 = files.find((f) => f.name === 'points_C01_20270401.csv')
+    if (!v2) throw new Error('expected points_C01')
+    const csv = parseCsv(v2.text)
+    const keep = LEADER_V1_COLUMNS.map((col) => csv.header.indexOf(col))
+    const lines = csv.rows.map((row) => keep.map((i) => (i === 0 ? '1' : row.cells[i] ?? '')).join(','))
+    const v1 = { ...v2, text: [LEADER_V1_COLUMNS.join(','), ...lines].join('\n') + '\n' }
+    const mixed = validateImport(files.map((f) => (f === v2 ? v1 : f)), DEFAULT_CONFIG, { ccaLevels })
+    expect(mixed.issues.filter((i) => i.severity === 'error')).toEqual([])
+    const added = mixed.issues.filter((i) => !report.issues.some((j) => j.message === i.message))
+    expect(added.map((i) => [i.code, i.ccaID])).toEqual([['IHG_NO_TICKS', 'C01']])
+    expect(mixed.input?.memberships.filter((m) => m.ccaID === 'C01')).toHaveLength(csv.rows.length)
+    expect(mixed.input?.ihg.map((e) => e.ccaID)).toEqual(['C02', 'C04', 'C05', 'C06', 'C08'])
+  })
+
+  it('marks six CCAs as sports, with their IHG result and a cap of 3', () => {
+    const sports = (report.bundle?.ccas ?? []).filter((c) => c.isSport)
+    expect(sports.map((c) => [c.ccaID, c.ihgResult, c.ihgCap])).toEqual([
+      ['C01', '1st', 3], ['C02', '2nd', 3], ['C04', '3rd', 3], ['C05', '3rd4th_no_match', 3], ['C06', '2nd', 3], ['C08', '1st', 3],
+    ])
   })
 
   it('has 80 residents and 13 CCAs: 12 with a points file each and one flat CCA', () => {
@@ -74,7 +129,7 @@ describe('samples/valid', () => {
     const flat = report.perCca.find((cca) => cca.status === 'flat')
     expect(flat?.n).toBe(8)
     expect(flat?.flatPoints).toBe(9)
-    expect(files.some((f) => f.name.startsWith('flat_points_'))).toBe(true)
+    expect(report.bundle?.ccas.find((c) => c.ccaID === flat?.ccaID)?.flatPoints).toBe(9)
   })
 
   it('runs through the engine into five non-empty lists with ties and a merged half-CCA', () => {
@@ -98,8 +153,18 @@ describe('samples/broken', () => {
 
   it.each(folders)('%s produces exactly its expected codes', (folder) => {
     const dir = `${BROKEN_DIR}/${folder}`
-    const report = validateImport(loadCsvFiles(dir), DEFAULT_CONFIG, [])
+    const ccaLevels = folder === NO_LEVELS_CASE ? [] : DEMO_LEVELS
+    const report = validateImport(loadCsvFiles(dir), DEFAULT_CONFIG, { ccaLevels })
     const codes = [...new Set(report.issues.map((issue) => issue.code))].sort()
     expect(codes).toEqual(expectedCodes(dir))
+  })
+})
+
+describe('samples/', () => {
+  it('has no ccas.csv or ihg.csv anywhere (the files are retired)', () => {
+    const names = readdirSync('samples', { recursive: true }).map((path) => path.split(/[\\/]/).pop())
+    expect(names.filter((name) => name === 'ccas.csv')).toEqual([])
+    expect(names.filter((name) => name === 'ihg.csv')).toEqual([])
+    expect(names).toContain('points_bundle_20270401.csv')
   })
 })

@@ -10,15 +10,21 @@ const SAMPLES = join(dirname(fileURLToPath(import.meta.url)), '..', 'samples')
 const EXPORTED_AT = '2027-04-01T00:00:00Z'
 const DEFAULT_RANGE = { meanMin: 10, meanMax: 14, sdMin: 2, sdMax: 5 } // placeholder defaults
 const MARGIN = 0.3
-const TIERS = ['Unsatisfactory', 'Pass', 'Low Bronze', 'High Bronze', 'Low Silver', 'High Silver', 'Low Gold', 'High Gold']
-const PLACEMENTS = ['pass', 'bronze', 'silver', 'gold']
+// The default level names (D22); demo-levels.json picks one per CCA from these.
+const LEVELS = ['Unsatisfactory', 'Pass', 'Low Bronze', 'High Bronze', 'Low Silver', 'High Silver', 'Low Gold', 'High Gold']
 
-const LEADER_COLS = ['formatVersion', 'ccaID', 'ccaName', 'matric', 'name', 'basePoints', 'semesterOnly', 'outgoingRole', 'incomingRole', 'exportedAt']
+// The formatVersion-2 leader header the RH app writes (spec 2a): `ihg` is Y for a member ticked for the sport's IHG points.
+const LEADER_COLS = ['formatVersion', 'ccaID', 'ccaName', 'matric', 'name', 'basePoints', 'semesterOnly', 'outgoingRole', 'incomingRole', 'ihg', 'exportedAt']
 const RESIDENT_COLS = ['matric', 'name', 'gender', 'sem2', 'aux', 'jcrc']
 const FLAT_COLS = ['formatVersion', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints', 'exportedAt']
-const IHG_COLS = ['matric', 'ccaID', 'placement']
-const CCA_COLS = ['ccaID', 'ccaName', 'type', 'placement', 'outgoingTier', 'outgoingMultiplier', 'meanMin', 'meanMax', 'sdMin', 'sdMax']
 const SETTINGS_COLS = ['formatVersion', 'scope', 'ccaID', 'ccaName', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note', 'exportedAt']
+const BUNDLE_COLS = [
+  'formatVersion', 'section', 'scope', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints', 'type', 'sport',
+  'ihgResult', 'ihgCap', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note', 'exportedAt',
+]
+// The headers of the retired ccas.csv and ihg.csv, used only to show that the sandbox refuses such files.
+const RETIRED_CCA_COLS = ['ccaID', 'ccaName', 'type', 'placement', 'outgoingTier', 'outgoingMultiplier', 'meanMin', 'meanMax', 'sdMin', 'sdMax']
+const RETIRED_IHG_COLS = ['matric', 'ccaID', 'placement']
 
 // ---------- helpers ----------
 function mulberry32(seed) {
@@ -77,6 +83,11 @@ const JCRC = { 34: 'FULL', 35: 'FULL', 60: 'FULL', 61: 'EXCHANGE' }
 const FLAT_CCA_ID = 'C13'
 const FLAT_VALUE = 9
 const FLAT_MEMBERS = [10, 11, 12, 13, 14, 15, 16, 17]
+// The sports in the bundle, with the IHG result JCRC set in RH-app; each has a cap of IHG_CAP.
+const SPORTS = { C01: '1st', C02: '2nd', C04: '3rd', C05: '3rd4th_no_match', C06: '2nd', C08: '1st' }
+const IHG_CAP = 3
+// The leader-file row each sport's head ticks for IHG: the member the old ihg.csv picked (never above the cap).
+const IHG_TICK_ROW = Object.fromEntries(Object.keys(SPORTS).map((id, i) => [id, i]))
 const WAIVERS = {
   C03: { meanMin: 14, meanMax: 17, sdMin: 1, sdMax: 3, mu: 15.5, sigma: 1.6 },
   C07: { meanMin: 7, meanMax: 10, sdMin: 2, sdMax: 6, mu: 8.5, sigma: 3.5 },
@@ -93,21 +104,16 @@ function makeResidents() {
   })
 }
 
+/** The CCAs as the bundle's cca rows describe them. */
 function makeCcas() {
   return Array.from({ length: 12 }, (_, i) => {
     const id = `C${pad(i + 1, 2)}`
-    const waiver = WAIVERS[id] ?? {}
+    const ihgResult = SPORTS[id]
     return {
       ccaID: id,
       ccaName: `Test CCA ${pad(i + 1, 2)}`,
       type: i < 9 ? '1x' : '0.5x',
-      placement: PLACEMENTS[i % PLACEMENTS.length],
-      outgoingTier: '',
-      outgoingMultiplier: '',
-      meanMin: waiver.meanMin ?? '',
-      meanMax: waiver.meanMax ?? '',
-      sdMin: waiver.sdMin ?? '',
-      sdMax: waiver.sdMax ?? '',
+      ...(ihgResult ? { sport: 'Y', ihgResult, ihgCap: IHG_CAP } : {}),
     }
   })
 }
@@ -177,10 +183,12 @@ function assignRoles(ccaIndex, cca, rows) {
 }
 
 function toLeaderCsv(cca, rows) {
-  const out = rows.map((r) => ({
-    formatVersion: 1, ccaID: cca.ccaID, ccaName: cca.ccaName, matric: matricOf(r.n), name: nameOf(r.n),
+  const tick = IHG_TICK_ROW[cca.ccaID]
+  const tickedRow = tick === undefined ? -1 : tick % rows.length
+  const out = rows.map((r, i) => ({
+    formatVersion: 2, ccaID: cca.ccaID, ccaName: cca.ccaName, matric: matricOf(r.n), name: nameOf(r.n),
     basePoints: r.base, semesterOnly: r.semesterOnly, outgoingRole: r.outgoingRole, incomingRole: r.incomingRole,
-    exportedAt: EXPORTED_AT,
+    ihg: i === tickedRow ? 'Y' : 'N', exportedAt: EXPORTED_AT,
   }))
   return toCsv(LEADER_COLS, out)
 }
@@ -197,24 +205,29 @@ function settingsRows(waivers) {
   ]
 }
 
-function makeFlatCca(ccaID = FLAT_CCA_ID) {
-  return {
-    ccaID, ccaName: `Test Flat CCA ${ccaID.slice(1)}`, type: '1x', placement: 'gold',
-    outgoingTier: '', outgoingMultiplier: '', meanMin: '', meanMax: '', sdMin: '', sdMax: '',
-  }
+function makeFlatCca(ccaID = FLAT_CCA_ID, value = FLAT_VALUE) {
+  return { ccaID, ccaName: `Test Flat CCA ${ccaID.slice(1)}`, type: '1x', flatPoints: value }
 }
 
 function flatRows(ccaID, value, members) {
-  const cca = makeFlatCca(ccaID)
+  const cca = makeFlatCca(ccaID, value)
   return members.map((n) => ({
     formatVersion: 1, ccaID, ccaName: cca.ccaName, matric: matricOf(n), name: nameOf(n),
     flatPoints: value, exportedAt: EXPORTED_AT,
   }))
 }
 
-function makeIhg(byCca) {
-  const picks = [['C01', '1st'], ['C02', '2nd'], ['C04', '3rd'], ['C05', '3rd4th_no_match'], ['C06', '2nd'], ['C08', '1st']]
-  return picks.map(([id, placement], i) => ({ matric: matricOf(byCca[id][i % byCca[id].length].n), ccaID: id, placement }))
+/** The RH-app bundle (spec 2d): settings rows, then cca rows, then flat member rows. */
+function toBundleCsv(settings, ccas, flat) {
+  const ccaRow = (cca) => ({
+    formatVersion: 1, section: 'cca', ccaID: cca.ccaID, ccaName: cca.ccaName, flatPoints: cca.flatPoints ?? '',
+    type: cca.type, sport: cca.sport ?? 'N', ihgResult: cca.ihgResult ?? '', ihgCap: cca.ihgCap ?? '', exportedAt: EXPORTED_AT,
+  })
+  return toCsv(BUNDLE_COLS, [
+    ...settings.map((row) => ({ ...row, section: 'settings' })),
+    ...ccas.map(ccaRow),
+    ...flat.map((row) => ({ ...row, section: 'flat' })),
+  ])
 }
 
 function writeValid() {
@@ -222,23 +235,17 @@ function writeValid() {
   const residents = makeResidents()
   const ccas = makeCcas()
   const forced = forcedMembers()
-  const byCca = {}
   const rowsByCca = ccas.map((cca, i) => buildLeaderRows(i, cca, residents, forced))
-  rowsByCca.forEach((rows, i) => {
-    const cca = ccas[i]
-    byCca[cca.ccaID] = rows
-    if (rows.some((r) => r.outgoingRole !== 'none')) cca.outgoingTier = TIERS[(i * 3) % TIERS.length]
-  })
   write(dir, 'residents.csv', toCsv(RESIDENT_COLS, residents))
-  write(dir, 'ccas.csv', toCsv(CCA_COLS, [...ccas, makeFlatCca()]))
   ccas.forEach((cca, i) => write(dir, `points_${cca.ccaID}_20270401.csv`, toLeaderCsv(cca, rowsByCca[i])))
-  write(dir, 'ihg.csv', toCsv(IHG_COLS, makeIhg(byCca)))
-  write(dir, 'flat_points_20270401.csv', toCsv(FLAT_COLS, flatRows(FLAT_CCA_ID, FLAT_VALUE, FLAT_MEMBERS)))
-  // The waivers in ccas.csv, as JCRC's settings file carries them (the file's ranges win).
   const waivers = ccas
     .filter((cca) => WAIVERS[cca.ccaID])
     .map((cca) => ({ ccaID: cca.ccaID, ccaName: cca.ccaName, range: { ...DEFAULT_RANGE, ...WAIVERS[cca.ccaID] } }))
-  write(dir, 'points_settings_20270401.csv', toCsv(SETTINGS_COLS, settingsRows(waivers)))
+  const flat = flatRows(FLAT_CCA_ID, FLAT_VALUE, FLAT_MEMBERS)
+  write(dir, 'points_bundle_20270401.csv', toBundleCsv(settingsRows(waivers), [...ccas, makeFlatCca()], flat))
+  // The sandbox's level table for the demo (entered in the sandbox, not an input file): one level per non-flat CCA.
+  const levels = ccas.map((cca, i) => ({ ccaID: cca.ccaID, level: LEVELS[(i * 3) % LEVELS.length], bonusOverride: null, multiplierOverride: null }))
+  write(dir, 'demo-levels.json', `${JSON.stringify(levels, null, 2)}\n`)
 }
 
 // ---------- broken samples ----------
@@ -248,29 +255,34 @@ function baseScenario() {
   const residents = Array.from({ length: 10 }, (_, i) => ({
     matric: matricOf(i + 1), name: nameOf(i + 1), gender: i % 2 === 0 ? 'M' : 'F', sem2: 'N', aux: 5, jcrc: 'N',
   }))
-  const blank = { outgoingTier: '', outgoingMultiplier: '', meanMin: '', meanMax: '', sdMin: '', sdMax: '' }
   const ccas = [
-    { ccaID: 'C1', ccaName: 'Test CCA One', type: '1x', placement: 'gold', ...blank },
-    { ccaID: 'C2', ccaName: 'Test CCA Two', type: '0.5x', placement: 'bronze', ...blank },
+    { ccaID: 'C1', ccaName: 'Test CCA One', type: '1x' },
+    { ccaID: 'C2', ccaName: 'Test CCA Two', type: '0.5x' },
   ]
   const leader = (id, scores = BASE_SCORES) =>
     scores.map((score, i) => ({
-      formatVersion: 1, ccaID: id, ccaName: `Test CCA ${id}`, matric: matricOf(i + 1), name: nameOf(i + 1),
-      basePoints: score, semesterOnly: 'N', outgoingRole: 'none', incomingRole: 'none', exportedAt: EXPORTED_AT,
+      formatVersion: 2, ccaID: id, ccaName: `Test CCA ${id}`, matric: matricOf(i + 1), name: nameOf(i + 1),
+      basePoints: score, semesterOnly: 'N', outgoingRole: 'none', incomingRole: 'none', ihg: 'N', exportedAt: EXPORTED_AT,
     }))
-  return { residents, ccas, leaders: { C1: leader('C1'), C2: leader('C2') }, ihg: null, flat: null, settings: null, extra: [], leader }
+  const settings = settingsRows([])
+  return { residents, ccas, bundle: true, leaders: { C1: leader('C1'), C2: leader('C2') }, flat: [], settings, extra: [], leader }
 }
 
-/** Adds a flat CCA (C3, no leader file) to the scenario's ccas.csv with six flat members. */
+/** Adds a flat CCA (C3, no leader file) to the scenario's bundle: its cca row and six flat member rows. */
 const withFlatCca = (s, value = 12) => {
-  s.ccas.push(makeFlatCca('C3'))
+  s.ccas.push(makeFlatCca('C3', value))
   s.flat = flatRows('C3', value, [1, 2, 3, 4, 5, 6])
 }
 
 const SETTINGS_WAIVER = { ccaID: 'C1', ccaName: 'Test CCA One', range: { meanMin: 12, meanMax: 15, sdMin: 1.5, sdMax: 5 } }
+/** Replaces the bundle's settings rows (the base scenario has the default row only). */
 const withSettings = (s, rows = settingsRows([SETTINGS_WAIVER])) => (s.settings = rows)
 
 const patchLast = (rows, patch) => rows.map((r, i) => (i === rows.length - 1 ? { ...r, ...patch } : r))
+/** Ticks the first `count` members of a leader file for IHG. */
+const tickFirst = (rows, count) => rows.map((r, i) => (i < count ? { ...r, ihg: 'Y' } : r))
+/** Makes C1 a sport in the bundle. */
+const sportC1 = (s, patch) => (s.ccas[0] = { ...s.ccas[0], sport: 'Y', ihgResult: '1st', ihgCap: IHG_CAP, ...patch })
 
 /** Each case edits the base scenario and lists exactly the issue codes it must produce. */
 const BROKEN_CASES = [
@@ -278,12 +290,26 @@ const BROKEN_CASES = [
   ['csv-syntax-unterminated-quote', ['CSV_SYNTAX'], (s) => (s.textEdits = { 'points_C1_20270401.csv': (t) => `${t}1,C1,"Test\n` })],
   ['csv-syntax-wrong-cell-count', ['CSV_SYNTAX'], (s) => (s.textEdits = { 'residents.csv': (t) => `${t}A9900011Z,Test Resident 011,M\n` })],
   ['bad-header', ['BAD_HEADER', 'NO_LEADER_FILE'], (s) => (s.textEdits = { 'points_C1_20270401.csv': (t) => t.replace('basePoints', 'basePoint') })],
-  ['bad-format-version', ['BAD_FORMAT_VERSION'], (s) => (s.leaders.C1 = patchLast(s.leaders.C1, { formatVersion: 2 }))],
+  ['bad-format-version', ['BAD_FORMAT_VERSION'], (s) => (s.leaders.C1 = patchLast(s.leaders.C1, { formatVersion: 3 }))],
+  ['leader-version-mismatch', ['BAD_FORMAT_VERSION'], (s) => (s.leaders.C1 = patchLast(s.leaders.C1, { formatVersion: 1 }))],
   ['mixed-cca-id', ['MIXED_CCA_ID'], (s) => (s.leaders.C1 = patchLast(s.leaders.C1, { ccaID: 'C2' }))],
   ['duplicate-cca-file', ['DUPLICATE_CCA_FILE'], (s) => s.extra.push({ name: 'points_C1_20270402.csv', text: toCsv(LEADER_COLS, s.leaders.C1) })],
   ['missing-residents-file', ['MISSING_RESIDENTS_FILE'], (s) => (s.residents = null)],
-  ['missing-ccas-file', ['MISSING_CCAS_FILE'], (s) => (s.ccas = null)],
-  ['duplicate-residents-file', ['DUPLICATE_RESIDENTS_OR_CCAS_FILE'], (s) => s.extra.push({ name: 'residents_old.csv', text: toCsv(RESIDENT_COLS, s.residents) })],
+  ['missing-bundle-file', ['MISSING_BUNDLE_FILE'], (s) => (s.bundle = false)],
+  ['duplicate-bundle-file', ['DUPLICATE_BUNDLE_FILE'], (s) => s.extra.push({ name: 'points_bundle_20270301.csv', text: toBundleCsv(s.settings, s.ccas, s.flat) })],
+  ['bad-bundle-section', ['BAD_BUNDLE_FILE'], (s) => (s.extraBundleRows = [{ formatVersion: 1, section: 'notes', note: 'not a section', exportedAt: EXPORTED_AT }])],
+  ['bad-bundle-column', ['BAD_BUNDLE_FILE'], (s) => {
+    withFlatCca(s)
+    s.flat[0] = { ...s.flat[0], type: '1x' }
+  }],
+  ['bad-bundle-type', ['BAD_ENUM'], (s) => (s.ccas[0] = { ...s.ccas[0], type: '2x' })],
+  ['ccas-file-retired', ['CCAS_FILE_RETIRED'], (s) => s.extra.push({
+    name: 'ccas_20260401.csv',
+    text: toCsv(RETIRED_CCA_COLS, [{ ccaID: 'C1', ccaName: 'Test CCA One', type: '1x', placement: 'gold' }]),
+  })],
+  ['type-not-set', ['TYPE_NOT_SET'], (s) => (s.ccas[0] = { ...s.ccas[0], type: '' })],
+  ['level-not-set', ['LEVEL_NOT_SET'], () => {}],
+  ['duplicate-residents-file', ['DUPLICATE_RESIDENTS_FILE'], (s) => s.extra.push({ name: 'residents_old.csv', text: toCsv(RESIDENT_COLS, s.residents) })],
   ['bad-matric', ['BAD_MATRIC'], (s) => (s.leaders.C1 = patchLast(s.leaders.C1, { matric: 'XYZ' }))],
   ['unknown-matric', ['UNKNOWN_MATRIC'], (s) => (s.leaders.C1 = patchLast(s.leaders.C1, { matric: matricOf(99) }))],
   ['duplicate-matric-in-file', ['DUPLICATE_MATRIC_IN_FILE'], (s) => s.leaders.C1.push({ ...s.leaders.C1[0] })],
@@ -294,13 +320,20 @@ const BROKEN_CASES = [
   ['bad-gender', ['BAD_GENDER'], (s) => (s.residents[9] = { ...s.residents[9], gender: 'X' })],
   ['bad-aux', ['BAD_AUX'], (s) => (s.residents[9] = { ...s.residents[9], aux: -1 })],
   ['unknown-cca', ['UNKNOWN_CCA'], (s) => (s.leaders.C9 = s.leader('C9'))],
-  ['ihg-unknown-matric', ['IHG_UNKNOWN_MATRIC'], (s) => (s.ihg = [{ matric: matricOf(99), ccaID: 'C1', placement: '1st' }])],
-  ['ihg-unknown-cca', ['IHG_UNKNOWN_CCA'], (s) => (s.ihg = [{ matric: matricOf(1), ccaID: 'C9', placement: '2nd' }])],
-  ['unknown-tier', ['UNKNOWN_TIER'], (s) => (s.ccas[0] = { ...s.ccas[0], outgoingTier: 'Platinum' })],
-  ['bad-manual-multiplier', ['BAD_MANUAL_MULTIPLIER'], (s) => (s.ccas[0] = { ...s.ccas[0], outgoingMultiplier: -2 })],
-  ['missing-outgoing-multiplier', ['MISSING_OUTGOING_MULTIPLIER'], (s) => (s.leaders.C1 = patchLast(s.leaders.C1, { outgoingRole: 'head' }))],
+  ['ihg-file-retired', ['IHG_FILE_RETIRED'], (s) => s.extra.push({
+    name: 'ihg_20260401.csv',
+    text: toCsv(RETIRED_IHG_COLS, [{ matric: matricOf(1), ccaID: 'C1', placement: '1st' }]),
+  })],
+  ['ihg-over-cap', ['IHG_OVER_CAP'], (s) => {
+    sportC1(s, { ihgCap: 1 })
+    s.leaders.C1 = tickFirst(s.leaders.C1, 2)
+  }],
+  ['ihg-not-set', ['IHG_NOT_SET'], (s) => {
+    sportC1(s, { ihgResult: '' })
+    s.leaders.C1 = tickFirst(s.leaders.C1, 1)
+  }],
+  ['ihg-tick-ignored', ['IHG_TICK_IGNORED'], (s) => (s.leaders.C1 = tickFirst(s.leaders.C1, 1))],
   ['duplicate-cca', ['DUPLICATE_CCA'], (s) => s.ccas.push({ ...s.ccas[0] })],
-  ['bad-range', ['BAD_RANGE'], (s) => (s.ccas[0] = { ...s.ccas[0], meanMin: 'low' })],
   ['bad-jcrc', ['BAD_JCRC'], (s) => (s.residents[9] = { ...s.residents[9], jcrc: 'maybe' })],
   ['jcrc-and-sem2', ['JCRC_AND_SEM2'], (s) => (s.residents[9] = { ...s.residents[9], jcrc: 'FULL', sem2: 'Y' })],
   ['bad-flat-points', ['BAD_FLAT_POINTS'], (s) => {
@@ -314,7 +347,7 @@ const BROKEN_CASES = [
   ['flat-and-leader-file', ['FLAT_AND_LEADER_FILE'], (s) => (s.flat = flatRows('C1', 12, [1, 2, 3, 4, 5, 6]))],
   ['duplicate-flat-file', ['DUPLICATE_FLAT_FILE'], (s) => {
     withFlatCca(s)
-    s.extra.push({ name: 'flat_points_20270402.csv', text: toCsv(FLAT_COLS, s.flat) })
+    s.extra.push({ name: 'flat_points_20270401.csv', text: toCsv(FLAT_COLS, s.flat) })
   }],
   ['bad-settings-file', ['BAD_SETTINGS_FILE'], (s) => {
     const rows = settingsRows([SETTINGS_WAIVER])
@@ -330,14 +363,10 @@ const BROKEN_CASES = [
   }],
   ['duplicate-settings-file', ['DUPLICATE_SETTINGS_FILE'], (s) => {
     withSettings(s)
-    s.extra.push({ name: 'points_settings_20270402.csv', text: toCsv(SETTINGS_COLS, s.settings) })
+    s.extra.push({ name: 'points_settings_20270401.csv', text: toCsv(SETTINGS_COLS, s.settings) })
   }],
   ['settings-unknown-cca', ['SETTINGS_UNKNOWN_CCA'], (s) => {
     withSettings(s, settingsRows([SETTINGS_WAIVER, { ...SETTINGS_WAIVER, ccaID: 'C9', ccaName: 'Test CCA Nine' }]))
-  }],
-  ['ccas-range-ignored', ['CCAS_RANGE_IGNORED'], (s) => {
-    withSettings(s)
-    s.ccas[0] = { ...s.ccas[0], meanMin: 10, meanMax: 14, sdMin: 2, sdMax: 5 }
   }],
   ['mean-sd-out-of-range', ['MEAN_SD_OUT_OF_RANGE'], (s) => (s.leaders.C1 = s.leader('C1', [20, 20, 20, 20, 20, 20]))],
 ]
@@ -349,11 +378,11 @@ function writeBroken([folder, codes, edit]) {
   edit(s)
   const files = []
   if (s.residents) files.push(['residents.csv', toCsv(RESIDENT_COLS, s.residents)])
-  if (s.ccas) files.push(['ccas.csv', toCsv(CCA_COLS, s.ccas)])
+  if (s.bundle) {
+    const extraLines = (s.extraBundleRows ?? []).map((row) => toCsv(BUNDLE_COLS, [row]).split('\n')[1])
+    files.push(['points_bundle_20270401.csv', toBundleCsv(s.settings, s.ccas, s.flat) + extraLines.map((line) => `${line}\n`).join('')])
+  }
   for (const [id, rows] of Object.entries(s.leaders)) files.push([`points_${id}_20270401.csv`, toCsv(LEADER_COLS, rows)])
-  if (s.ihg) files.push(['ihg.csv', toCsv(IHG_COLS, s.ihg)])
-  if (s.flat) files.push(['flat_points_20270401.csv', toCsv(FLAT_COLS, s.flat)])
-  if (s.settings) files.push(['points_settings_20270401.csv', toCsv(SETTINGS_COLS, s.settings)])
   for (const extra of s.extra) files.push([extra.name, extra.text])
   for (const [name, text] of files) write(dir, name, (s.textEdits[name] ?? ((t) => t))(text))
   write(dir, 'expected.json', `${JSON.stringify({ codes }, null, 2)}\n`)

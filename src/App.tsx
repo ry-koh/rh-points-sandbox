@@ -7,6 +7,7 @@ import { ImportScreen } from './ui/import/ImportScreen'
 import { PublishScreen } from './ui/publish/PublishScreen'
 import { ResultsScreen } from './ui/results/ResultsScreen'
 import { ReviewScreen } from './ui/review/ReviewScreen'
+import { SummaryScreen } from './ui/summary/SummaryScreen'
 import { levelUsageOf } from './ui/settings/SettingsPanel'
 import { blockReason } from './ui/shell/blockReason'
 import { TopBar, type Screen } from './ui/shell/TopBar'
@@ -16,9 +17,6 @@ import { useScenarios } from './ui/state/useScenarios'
 import { WORKFLOW_STEPS, sandboxInputOf } from './workspace'
 import { hasResidentData } from './ui/state/workspaceState'
 import { WorkspaceControls } from './ui/workspace/WorkspaceControls'
-
-/** The Summary screen arrives in the next phase (P9); until then the step stays locked. */
-const SUMMARY_PENDING = 'Summary arrives in the next step'
 
 export function App() {
   const { state, dispatch } = useAppStore()
@@ -49,8 +47,7 @@ export function App() {
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
   }, [warnOnLeave])
-  const ruled = stepLocks(state, scenarios.scenarios.length, settingsCause)
-  const locks: Record<Screen, string | null> = { ...ruled, summary: ruled.summary ?? SUMMARY_PENDING }
+  const locks: Record<Screen, string | null> = stepLocks(state, scenarios.scenarios.length, settingsCause)
   // A locked step falls back to the first open one.
   const shown: Screen = locks[screen] === null ? screen : (WORKFLOW_STEPS.find((step) => locks[step] === null) ?? 'import')
   const levelUsage = useMemo(() => levelUsageOf(ccaLevels), [ccaLevels])
@@ -86,12 +83,7 @@ export function App() {
           levelUsage={levelUsage}
         />
       )}
-      {shown === 'summary' && (
-        <main className="mx-auto w-full max-w-[1600px] px-6 pt-8">
-          <h1 className="text-display font-semibold tracking-tight">Summary</h1>
-          <p className="mt-2 text-ui text-muted">{SUMMARY_PENDING}.</p>
-        </main>
-      )}
+      {shown === 'summary' && <SummaryScreen state={state} dispatch={dispatch} />}
       {shown === 'results' && (
         <ResultsScreen
           state={state}

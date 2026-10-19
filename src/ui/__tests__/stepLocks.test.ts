@@ -53,6 +53,10 @@ describe('stepLocks', () => {
     expect(locks.results).toBeNull()
   })
 
+  it('opens Summary once Review is open and the import computes', () => {
+    expect(stepLocks(load(), 0).summary).toBeNull()
+  })
+
   it('opens every step on a clean import', () => {
     const locks = stepLocks(load(), 1)
     expect(Object.values(locks).every((lock) => lock === null)).toBe(true)

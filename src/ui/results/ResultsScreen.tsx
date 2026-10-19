@@ -2,12 +2,12 @@ import { Download, Search } from 'lucide-react'
 import { useState, type Dispatch } from 'react'
 import { removePenalty, type Lists, type PenaltyKey } from '../../engine'
 import { Button } from '../common/controls'
-import type { DrawerEditing } from '../drawer/Editors'
 import { ResidentDrawer } from '../drawer/ResidentDrawer'
 import { LIST_KEYS, LIST_TITLES, buildListCsv, downloadCsv, entryCounts, exportFileName, type ListKey } from '../export/exportCsv'
 import { PenaltiesStrip } from '../penalty/PenaltiesStrip'
 import { PenaltyDialog } from '../penalty/PenaltyDialog'
 import { SettingsPanel, levelUsageOf } from '../settings/SettingsPanel'
+import { drawerEditing } from '../state/editing'
 import { entryOptions, type Action, type AppState, type PenaltyLogEntry } from '../state/store'
 import type { ScenarioStore } from '../state/useScenarios'
 import { AdjustmentsStrip } from './AdjustmentsStrip'
@@ -39,22 +39,6 @@ function exportLists(lists: Lists, keys: readonly ListKey[], state: AppState): v
 
 const focusRow = (matric: string): void => {
   window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-row-matric="${CSS.escape(matric)}"]`)?.focus())
-}
-
-/** Final-points and discretion editing for the drawer; locked while finalised. */
-function drawerEditing(state: AppState, dispatch: Dispatch<Action>): DrawerEditing | null {
-  const input = state.report.input
-  if (!input) return null
-  return {
-    locked: state.finalised !== null,
-    input,
-    overrides: state.finalOverrides,
-    discretion: state.discretion,
-    setOverride: (entry) => dispatch({ type: 'setFinalOverride', entry }),
-    removeOverride: (matric, ccaID) => dispatch({ type: 'removeFinalOverride', matric, ccaID }),
-    setDiscretion: (entry) => dispatch({ type: 'setDiscretion', entry }),
-    removeDiscretion: (matric) => dispatch({ type: 'removeDiscretion', matric }),
-  }
 }
 
 export function ResultsScreen(props: ResultsScreenProps) {

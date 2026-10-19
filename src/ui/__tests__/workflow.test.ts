@@ -14,6 +14,10 @@ const run = (state: AppState, ...actions: Action[]): AppState => actions.reduce(
 const override = { matric: matricOf(1), ccaID: 'C1', finalPoints: 5, reason: 'withdrew' }
 const discretion = { matric: matricOf(2), stayingDelta: 2, biddingDelta: -1, reason: 'service' }
 const resolution = { list: 'maleStaying' as const, order: [matricOf(3), matricOf(1)] }
+const AT = '2027-04-02T10:00:00.000Z'
+const reviewEdit = { matric: matricOf(1), ccaID: 'C1', from: 8, to: 9, reason: '', at: AT }
+const level = { ccaID: 'C1', level: 'High Gold', bonusOverride: null, multiplierOverride: null }
+const notSubmitting = { ccaID: 'C2', note: 'disbanded', at: AT }
 
 function finalised(state = loaded()): AppState {
   const input = state.report.input
@@ -22,9 +26,27 @@ function finalised(state = loaded()): AppState {
 }
 
 describe('lock rules while finalised', () => {
-  it('refuses files, settings, final-points overrides and discretion', () => {
-    const state = finalised(run(loaded(), { type: 'setFinalOverride', entry: override }, { type: 'setDiscretion', entry: discretion }))
+  it('refuses files, settings, final-points overrides, discretion, review marks and levels', () => {
+    const state = finalised(
+      run(
+        loaded(),
+        { type: 'setFinalOverride', entry: override },
+        { type: 'setDiscretion', entry: discretion },
+        { type: 'setReviewEdit', entry: reviewEdit },
+        { type: 'setVetted', ccaID: 'C2', at: AT },
+        { type: 'setNotSubmitting', mark: notSubmitting },
+        { type: 'setCcaLevel', entry: level },
+      ),
+    )
     for (const action of [
+      { type: 'setReviewEdit', entry: { ...reviewEdit, to: 10 } },
+      { type: 'removeReviewEdit', matric: reviewEdit.matric, ccaID: reviewEdit.ccaID, at: AT },
+      { type: 'setVetted', ccaID: 'C1', at: AT },
+      { type: 'clearVetted', ccaID: 'C2' },
+      { type: 'setNotSubmitting', mark: { ...notSubmitting, ccaID: 'C1' } },
+      { type: 'clearNotSubmitting', ccaID: 'C2' },
+      { type: 'setCcaLevel', entry: { ...level, level: 'Pass' } },
+      { type: 'setCcaLevelsAll', list: [] },
       { type: 'setConfig', config: DEFAULT_CONFIG },
       { type: 'addFiles', files: scenario() },
       { type: 'setFinalOverride', entry: { ...override, finalPoints: 9 } },
@@ -64,6 +86,14 @@ describe('unsaved-changes flag', () => {
     ['discretion', (s) => reducer(s, { type: 'setDiscretion', entry: discretion })],
     ['wheel results', (s) => reducer(s, { type: 'setResolution', resolution })],
     ['finalise', (s) => finalised(s)],
+    ['review edits', (s) => reducer(s, { type: 'setReviewEdit', entry: reviewEdit })],
+    ['removing a review edit', (s) => reducer(run(s, { type: 'setReviewEdit', entry: reviewEdit }, { type: 'markSaved', at: AT }), { type: 'removeReviewEdit', matric: reviewEdit.matric, ccaID: reviewEdit.ccaID, at: AT })],
+    ['vetted marks', (s) => reducer(s, { type: 'setVetted', ccaID: 'C1', at: AT })],
+    ['clearing a vetted mark', (s) => reducer(run(s, { type: 'setVetted', ccaID: 'C1', at: AT }, { type: 'markSaved', at: AT }), { type: 'clearVetted', ccaID: 'C1' })],
+    ['not-submitting marks', (s) => reducer(s, { type: 'setNotSubmitting', mark: notSubmitting })],
+    ['clearing a not-submitting mark', (s) => reducer(run(s, { type: 'setNotSubmitting', mark: notSubmitting }, { type: 'markSaved', at: AT }), { type: 'clearNotSubmitting', ccaID: 'C2' })],
+    ['a CCA level', (s) => reducer(s, { type: 'setCcaLevel', entry: level })],
+    ['the whole level table', (s) => reducer(s, { type: 'setCcaLevelsAll', list: [level] })],
     ['unlock', (s) => reducer(finalised(s), { type: 'unlock' })],
   ])('is set by a change to %s', (_, change) => {
     const clean = reducer(loaded(), { type: 'markSaved', at: '2027-04-01T06:32:00.000Z' })
@@ -76,6 +106,15 @@ describe('unsaved-changes flag', () => {
     const penalty = { ...(state.finalised?.penalty ?? createPenaltyState({} as Lists)), applied: [{ matric: matricOf(1), ccaID: 'C1' }] }
     const entry = { key: { matric: matricOf(1), ccaID: 'C1' }, residentName: 'R', ccaName: 'C', outcome: 'x' }
     expect(reducer(state, { type: 'applyPenalty', penalty, entry }).dirty).toBe(true)
+  })
+
+  it('is never set by moving between steps', () => {
+    const clean = reducer(loaded(), { type: 'markSaved', at: AT })
+    const moved = run(clean, { type: 'setStep', step: 'results' }, { type: 'setStep', step: 'review' })
+    expect(moved.step).toBe('review')
+    expect(moved.dirty).toBe(false)
+    expect(reducer(moved, { type: 'setStep', step: 'review' })).toBe(moved)
+    expect(reducer(finalised(), { type: 'setStep', step: 'publish' }).step).toBe('publish')
   })
 
   it('is not set by a refused change or by new results', () => {
@@ -92,14 +131,29 @@ describe('unsaved-changes flag', () => {
   })
 
   it('is cleared by opening a workspace, which restores everything', () => {
-    const before = run(loaded(), { type: 'setFinalOverride', entry: override }, { type: 'setDiscretion', entry: discretion })
+    const before = run(
+      loaded(),
+      { type: 'setFinalOverride', entry: override },
+      { type: 'setDiscretion', entry: discretion },
+      { type: 'setReviewEdit', entry: reviewEdit },
+      { type: 'setVetted', ccaID: 'C1', at: AT },
+      { type: 'setNotSubmitting', mark: notSubmitting },
+      { type: 'setCcaLevel', entry: level },
+      { type: 'setStep', step: 'results' },
+    )
     const workspace = toWorkspace(finalised(before), new Date(2027, 3, 1))
+    expect(workspace.version).toBe(2)
+    expect('meanSdOverrides' in workspace).toBe(false)
     const opened = reducer(run(initialState(), { type: 'setConfig', config: DEFAULT_CONFIG }), { type: 'loadWorkspace', workspace: fromRestored(restoreWorkspace(workspace)) })
     expect(opened.dirty).toBe(false)
     expect(opened.files).toEqual(before.files)
     expect(opened.finalOverrides).toEqual([override])
     expect(opened.discretion).toEqual([discretion])
     expect(opened.config).toEqual(config)
+    expect(opened.review).toEqual(before.review)
+    expect(opened.review.edits).toEqual([reviewEdit])
+    expect(opened.ccaLevels).toEqual([level])
+    expect(opened.step).toBe('results')
     expect(opened.finalised?.penalty).toEqual(workspace.finalised)
     expect(opened.report.canCompute).toBe(true)
   })

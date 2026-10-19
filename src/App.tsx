@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { DEFAULT_CONFIG } from './engine'
 import { validateImport } from './import'
 import { CompareScreen } from './ui/compare/CompareScreen'
@@ -9,24 +9,30 @@ import { blockReason } from './ui/shell/blockReason'
 import { TopBar, type Screen } from './ui/shell/TopBar'
 import { useAppStore } from './ui/state/useAppStore'
 import { useScenarios } from './ui/state/useScenarios'
+import { sandboxInputOf } from './workspace'
 import { hasResidentData } from './ui/state/workspaceState'
 import { WorkspaceControls } from './ui/workspace/WorkspaceControls'
+
+/** Checklist, Review and Summary screens arrive in later phases. */
+const NOT_AVAILABLE_YET = 'Not available yet'
 
 export function App() {
   const { state, dispatch } = useAppStore()
   const scenarios = useScenarios()
-  const [screen, setScreen] = useState<Screen>('import')
+  const screen = state.step
+  const setScreen = useCallback((step: Screen) => dispatch({ type: 'setStep', step }), [dispatch])
   // Settings sections' open/closed state lives in memory so it survives screen changes.
   const [openSections, setOpenSections] = useState<ReadonlySet<string>>(() => new Set(['headcounts']))
   const reason = blockReason(state.report, state.files.length)
   // When the files pass with default settings, the current settings caused the block:
   // keep Results (and its settings panel) reachable so they can be changed back.
+  const { ccaLevels, review } = state
   const settingsCause = useMemo(
     () =>
       reason !== null &&
       state.files.length > 0 &&
-      validateImport(state.files, DEFAULT_CONFIG).canCompute,
-    [reason, state.files],
+      validateImport(state.files, DEFAULT_CONFIG, sandboxInputOf({ ccaLevels, review })).canCompute,
+    [reason, state.files, ccaLevels, review],
   )
   // Closing the tab with unsaved resident data loses it: ask the browser to warn.
   const warnOnLeave = state.dirty && hasResidentData(state)
@@ -42,6 +48,9 @@ export function App() {
   const resultsLock = settingsCause ? null : reason
   const locks: Record<Screen, string | null> = {
     import: null,
+    checklist: NOT_AVAILABLE_YET,
+    review: NOT_AVAILABLE_YET,
+    summary: NOT_AVAILABLE_YET,
     results: resultsLock,
     publish: resultsLock,
     compare: reason !== null ? 'Load data that passes the checks first' : scenarios.scenarios.length === 0 ? 'Save a scenario first' : null,

@@ -129,11 +129,11 @@ export function reviewOrder<T extends { readonly ccaID: string; readonly name: s
 export type VettedStatus = 'vetted' | 'file_changed' | 'gone'
 
 /**
- * A vetted mark counts while the CCA's leader file hashes to the vetted value. A CCA with no
- * leader file compares as the empty hash ''. `gone` when the CCA is no longer in the report.
+ * A vetted mark counts while the CCA's leader file hashes to the vetted value. `gone` when the
+ * CCA is no longer in the report or has no leader file: only a CCA with a file can be vetted (D25).
  */
 export function vettedStatus(mark: VettedMark, perCca: readonly Pick<PerCcaReport, 'ccaID' | 'fileHash'>[]): VettedStatus {
-  const report = perCca.find((c) => c.ccaID === mark.ccaID)
-  if (!report) return 'gone'
-  return (report.fileHash ?? '') === mark.fileHash ? 'vetted' : 'file_changed'
+  const fileHash = perCca.find((c) => c.ccaID === mark.ccaID)?.fileHash ?? null
+  if (fileHash === null) return 'gone'
+  return fileHash === mark.fileHash ? 'vetted' : 'file_changed'
 }

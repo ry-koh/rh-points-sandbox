@@ -1,6 +1,6 @@
 import {
   WORKSPACE_ENCRYPTED_FORMAT,
-  WORKSPACE_VERSION,
+  ENVELOPE_VERSION,
   type EncryptedEnvelope,
 } from './types'
 
@@ -70,7 +70,7 @@ export async function encryptWorkspace(json: string, password: string): Promise<
   const data = await subtle().encrypt({ name: 'AES-GCM', iv }, await aesKey(keyBytes, 'encrypt'), utf8(json))
   const envelope: EncryptedEnvelope = {
     format: WORKSPACE_ENCRYPTED_FORMAT,
-    version: WORKSPACE_VERSION,
+    version: ENVELOPE_VERSION,
     kdf: {
       name: 'PBKDF2',
       hash: 'SHA-256',

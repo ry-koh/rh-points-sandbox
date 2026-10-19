@@ -1,5 +1,5 @@
 import { computeAll, type Comparison, type EntryOptions, type Level, type PipelineResult, type ScenarioConfig } from '../../engine'
-import { validateImport, type SourceFile } from '../../import'
+import { validateImport, type SandboxInput, type SourceFile } from '../../import'
 import { LIST_KEYS, POINTS_DECIMALS, headerLines, toCsvLine } from '../export/exportCsv'
 import { CONFIG_KEYS } from '../state/configShape'
 import { blockReason } from '../shell/blockReason'
@@ -10,14 +10,16 @@ export type SideRun = { readonly ok: true; readonly run: PipelineResult } | { re
 
 /**
  * Runs one side of a comparison on the imported files without touching the live results.
- * Both sides use the same final-points overrides, discretion and wheel results (`entries`).
+ * Both sides use the same final-points overrides, discretion and wheel results (`entries`), and
+ * the same level table, score edits and not-submitting marks (`sandbox`).
  */
 export function runSide(
   files: readonly SourceFile[],
   config: ScenarioConfig,
   entries: EntryOptions,
+  sandbox: Partial<SandboxInput> = {},
 ): SideRun {
-  const report = validateImport(files, config)
+  const report = validateImport(files, config, sandbox)
   if (!report.canCompute || !report.input) {
     return { ok: false, error: `the files do not pass with these settings (${blockReason(report, files.length) ?? 'blocked'})` }
   }

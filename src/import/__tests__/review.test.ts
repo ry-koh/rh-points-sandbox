@@ -184,13 +184,16 @@ describe('vettedStatus', () => {
     expect(vettedStatus(mark('0a1b2c3d'), [report('C1', '0a1b2c3d')])).toBe('vetted')
   })
 
-  it("'file_changed' when the leader file changed or was removed", () => {
+  it("'file_changed' when the leader file changed", () => {
     expect(vettedStatus(mark('0a1b2c3d'), [report('C1', 'ffffffff')])).toBe('file_changed')
-    expect(vettedStatus(mark('0a1b2c3d'), [report('C1', null)])).toBe('file_changed')
   })
 
-  it("a CCA with no leader file is vetted against '' and changes when a file arrives", () => {
-    expect(vettedStatus(mark(''), [report('C1', null)])).toBe('vetted')
+  it("'gone' when the CCA has no leader file (D25), whatever the mark says", () => {
+    expect(vettedStatus(mark('0a1b2c3d'), [report('C1', null)])).toBe('gone')
+    expect(vettedStatus(mark(''), [report('C1', null)])).toBe('gone')
+  })
+
+  it("an old mark against '' does not count once a file arrives", () => {
     expect(vettedStatus(mark(''), [report('C1', '0a1b2c3d')])).toBe('file_changed')
   })
 

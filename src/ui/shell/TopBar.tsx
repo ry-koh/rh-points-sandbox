@@ -1,7 +1,8 @@
 import { ArrowRight, Lock, ShieldCheck } from 'lucide-react'
 import { Fragment, type ReactNode } from 'react'
+import type { WorkflowStep } from '../../workspace'
 
-export type Screen = 'import' | 'results' | 'publish' | 'compare'
+export type Screen = WorkflowStep
 
 interface TopBarProps {
   readonly screen: Screen

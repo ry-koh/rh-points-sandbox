@@ -40,8 +40,8 @@
   `overridden` issue fields, the `overridden` CCA status and `report.overrides`). The import
   report lists the CCAs instead as `report.outOfRange`.
 - The §7.4 table loses its Overridable column.
-- Workspace files (8b) write `meanSdOverrides` empty; a v1 file that carries ids there still
-  opens and the ids are ignored.
+- Workspace files (8b) no longer carry `meanSdOverrides` (version 2); a v1 file that carries ids
+  there still opens and the ids are dropped.
 
 Authoritative rules for the Raffles Hall AY26-27 points system. Where this document and the
 CLAUDE.md summary differ, this document wins. Every number below is a **config variable**
@@ -300,7 +300,8 @@ file; it is not read from any input file. One entry per CCA:
 | `LEVEL_UNKNOWN_CCA` | warning | an entry names a CCA that is not in the bundle; the entry is ignored |
 
 A level renamed in Settings carries its CCAs with it (8b); a level removed while CCAs use it is
-an error until they are re-picked.
+an error until they are re-picked. Editing a level's bonus or multiplier in Settings clears that
+number's tweak on every CCA at that level, so they follow the new value (8b).
 
 ## 4. Formulas
 
@@ -688,9 +689,10 @@ IHG result and cap (blank = "not set in RH-app"), level and flat value.
 **Vetting.** Each CCA can be marked vetted on Review. The mark stores the FNV-1a (32-bit, 8
 lowercase hex characters) hash of the CCA's **leader file text**, exactly as loaded, so CRLF
 and LF copies differ. The import report carries each CCA's current `fileHash` (null with no
-leader file; a CCA without one is vetted against the empty hash). A mark counts (`vetted`) while
-the hashes match; `file_changed` when the file changed or was removed; `gone` when the CCA is no
-longer in the report. The bundle is never hashed: downloading it again never un-vets a CCA.
+leader file). Only a CCA **with** a leader file can be vetted: flat and not-submitting CCAs have
+no scores to review, are never vetted and never block Finalise. A mark counts (`vetted`) while
+the hashes match; `file_changed` when the file changed; `gone` when the CCA has no leader file
+or is no longer in the report. The bundle is never hashed: downloading it again never un-vets a CCA.
 Unvetted CCAs block only Finalise. No reviewer is recorded on a mark.
 
 ## 7. Validation
@@ -1112,18 +1114,40 @@ A **workspace** is everything needed to resume a session, saved only as a file t
 downloads explicitly. It is never written to localStorage, sessionStorage or IndexedDB.
 
 ```
-{ format: "rhps-workspace", version: 1, savedAt, files: [{name, text}],
-  meanSdOverrides, config, finalOverrides, discretion, resolutions, finalised }
+{ format: "rhps-workspace", version: 2, savedAt, files: [{name, text}], config,
+  ccaLevels, review: { edits, log, vetted, notSubmitting }, step,
+  finalOverrides, discretion, resolutions, finalised }
 ```
 
-`files` are the imported CSVs as text; `meanSdOverrides` is written empty and ignored when read (it held per-CCA mean/SD
-overrides before v2.2; older files that list ids there still open); `config` the scenario config; `finalOverrides`, `discretion` and `resolutions` the entries
-of 6.2, 6.3 and 5.6; `finalised` the penalty state or `null`. The workspace contains resident
-data and must be handled like the input files.
+`files` are the imported CSVs as text; `config` the scenario config; `ccaLevels` the per-CCA
+level entries (3b); `review` the Review step's state: `edits` (one active score edit per
+matric + ccaID, 6.4), `log` (every edit set or removed, oldest first: the edit fields plus
+`kind` `edit` / `remove`; a removal reads from the edited value back to the file value),
+`vetted` (ccaID, leader-file hash, time; 6.5) and `notSubmitting` (ccaID, optional note, time;
+6.5); `step` the open step (`import`, `checklist`, `review`, `summary`, `results`, `publish`,
+`compare`); `finalOverrides`, `discretion` and `resolutions` the entries of 6.2, 6.3 and 5.6;
+`finalised` the penalty state or `null`. No reviewer is recorded anywhere. The workspace contains
+resident data and must be handled like the input files. Moving between steps is not an unsaved
+change; every other change to these fields is.
 
-Planned: version 2 adds `ccaLevels` (3b), `review` (edits, vetted marks, not-submitting marks)
-and `step`, and drops `meanSdOverrides`; version 1 files will still open. Until then the file is
-written as above.
+**Version 1 files** (written before the guided workflow) are read and migrated on open:
+`meanSdOverrides` is dropped; `ccaLevels` and `review` start empty and `step` is `import`; every
+file whose header is the retired ccas.csv or ihg.csv header (2.2 and earlier), or whose name
+starts with `ccas` or `ihg` (any case), is dropped, never converted; and the config is migrated
+as in section 3. Opening shows up to two notes, each at most once:
+- when a file was dropped: "ccas.csv and ihg.csv were removed: load the RH-app bundle and new
+  leader files, then pick each CCA's level on the Review step."
+- when the config had the old placement bonus and tiers: "The settings' levels were built from
+  the old placement bonus and tiers; check them in Settings."
+
+Version 1 and 2 are read; version 2 is written; any other version is `UNSUPPORTED_VERSION`.
+
+**Levels and the level table.** Renaming a level in Settings renames it in every CCA's entry
+(only when exactly one level's name changed and the old name was unique among the levels);
+removing a level, reordering, a reset or a loaded scenario does not touch the entries (an entry
+on a missing level is `UNKNOWN_LEVEL`, 3b). Editing one level's bonus (or multiplier) sets the
+bonus (or multiplier) tweak to blank on every CCA at that level, so they follow the new value,
+and Settings says how many tweaks were cleared.
 
 - **Filename:** `rhps_workspace_<YYYYMMDD-HHmm>.rhps` (local time).
 - **Encrypted form** (optional password): a JSON envelope
@@ -1131,13 +1155,17 @@ written as above.
   iterations: 310000, salt, verifier }, cipher: { name: "AES-GCM", iv }, data }` with `salt`,
   `iv` and `data` base64. The key is the 256-bit PBKDF2 output; `verifier` is the base64 SHA-256
   of `"rhps-workspace-verifier:"` followed by the key bytes, so a wrong password and a damaged
-  file can be told apart. Web Crypto only; no dependency.
+  file can be told apart. Web Crypto only; no dependency. The envelope keeps its own `version: 1`
+  (its layout did not change with workspace version 2); the workspace inside carries its own.
 - **Reading** returns the workspace or one code: `NOT_A_WORKSPACE` (not JSON, or not one of the
   two formats), `UNSUPPORTED_VERSION`, `PASSWORD_REQUIRED` (encrypted, no password given),
   `WRONG_PASSWORD`, `CORRUPT` (a missing or wrong-shaped field, a damaged ciphertext).
-- **Loading** migrates the config (section 3) and **re-runs the import validation on the saved
-  files**. Final-points overrides, discretion entries and wheel resolutions that no longer match
-  (6.2, 6.3, 5.6) are reported as stale and never applied silently.
+- **Loading** migrates the file and config (above, section 3) and **re-runs the import
+  validation on the saved files** with the saved level table, edits and not-submitting marks.
+  Final-points overrides, discretion entries and wheel resolutions that no longer match (6.2,
+  6.3, 5.6), score edits that are `changed` or `stale` (6.4), vetted marks that no longer count
+  (6.5) and level entries for CCAs not in the bundle are reported, with the migration notes, and
+  never applied silently.
 
 ## 9. Open items for JCRC
 

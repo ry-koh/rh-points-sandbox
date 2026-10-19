@@ -5,6 +5,7 @@ import { Button } from '../common/controls'
 import { LIST_KEYS, LIST_TITLES, downloadCsv, exportStamp, type ListKey } from '../export/exportCsv'
 import { ListTabs, panelId, tabId } from '../results/ListTabs'
 import type { Scenario } from '../state/scenarios'
+import { sandboxInputOf } from '../../workspace'
 import { entryOptions, type AppState } from '../state/store'
 import { CURRENT, buildComparisonCsv, configDifferences, runSide } from './compareData'
 import { CompareTable, sortRows } from './CompareTable'
@@ -39,8 +40,10 @@ export function CompareScreen({ state, scenarios }: CompareScreenProps) {
   const configB = configOf(sideB)
   const { finalOverrides, discretion, resolutions } = state
   const entries = useMemo(() => entryOptions({ finalOverrides, discretion, resolutions }), [finalOverrides, discretion, resolutions])
-  const runA = useMemo(() => runSide(state.files, configA, entries), [state.files, configA, entries])
-  const runB = useMemo(() => runSide(state.files, configB, entries), [state.files, configB, entries])
+  const { ccaLevels, review } = state
+  const sandbox = useMemo(() => sandboxInputOf({ ccaLevels, review }), [ccaLevels, review])
+  const runA = useMemo(() => runSide(state.files, configA, entries, sandbox), [state.files, configA, entries, sandbox])
+  const runB = useMemo(() => runSide(state.files, configB, entries, sandbox), [state.files, configB, entries, sandbox])
   const comparison = useMemo(() => (runA.ok && runB.ok ? compareRuns(runA.run, runB.run) : null), [runA, runB])
   const diffs = configDifferences(configA, configB)
   const query = search.trim().toLowerCase()

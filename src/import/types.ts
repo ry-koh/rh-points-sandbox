@@ -8,7 +8,7 @@ import type {
   Role,
 } from '../engine'
 
-export type FileKind = 'leader' | 'residents' | 'ihg' | 'ccas' | 'flat' | 'settings'
+export type FileKind = 'leader' | 'residents' | 'ihg' | 'flat' | 'settings' | 'bundle'
 
 export interface SourceFile {
   readonly name: string
@@ -23,8 +23,12 @@ export type IssueCode =
   | 'MIXED_CCA_ID'
   | 'DUPLICATE_CCA_FILE'
   | 'MISSING_RESIDENTS_FILE'
-  | 'MISSING_CCAS_FILE'
-  | 'DUPLICATE_RESIDENTS_OR_CCAS_FILE'
+  | 'MISSING_BUNDLE_FILE'
+  | 'DUPLICATE_BUNDLE_FILE'
+  | 'BAD_BUNDLE_FILE'
+  | 'BAD_IHG_CAP'
+  | 'CCAS_FILE_RETIRED'
+  | 'DUPLICATE_RESIDENTS_OR_IHG_FILE'
   | 'BAD_MATRIC'
   | 'UNKNOWN_MATRIC'
   | 'DUPLICATE_MATRIC_IN_FILE'
@@ -43,14 +47,16 @@ export type IssueCode =
   | 'BAD_SETTINGS_FILE'
   | 'DUPLICATE_WAIVER'
   | 'DUPLICATE_SETTINGS_FILE'
-  | 'CCAS_RANGE_IGNORED'
   | 'SETTINGS_UNKNOWN_CCA'
   | 'UNKNOWN_CCA'
   | 'IHG_UNKNOWN_MATRIC'
   | 'IHG_UNKNOWN_CCA'
-  | 'UNKNOWN_TIER'
-  | 'BAD_MANUAL_MULTIPLIER'
-  | 'MISSING_OUTGOING_MULTIPLIER'
+  | 'TYPE_NOT_SET'
+  | 'LEVEL_NOT_SET'
+  | 'UNKNOWN_LEVEL'
+  | 'BAD_LEVEL_TWEAK'
+  | 'DUPLICATE_LEVEL_NAME'
+  | 'LEVEL_UNKNOWN_CCA'
   | 'DUPLICATE_CCA'
   | 'BAD_RANGE'
   | 'MEAN_SD_OUT_OF_RANGE'
@@ -135,19 +141,60 @@ export interface IhgRow {
   readonly placement: IhgPlacement
 }
 
+/** One CCA as the checks and the engine see it: the engine's `Cca` plus the bundle line it came from. */
 export interface CcaRow {
   readonly line: number
   readonly ccaID: string
   readonly ccaName: string
   readonly type: CcaType
-  /** ccas.csv's placement column (retired with the file in P5). */
-  readonly placement: 'pass' | 'bronze' | 'silver' | 'gold'
-  readonly outgoingTier: string | null
-  readonly outgoingMultiplier: number | null
+  readonly level: string | null
+  readonly bonusOverride: number | null
+  readonly multiplierOverride: number | null
   readonly meanMin: number | null
   readonly meanMax: number | null
   readonly sdMin: number | null
   readonly sdMax: number | null
+}
+
+/** A `cca` row of the RH-app bundle (spec 2d). Blank `type` / `ihgResult` / `ihgCap` read as null. */
+export interface BundleCcaRow {
+  readonly line: number
+  readonly ccaID: string
+  readonly ccaName: string
+  readonly flatPoints: number | null
+  readonly type: CcaType | null
+  readonly isSport: boolean
+  readonly ihgResult: IhgPlacement | null
+  readonly ihgCap: number | null
+}
+
+export type BundleRow =
+  | { readonly section: 'settings'; readonly row: SettingsRow }
+  | { readonly section: 'cca'; readonly row: BundleCcaRow }
+  | { readonly section: 'flat'; readonly row: FlatRow }
+
+/** A CCA as the loaded bundle lists it. */
+export type BundleCca = Omit<BundleCcaRow, 'line'>
+
+/** The RH-app bundle once it is loaded. */
+export interface LoadedBundle {
+  readonly fileName: string
+  readonly exportedAt: string
+  /** Every cca row that parsed, in ccaID order. */
+  readonly ccas: readonly BundleCca[]
+}
+
+/** One CCA's level and tweaks, picked in the sandbox (spec 3b). */
+export interface CcaLevelEntry {
+  readonly ccaID: string
+  readonly level: string | null
+  readonly bonusOverride: number | null
+  readonly multiplierOverride: number | null
+}
+
+/** Values entered in the sandbox itself, not read from any file. */
+export interface SandboxInput {
+  readonly ccaLevels: readonly CcaLevelEntry[]
 }
 
 export interface ParseResult<T> {
@@ -159,7 +206,8 @@ export interface ParseResult<T> {
 
 export type CcaStatus = 'ok' | 'out_of_range' | 'missing_file' | 'flat'
 
-export interface PerCcaReport {
+/** The part of a CCA's report the per-CCA checks build. */
+export interface BaseCcaReport {
   readonly ccaID: string
   readonly name: string
   readonly fileName: string | null
@@ -170,6 +218,20 @@ export interface PerCcaReport {
   readonly status: CcaStatus
   /** The flat value of a flat CCA (status "flat"); null for every other CCA. */
   readonly flatPoints: number | null
+}
+
+export interface PerCcaReport extends BaseCcaReport {
+  /** As the bundle has it; null = not set in RH-app (1x is assumed). */
+  readonly type: CcaType | null
+  readonly isSport: boolean
+  readonly ihgResult: IhgPlacement | null
+  readonly ihgCap: number | null
+  /** The level used; null when none is picked or the picked one is not in Settings. */
+  readonly level: string | null
+  readonly bonusOverride: number | null
+  readonly multiplierOverride: number | null
+  /** Leader-file rows with an outgoing role. */
+  readonly outgoingLeaders: number
 }
 
 /** A CCA whose mean or SD is outside its allowed range: allowed, but listed on every export. */
@@ -194,7 +256,9 @@ export interface LoadedSettings {
 
 export interface ImportReport {
   readonly canCompute: boolean
-  /** Set while a usable settings file is loaded: its ranges are the only ones used. */
+  /** The RH-app bundle, when one is loaded. */
+  readonly bundle: LoadedBundle | null
+  /** Set while usable settings (from the bundle) are loaded: their ranges are the only ones used. */
   readonly settings: LoadedSettings | null
   readonly issues: readonly Issue[]
   readonly perCca: readonly PerCcaReport[]

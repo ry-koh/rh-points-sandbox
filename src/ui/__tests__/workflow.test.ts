@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, computeAll, createPenaltyState, type Lists } from '../../engine'
-import { leaderRows, matricOf, scenario, withSettings } from '../../import/__tests__/fixtures'
+import { leaderRows, matricOf, scenario } from '../../import/__tests__/fixtures'
 import { restoreWorkspace } from '../../workspace'
 import { discretionFromDraft, discretionSummary, overrideFromDraft } from '../drawer/editorState'
 import { publishReadiness } from '../publish/publishData'
@@ -9,7 +9,7 @@ import { entryOptions, initialState, reducer, type Action, type AppState } from 
 import { fromRestored, passwordProblem, savedLabel, toWorkspace } from '../state/workspaceState'
 
 const config = { ...DEFAULT_CONFIG, headcounts: { ...DEFAULT_CONFIG.headcounts, maleGreen: 2, maleGrey: 1, femaleGreen: 2 } }
-const loaded = (): AppState => reducer(reducer(initialState(), { type: 'setConfig', config }), { type: 'addFiles', files: withSettings(scenario()) })
+const loaded = (): AppState => reducer(reducer(initialState(), { type: 'setConfig', config }), { type: 'addFiles', files: scenario() })
 const run = (state: AppState, ...actions: Action[]): AppState => actions.reduce(reducer, state)
 const override = { matric: matricOf(1), ccaID: 'C1', finalPoints: 5, reason: 'withdrew' }
 const discretion = { matric: matricOf(2), stayingDelta: 2, biddingDelta: -1, reason: 'service' }

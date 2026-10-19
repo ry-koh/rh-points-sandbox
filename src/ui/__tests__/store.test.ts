@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, computeAll, createPenaltyState } from '../../engine'
-import { leaderFileName, leaderRows, matricOf, patchRow, scenario, withSettings } from '../../import/__tests__/fixtures'
+import { BUNDLE_FILE_NAME, leaderFileName, leaderRows, matricOf, patchRow, scenario } from '../../import/__tests__/fixtures'
 import { initialState, reducer, type AppState } from '../state/store'
 
 const failingC1 = scenario({
@@ -53,17 +53,17 @@ describe('app reducer', () => {
 
   it('re-validates on a config change and keeps state immutable', () => {
     const before = withFiles()
-    const config = { ...DEFAULT_CONFIG, meanSdDefault: { ...DEFAULT_CONFIG.meanSdDefault, meanMax: 11 } }
+    const config = { ...DEFAULT_CONFIG, auxCap: 4 }
     const after = reducer(before, { type: 'setConfig', config })
-    expect(after.report.perCca[0]?.status).toBe('out_of_range')
+    expect(after.report.issues.map((i) => i.code)).toContain('AUX_ABOVE_CAP')
     expect(after.report.canCompute).toBe(true)
-    expect(before.report.perCca[0]?.status).toBe('ok')
+    expect(before.report.issues.map((i) => i.code)).not.toContain('AUX_ABOVE_CAP')
     expect(after).not.toBe(before)
   })
 
   describe('finalise and penalties', () => {
     const ready = (): AppState => {
-      const state = withFiles(withSettings(scenario()))
+      const state = withFiles(scenario())
       const input = state.report.input
       if (!input) throw new Error('expected input')
       return reducer(state, { type: 'setResults', results: computeAll(input, state.config), error: null })
@@ -121,7 +121,7 @@ describe('app reducer', () => {
     if (!input) throw new Error('expected input')
     const computed = reducer(state, { type: 'setResults', results: computeAll(input, state.config), error: null })
     expect(computed.results?.lists.maleStaying.length).toBeGreaterThan(0)
-    const blocked = reducer(computed, { type: 'removeFile', name: 'ccas.csv' })
+    const blocked = reducer(computed, { type: 'removeFile', name: BUNDLE_FILE_NAME })
     expect(blocked.results).toBeNull()
   })
 })

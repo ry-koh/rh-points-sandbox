@@ -1,0 +1,11 @@
+formatVersion,section,scope,ccaID,ccaName,matric,name,flatPoints,type,sport,ihgResult,ihgCap,meanMin,meanMax,sdMin,sdMax,note,exportedAt
+1,settings,default,,,,,,,,,,10,14,2,5,,2027-04-01T09:30:00.000Z
+1,settings,waiver,9101,"Drama, Film & Theatre",,,,,,,,12,15,1.5,5,Small CCA (<10 members),2027-04-01T09:30:00.000Z
+1,cca,,9001,Hall Choir,,,12,1x,N,,,,,,,,2027-04-01T09:30:00.000Z
+1,cca,,9002,"'=Dance, Crew",,,7.5,,N,,,,,,,,2027-04-01T09:30:00.000Z
+1,cca,,9101,"Drama, Film & Theatre",,,,1x,N,,,,,,,,2027-04-01T09:30:00.000Z
+1,cca,,9201,Soccer (M),,,,1x,Y,1st,12,,,,,,2027-04-01T09:30:00.000Z
+1,cca,,9202,Touch Rugby (W),,,,1x,Y,,,,,,,,2027-04-01T09:30:00.000Z
+1,flat,,9001,Hall Choir,A9910101X,"Tan, Test 01",12,,,,,,,,,,2027-04-01T09:30:00.000Z
+1,flat,,9001,Hall Choir,A9910102X,Test Member 02,12,,,,,,,,,,2027-04-01T09:30:00.000Z
+1,flat,,9002,"'=Dance, Crew",A9910103X,'@Test 03,7.5,,,,,,,,,,2027-04-01T09:30:00.000Z

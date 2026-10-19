@@ -2,6 +2,7 @@ import { MAX_EXHAUSTIVE_HALVES, RANGE_TOLERANCE, checkMeanSd, resolveRange } fro
 import type { MeanSdRange, ScenarioConfig } from '../engine'
 import { makeIssue } from './parseCommon'
 import type {
+  BaseCcaReport,
   CcaRow,
   FlatRow,
   IhgRow,
@@ -9,7 +10,6 @@ import type {
   LeaderRow,
   OutOfRangeRecord,
   ParseResult,
-  PerCcaReport,
   ResidentRow,
 } from './types'
 
@@ -31,7 +31,7 @@ export interface CheckedLeader {
   readonly rows: readonly LeaderRow[]
 }
 
-/** A flat-points file after the cross-file checks: one group per flat CCA (spec 2e). */
+/** Flat member rows (the bundle's, or a standalone flat-points file's): one group per flat CCA (spec 2e). */
 export interface FlatFile {
   readonly fileName: string
   readonly result: ParseResult<FlatRow>
@@ -42,20 +42,6 @@ export interface CheckedFlat {
   readonly ccaID: string
   readonly flatPoints: number
   readonly rows: readonly FlatRow[]
-}
-
-/** Shim until ccas.csv is retired (P5): `outgoingTier` names one of the levels in Settings. */
-export function checkCcaRows(ccas: Loaded<CcaRow>, config: ScenarioConfig): Issue[] {
-  const levelNames = new Set(config.levels.map((level) => level.name))
-  return ccas.result.rows
-    .filter((cca) => cca.outgoingTier !== null && !levelNames.has(cca.outgoingTier))
-    .map((cca) =>
-      makeIssue('UNKNOWN_TIER', ccas.fileName, `outgoingTier "${cca.outgoingTier}" is not one of the levels in Settings (${[...levelNames].join(', ')}).`, {
-        line: cca.line,
-        column: 'outgoingTier',
-        ccaID: cca.ccaID,
-      }),
-    )
 }
 
 export function checkResidentRows(residents: Loaded<ResidentRow>, config: ScenarioConfig): Issue[] {
@@ -93,7 +79,7 @@ export function checkLeaderFile(
 }
 
 /**
- * Checks each flat CCA of the flat file: it must exist in ccas.csv, must not also have a leader
+ * Checks each flat CCA of the flat rows: it must be in the bundle, must not also have a leader
  * file, must carry one value, and its members must be known and not repeated.
  */
 export function checkFlatFile(
@@ -200,18 +186,6 @@ export function ihgNonMemberWarnings(
     )
 }
 
-/** Outgoing leaders need the CCA's outgoingTier (its level) or outgoingMultiplier to be filled in. */
-export function checkOutgoing(ccas: Loaded<CcaRow>, leaders: readonly CheckedLeader[]): Issue[] {
-  return ccas.result.rows.flatMap((cca) => {
-    const blank = cca.outgoingTier === null && cca.outgoingMultiplier === null
-    const leader = leaders.find((l) => l.ccaID === cca.ccaID)
-    const hasOutgoing = leader?.rows.some((row) => row.outgoingRole !== 'none') ?? false
-    if (!blank || !hasOutgoing) return []
-    const text = `${cca.ccaID} has an outgoing leader, but both outgoingTier and outgoingMultiplier are blank in ${ccas.fileName}.`
-    return [makeIssue('MISSING_OUTGOING_MULTIPLIER', ccas.fileName, text, { line: cca.line, column: 'outgoingTier', ccaID: cca.ccaID })]
-  })
-}
-
 export function leaderWarnings(
   ccas: Loaded<CcaRow>,
   leaders: readonly CheckedLeader[],
@@ -251,7 +225,7 @@ function meanSdMessage(cca: CcaRow, n: number, mean: number, sd: number, range: 
 /** A flat CCA is not mean/SD checked and never counts as missing a file (spec 2e). */
 export function flatStats(cca: CcaRow, flat: CheckedFlat, config: ScenarioConfig): CcaStats {
   const range = resolveRange(cca, config.meanSdDefault)
-  const report: PerCcaReport = {
+  const report: BaseCcaReport = {
     ccaID: cca.ccaID,
     name: cca.ccaName,
     range,
@@ -266,7 +240,7 @@ export function flatStats(cca: CcaRow, flat: CheckedFlat, config: ScenarioConfig
 }
 
 export interface CcaStats {
-  readonly report: PerCcaReport
+  readonly report: BaseCcaReport
   readonly issue: Issue | null
   readonly outOfRange: OutOfRangeRecord | null
 }
@@ -280,7 +254,7 @@ export function ccaStats(
   const range = resolveRange(cca, config.meanSdDefault)
   const base = { ccaID: cca.ccaID, name: cca.ccaName, range, flatPoints: null }
   if (!leader) {
-    const report: PerCcaReport = { ...base, fileName: null, n: 0, mean: null, sd: null, status: 'missing_file' }
+    const report: BaseCcaReport = { ...base, fileName: null, n: 0, mean: null, sd: null, status: 'missing_file' }
     return { report, issue: null, outOfRange: null }
   }
   const scores = leader.rows.map((row) => row.basePoints)
@@ -289,7 +263,7 @@ export function ccaStats(
   const mean = n === 0 ? null : check.mean
   const sd = n === 0 ? null : check.sd
   const status = check.ok && n > 0 ? 'ok' : 'out_of_range'
-  const report: PerCcaReport = { ...base, fileName: leader.fileName, n, mean, sd, status }
+  const report: BaseCcaReport = { ...base, fileName: leader.fileName, n, mean, sd, status }
   if (status === 'ok') return { report, issue: null, outOfRange: null }
   const text = meanSdMessage(cca, n, check.mean, check.sd, range)
   const issue = makeIssue('MEAN_SD_OUT_OF_RANGE', leader.fileName, text, { ccaID: cca.ccaID })

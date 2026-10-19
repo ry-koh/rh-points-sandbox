@@ -10,9 +10,9 @@ export const KIND_LABELS: Readonly<Record<FileKind, string>> = {
   leader: 'Leader',
   residents: 'Residents',
   ihg: 'IHG',
-  ccas: 'CCA settings',
   flat: 'Flat points',
   settings: 'JCRC settings',
+  bundle: 'RH-app bundle',
 }
 
 export function describeFile(file: SourceFile): FileInfo {

@@ -2,7 +2,8 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, computeAll, type ListRow, type PipelineInput, type ScenarioConfig } from '../../engine'
 import { validateImport } from '../validate'
-import type { SourceFile } from '../types'
+import type { CcaLevelEntry, SourceFile } from '../types'
+import { DEMO_LEVELS } from './fixtures'
 
 // Vitest runs from the project root, so sample paths are relative to it.
 const VALID_DIR = 'samples/valid'
@@ -10,12 +11,21 @@ const BROKEN_DIR = 'samples/broken'
 const SEM2_GREEN = 3
 const SEM2_GREY = 3
 const GREY = 4
+/** The one broken case that is about the level table itself, so it runs with no levels. */
+const NO_LEVELS_CASE = 'level-not-set'
 
 function loadCsvFiles(dir: string): SourceFile[] {
   return readdirSync(dir)
     .filter((name) => name.endsWith('.csv'))
     .sort()
     .map((name) => ({ name, text: readFileSync(`${dir}/${name}`, 'utf8') }))
+}
+
+/** The sandbox's level table for the valid sample (entered in the sandbox, never an input file). */
+function demoLevels(dir: string): CcaLevelEntry[] {
+  const parsed: unknown = JSON.parse(readFileSync(`${dir}/demo-levels.json`, 'utf8'))
+  if (!Array.isArray(parsed)) throw new Error(`${dir}/demo-levels.json must be an array`)
+  return parsed as CcaLevelEntry[]
 }
 
 function expectedCodes(dir: string): string[] {
@@ -49,11 +59,26 @@ function configAroundTie(input: PipelineInput): ScenarioConfig {
 
 describe('samples/valid', () => {
   const files = loadCsvFiles(VALID_DIR)
-  const report = validateImport(files, DEFAULT_CONFIG)
+  const ccaLevels = demoLevels(VALID_DIR)
+  const report = validateImport(files, DEFAULT_CONFIG, { ccaLevels })
 
   it('has no errors', () => {
     expect(report.issues.filter((issue) => issue.severity === 'error')).toEqual([])
     expect(report.canCompute).toBe(true)
+  })
+
+  it('holds the bundle and a level for every non-flat CCA, and no retired or standalone files', () => {
+    expect(report.bundle?.fileName).toBe('points_bundle_20270401.csv')
+    expect(report.issues.map((i) => i.code)).not.toContain('LEVEL_NOT_SET')
+    expect(ccaLevels).toHaveLength(12)
+    expect(files.filter((f) => /^(ccas|points_settings_|flat_points_)/.test(f.name))).toEqual([])
+  })
+
+  it('marks six CCAs as sports, with their IHG result and a cap of 3', () => {
+    const sports = (report.bundle?.ccas ?? []).filter((c) => c.isSport)
+    expect(sports.map((c) => [c.ccaID, c.ihgResult, c.ihgCap])).toEqual([
+      ['C01', '1st', 3], ['C02', '2nd', 3], ['C04', '3rd', 3], ['C05', '3rd4th_no_match', 3], ['C06', '2nd', 3], ['C08', '1st', 3],
+    ])
   })
 
   it('has 80 residents and 13 CCAs: 12 with a points file each and one flat CCA', () => {
@@ -74,7 +99,7 @@ describe('samples/valid', () => {
     const flat = report.perCca.find((cca) => cca.status === 'flat')
     expect(flat?.n).toBe(8)
     expect(flat?.flatPoints).toBe(9)
-    expect(files.some((f) => f.name.startsWith('flat_points_'))).toBe(true)
+    expect(report.bundle?.ccas.find((c) => c.ccaID === flat?.ccaID)?.flatPoints).toBe(9)
   })
 
   it('runs through the engine into five non-empty lists with ties and a merged half-CCA', () => {
@@ -98,8 +123,17 @@ describe('samples/broken', () => {
 
   it.each(folders)('%s produces exactly its expected codes', (folder) => {
     const dir = `${BROKEN_DIR}/${folder}`
-    const report = validateImport(loadCsvFiles(dir), DEFAULT_CONFIG)
+    const ccaLevels = folder === NO_LEVELS_CASE ? [] : DEMO_LEVELS
+    const report = validateImport(loadCsvFiles(dir), DEFAULT_CONFIG, { ccaLevels })
     const codes = [...new Set(report.issues.map((issue) => issue.code))].sort()
     expect(codes).toEqual(expectedCodes(dir))
+  })
+})
+
+describe('samples/', () => {
+  it('has no ccas.csv anywhere (the file is retired)', () => {
+    const names = readdirSync('samples', { recursive: true }).map((path) => path.split(/[\\/]/).pop())
+    expect(names.filter((name) => name === 'ccas.csv')).toEqual([])
+    expect(names).toContain('points_bundle_20270401.csv')
   })
 })

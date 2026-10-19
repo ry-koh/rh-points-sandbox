@@ -1,24 +1,25 @@
-import type { Cca, MeanSdRange, Membership, PipelineInput, Resident, ScenarioConfig } from '../engine'
+import type { MeanSdRange, Membership, PipelineInput, Resident, ScenarioConfig } from '../engine'
+import { ccaLevelFor, isBonusTweak, isMultiplierTweak, levelProblems, validateCcaLevelEntry } from './ccaLevels'
 import {
-  checkCcaRows,
   checkFlatFile,
   checkIhgRows,
   checkLeaderFile,
-  checkOutgoing,
   checkResidentRows,
   ccaStats,
   flatStats,
   ihgNonMemberWarnings,
   ihgOnFlatWarnings,
   leaderWarnings,
+  type CcaStats,
   type CheckedFlat,
   type CheckedLeader,
+  type FlatFile,
   type LeaderFile,
   type Loaded,
 } from './checks'
 import { parseCsv } from './csv'
-import { FILE_COLUMNS, detectFileKind } from './detect'
-import { parseCcas } from './parseCcas'
+import { FILE_COLUMNS, RETIRED_CCAS_COLUMNS, detectFileKind, headerMatches } from './detect'
+import { parseBundle } from './parseBundle'
 import { parseFlat } from './parseFlat'
 import { makeIssue } from './parseCommon'
 import { parseIhg } from './parseIhg'
@@ -26,15 +27,23 @@ import { parseLeader } from './parseLeader'
 import { parseResidents } from './parseResidents'
 import { parseSettings } from './parseSettings'
 import type {
+  BundleCca,
+  BundleCcaRow,
+  BundleRow,
+  CcaLevelEntry,
   CcaRow,
   FileKind,
+  FlatRow,
   ImportReport,
   Issue,
   IhgRow,
+  LoadedBundle,
   LoadedSettings,
   ParsedCsv,
   ParseResult,
+  PerCcaReport,
   ResidentRow,
+  SandboxInput,
   SettingsRow,
   SourceFile,
 } from './types'
@@ -52,17 +61,18 @@ const KIND_LABEL: Readonly<Record<FileKind, string>> = {
   leader: 'a CCA points file',
   residents: 'the residents list',
   ihg: 'the IHG list',
-  ccas: 'the CCA settings list',
   flat: 'the flat-points file',
   settings: "JCRC's points settings file",
+  bundle: 'the RH-app bundle',
 }
 
 function guessKindFromName(name: string): FileKind | null {
   const lower = name.toLowerCase()
+  if (lower.startsWith('points_bundle_')) return 'bundle'
   if (lower.startsWith('points_settings_')) return 'settings'
   if (lower.startsWith('points_')) return 'leader'
   if (lower.startsWith('flat_points_')) return 'flat'
-  return (['residents', 'ihg', 'ccas'] as const).find((kind) => lower.startsWith(kind)) ?? null
+  return (['residents', 'ihg'] as const).find((kind) => lower.startsWith(kind)) ?? null
 }
 
 function headerProblem(claimed: FileKind, header: readonly string[]): string {
@@ -77,6 +87,12 @@ function headerProblem(claimed: FileKind, header: readonly string[]): string {
   return `the column names do not match ${KIND_LABEL[claimed]} (${detail}). Column names must be exact.`
 }
 
+/** The retired ccas.csv, by its header or its name (R34): CCAS_FILE_RETIRED, its rows are never read. */
+const isRetiredCcasFile = (file: SourceFile, header: readonly string[]): boolean =>
+  headerMatches(header, RETIRED_CCAS_COLUMNS) || file.name.toLowerCase().startsWith('ccas') // CCAS_FILE_RETIRED
+
+const CCAS_RETIRED_TEXT = 'ccas.csv is no longer used: CCA types come from the RH-app bundle and levels are set on the Review step. Remove this file.' // CCAS_FILE_RETIRED
+
 function classify(file: SourceFile, issues: Issue[]): Classified {
   const csv = parseCsv(file.text)
   for (const problem of csv.issues) {
@@ -84,34 +100,46 @@ function classify(file: SourceFile, issues: Issue[]): Classified {
   }
   const kind = detectFileKind(csv.header)
   if (kind) return { file, csv, kind, claimed: kind }
+  if (isRetiredCcasFile(file, csv.header)) {
+    issues.push(makeIssue('CCAS_FILE_RETIRED', file.name, CCAS_RETIRED_TEXT))
+    return { file, csv, kind: null, claimed: null }
+  }
   const claimed = guessKindFromName(file.name)
   const text = claimed
     ? headerProblem(claimed, csv.header)
-    : 'this file is not a points file, flat-points file, settings file, residents list, IHG list or CCA settings list (its columns match none of them).'
+    : 'this file is not a points file, RH-app bundle, flat-points file, settings file, residents list or IHG list (its columns match none of them).'
   issues.push(makeIssue(claimed ? 'BAD_HEADER' : 'UNRECOGNISED_FILE', file.name, text))
   return { file, csv, kind: null, claimed }
 }
 
+const MISSING_BUNDLE_TEXT =
+  'No RH-app bundle was provided; it carries the CCA list, the ranges and the flat members. Download it from /admin/points.'
+
 function fileLevelIssues(classified: readonly Classified[]): Issue[] {
   const issues: Issue[] = []
-  for (const [kind, code] of [['residents', 'MISSING_RESIDENTS_FILE'], ['ccas', 'MISSING_CCAS_FILE']] as const) {
-    if (!classified.some((c) => c.claimed === kind)) {
-      issues.push(makeIssue(code, '', `No ${KIND_LABEL[kind]} was provided (${kind}.csv is needed).`))
-    }
+  const ofKind = (kind: FileKind): Classified[] => classified.filter((c) => c.kind === kind)
+  if (!classified.some((c) => c.claimed === 'residents')) {
+    issues.push(makeIssue('MISSING_RESIDENTS_FILE', '', `No ${KIND_LABEL.residents} was provided (residents.csv is needed).`))
   }
-  for (const kind of ['residents', 'ccas', 'ihg'] as const) {
-    for (const extra of classified.filter((c) => c.kind === kind).slice(1)) {
+  if (!classified.some((c) => c.claimed === 'bundle')) issues.push(makeIssue('MISSING_BUNDLE_FILE', '', MISSING_BUNDLE_TEXT))
+  for (const kind of ['residents', 'ihg'] as const) {
+    for (const extra of ofKind(kind).slice(1)) {
       const text = `${KIND_LABEL[kind]} was provided more than once; this extra copy is ignored.`
-      issues.push(makeIssue('DUPLICATE_RESIDENTS_OR_CCAS_FILE', extra.file.name, text))
+      issues.push(makeIssue('DUPLICATE_RESIDENTS_OR_IHG_FILE', extra.file.name, text))
     }
   }
-  for (const extra of classified.filter((c) => c.kind === 'flat').slice(1)) {
-    const text = `${KIND_LABEL.flat} was provided more than once; this extra copy is ignored.`
-    issues.push(makeIssue('DUPLICATE_FLAT_FILE', extra.file.name, text))
+  for (const extra of ofKind('bundle').slice(1)) {
+    const text = `${KIND_LABEL.bundle} was provided more than once; this extra copy is ignored. Remove the older bundle.`
+    issues.push(makeIssue('DUPLICATE_BUNDLE_FILE', extra.file.name, text))
   }
-  for (const extra of classified.filter((c) => c.kind === 'settings').slice(1)) {
-    const text = `${KIND_LABEL.settings} was provided more than once; this extra copy is ignored.`
-    issues.push(makeIssue('DUPLICATE_SETTINGS_FILE', extra.file.name, text))
+  const hasBundle = ofKind('bundle').length > 0
+  for (const [kind, code] of [['flat', 'DUPLICATE_FLAT_FILE'], ['settings', 'DUPLICATE_SETTINGS_FILE']] as const) {
+    for (const extra of ofKind(kind).slice(hasBundle ? 0 : 1)) {
+      const text = hasBundle
+        ? `the RH-app bundle already carries ${KIND_LABEL[kind]}; this standalone copy is ignored.`
+        : `${KIND_LABEL[kind]} was provided more than once; this extra copy is ignored.`
+      issues.push(makeIssue(code, extra.file.name, text))
+    }
   }
   return issues
 }
@@ -129,7 +157,7 @@ function loadFirst<T>(
   return { fileName: found.file.name, result }
 }
 
-/** The settings file is usable when it has exactly one clean default row. Its waivers are by ccaID. */
+/** The settings are usable when they have exactly one clean default row. Waivers are by ccaID. */
 function readSettings(settings: Loaded<SettingsRow> | null): LoadedSettings | null {
   if (!settings) return null
   const rows = settings.result.rows
@@ -141,36 +169,141 @@ function readSettings(settings: Loaded<SettingsRow> | null): LoadedSettings | nu
   return { fileName: settings.fileName, exportedAt: fallback.exportedAt, defaultRange: fallback.range, waivers }
 }
 
-const hasOwnRange = (cca: CcaRow): boolean =>
-  cca.meanMin !== null || cca.meanMax !== null || cca.sdMin !== null || cca.sdMax !== null
+/** The bundle split into its three parts: settings rows, flat member rows and the CCA list. */
+interface SplitBundle {
+  readonly fileName: string
+  readonly exportedAt: string
+  readonly settings: Loaded<SettingsRow>
+  readonly flat: FlatFile
+  readonly ccas: ParseResult<BundleCcaRow>
+}
 
-/**
- * With a settings file loaded, the only ranges are the file's (spec 2g, 7.1): each CCA row gets its
- * waiver range or none (so it follows the file's default), ccas.csv ranges are dropped with one
- * warning, and a waiver for a CCA ccas.csv does not list is ignored with a warning.
- */
-function applySettings(
-  ccas: Loaded<CcaRow> | null,
+function splitBundle(classified: readonly Classified[], issues: Issue[]): SplitBundle | null {
+  const found = classified.find((c) => c.kind === 'bundle')
+  const loaded = loadFirst(classified, 'bundle', parseBundle, issues)
+  if (!found || !loaded) return null
+  const { fileName, result } = loaded
+  const pick = <S extends BundleRow['section']>(section: S) =>
+    result.rows.flatMap((r) => (r.section === section ? [r.row as Extract<BundleRow, { section: S }>['row']] : []))
+  const settingsRows = pick('settings')
+  const flatRows: FlatRow[] = pick('flat')
+  const waiverIDs = settingsRows.filter((r) => r.scope === 'waiver').map((r) => r.ccaID)
+  return {
+    fileName,
+    exportedAt: found.csv.rows[0]?.cells[found.csv.header.indexOf('exportedAt')] ?? '',
+    settings: { fileName, result: { rows: settingsRows, seenKeys: waiverIDs, issues: result.issues } },
+    flat: { fileName, result: { rows: flatRows, seenKeys: [...new Set(flatRows.map((r) => r.ccaID))], issues: [] } },
+    ccas: { rows: pick('cca'), seenKeys: result.seenKeys, issues: [] },
+  }
+}
+
+/** Waivers for CCAs the CCA list does not have are ignored with a warning (spec 2g). */
+function knownWaivers(
   settings: LoadedSettings,
-): { readonly ccas: Loaded<CcaRow> | null; readonly waivers: Readonly<Record<string, MeanSdRange>>; readonly issues: Issue[] } {
-  if (!ccas) return { ccas, waivers: settings.waivers, issues: [] }
-  const known = new Set(ccas.result.seenKeys)
+  ccaIds: readonly string[],
+  listName: string,
+): { readonly waivers: Readonly<Record<string, MeanSdRange>>; readonly issues: Issue[] } {
   const issues: Issue[] = []
   const waivers: Record<string, MeanSdRange> = {}
   for (const [ccaID, range] of Object.entries(settings.waivers)) {
-    if (known.has(ccaID)) waivers[ccaID] = range
+    if (ccaIds.includes(ccaID)) waivers[ccaID] = range
     else {
-      const text = `${ccaID} has a waiver in the settings file but is not listed in ${ccas.fileName}; the waiver is ignored.`
+      const text = `${ccaID} has a waiver in the settings file but is not listed in ${listName}; the waiver is ignored.`
       issues.push(makeIssue('SETTINGS_UNKNOWN_CCA', settings.fileName, text, { ccaID }))
     }
   }
-  const ignored = ccas.result.rows.filter(hasOwnRange).map((c) => c.ccaID)
-  if (ignored.length > 0) {
-    const text = `mean/SD ranges for ${ignored.join(', ')} are ignored because JCRC's points settings file is loaded.`
-    issues.push(makeIssue('CCAS_RANGE_IGNORED', ccas.fileName, text))
+  return { waivers, issues }
+}
+
+const NO_RANGE = { meanMin: null, meanMax: null, sdMin: null, sdMax: null }
+
+/** Checks the level entries; an entry with a bad level or tweak hands the engine null instead (R44). */
+function usableEntries(ccaLevels: readonly CcaLevelEntry[], config: ScenarioConfig, ccaIds: ReadonlySet<string>, issues: Issue[]): CcaLevelEntry[] {
+  return ccaLevels.map((entry) => {
+    const problems = validateCcaLevelEntry(entry, config, ccaIds)
+    issues.push(...problems)
+    return {
+      ...entry,
+      level: problems.some((p) => p.code === 'UNKNOWN_LEVEL') ? null : entry.level,
+      bonusOverride: isBonusTweak(entry.bonusOverride) ? entry.bonusOverride : null,
+      multiplierOverride: isMultiplierTweak(entry.multiplierOverride) ? entry.multiplierOverride : null,
+    }
+  })
+}
+
+/**
+ * One CCA row per bundle cca row: the type from the bundle (blank = 1x, with TYPE_NOT_SET unless
+ * the CCA is flat), the range from its waiver, and the level and tweaks from the sandbox table.
+ */
+function synthesiseCcas(
+  bundle: SplitBundle,
+  waivers: Readonly<Record<string, MeanSdRange>>,
+  entries: readonly CcaLevelEntry[],
+  issues: Issue[],
+): Loaded<CcaRow> {
+  const rows = bundle.ccas.rows.map((cca): CcaRow => {
+    if (cca.type === null && cca.flatPoints === null) {
+      const text = `${cca.ccaName} (${cca.ccaID}) has no type set in RH-app, so 1x is assumed. Set it on /admin/points and download the bundle again.`
+      issues.push(makeIssue('TYPE_NOT_SET', bundle.fileName, text, { line: cca.line, column: 'type', ccaID: cca.ccaID }))
+    }
+    const entry = ccaLevelFor(entries, cca.ccaID)
+    return {
+      line: cca.line,
+      ccaID: cca.ccaID,
+      ccaName: cca.ccaName,
+      type: cca.type ?? '1x',
+      level: entry?.level ?? null,
+      bonusOverride: entry?.bonusOverride ?? null,
+      multiplierOverride: entry?.multiplierOverride ?? null,
+      ...(waivers[cca.ccaID] ?? NO_RANGE),
+    }
+  })
+  return { fileName: bundle.fileName, result: { rows, seenKeys: bundle.ccas.seenKeys, issues: [] } }
+}
+
+/** A non-flat CCA with a points file and nothing picked in the level table (R25). */
+function levelNotSet(bundle: SplitBundle, leaderIds: ReadonlySet<string>, ccaLevels: readonly CcaLevelEntry[]): Issue[] {
+  return bundle.ccas.rows
+    .filter((cca) => cca.flatPoints === null && leaderIds.has(cca.ccaID))
+    .filter((cca) => {
+      const entry = ccaLevelFor(ccaLevels, cca.ccaID)
+      return !entry || (entry.level === null && entry.bonusOverride === null && entry.multiplierOverride === null)
+    })
+    .map((cca) => {
+      const text = `${cca.ccaName} (${cca.ccaID}) has no level yet, so a bonus of 0 and ×1 are assumed. Pick it on the Review step.`
+      return makeIssue('LEVEL_NOT_SET', '', text, { ccaID: cca.ccaID })
+    })
+}
+
+/**
+ * The bundle's flat CCAs: a group with no member rows is still flat (n 0), the member rows must
+ * carry the cca row's value, and a flat CCA cannot also have a points file.
+ */
+function bundleFlatGroups(
+  bundle: SplitBundle,
+  flats: readonly CheckedFlat[],
+  leaderFiles: readonly LeaderFile[],
+): { readonly issues: Issue[]; readonly flats: CheckedFlat[] } {
+  const issues: Issue[] = []
+  for (const flat of flats) {
+    const cca = bundle.ccas.rows.find((c) => c.ccaID === flat.ccaID)
+    if (cca && cca.flatPoints !== flat.flatPoints) {
+      const value = cca.flatPoints === null ? 'blank' : String(cca.flatPoints)
+      const text = `${flat.ccaID} has flatPoints ${flat.flatPoints} on its member rows but ${value} on its cca row; they must match.`
+      issues.push(makeIssue('FLAT_VALUE_MISMATCH', bundle.fileName, text, { line: cca.line, column: 'flatPoints', ccaID: flat.ccaID }))
+    }
   }
-  const rows = ccas.result.rows.map((cca) => ({ ...cca, ...(waivers[cca.ccaID] ?? { meanMin: null, meanMax: null, sdMin: null, sdMax: null }) }))
-  return { ccas: { fileName: ccas.fileName, result: { ...ccas.result, rows } }, waivers, issues }
+  const empty: CheckedFlat[] = []
+  for (const cca of bundle.ccas.rows.filter((c) => c.flatPoints !== null && !flats.some((f) => f.ccaID === c.ccaID))) {
+    const leader = leaderFiles.find((f) => f.ccaID === cca.ccaID)
+    if (leader) {
+      const text = `${cca.ccaID} has a points file AND flat points; a CCA is one or the other.`
+      issues.push(makeIssue('FLAT_AND_LEADER_FILE', leader.fileName, text, { ccaID: cca.ccaID }))
+    } else {
+      empty.push({ fileName: bundle.fileName, ccaID: cca.ccaID, flatPoints: cca.flatPoints ?? 0, rows: [] })
+    }
+  }
+  return { issues, flats: [...flats, ...empty] }
 }
 
 const ccaIdFromFileName = (name: string): string => /^points_(.+)_\d{8}\.csv$/i.exec(name)?.[1] ?? ''
@@ -190,24 +323,6 @@ function loadLeaders(classified: readonly Classified[], issues: Issue[]): Leader
   return files
 }
 
-/** Shim until ccas.csv is retired (P5): the old placement names as the default level with their numbers. */
-const LEGACY_PLACEMENT_LEVEL: Readonly<Record<CcaRow['placement'], string>> = {
-  pass: 'Pass',
-  bronze: 'Low Bronze',
-  silver: 'Low Silver',
-  gold: 'High Gold',
-}
-
-/** Shim (P5): a ccas.csv row as an engine CCA; an outgoingTier names the level, outgoingMultiplier is a tweak. */
-function ccaFromRow({ line: _line, placement, outgoingTier, outgoingMultiplier, ...cca }: CcaRow): Cca {
-  return {
-    ...cca,
-    level: outgoingTier ?? LEGACY_PLACEMENT_LEVEL[placement],
-    bonusOverride: null,
-    multiplierOverride: outgoingMultiplier,
-  }
-}
-
 function toEngineInput(
   residents: Loaded<ResidentRow>,
   ccas: Loaded<CcaRow>,
@@ -218,7 +333,7 @@ function toEngineInput(
   const residentList = residents.result.rows.map(
     ({ matric, name, gender, sem2, aux, jcrc }): Resident => ({ matric, name, gender, sem2, aux, jcrc }),
   )
-  const ccaList = ccas.result.rows.map(ccaFromRow)
+  const ccaList = ccas.result.rows.map(({ line: _line, ...cca }) => cca)
   const memberships = leaders.flatMap((leader) =>
     leader.rows.map(
       (row): Membership => ({
@@ -254,31 +369,63 @@ function toEngineInput(
   }
 }
 
+const byCcaID = (a: BundleCca, b: BundleCca): number => a.ccaID.localeCompare(b.ccaID, undefined, { numeric: true })
+
+function loadedBundle(bundle: SplitBundle | null): LoadedBundle | null {
+  if (!bundle) return null
+  const ccas = bundle.ccas.rows.map(({ line: _line, ...cca }): BundleCca => cca).sort(byCcaID)
+  return { fileName: bundle.fileName, exportedAt: bundle.exportedAt, ccas }
+}
+
+/** Adds what the bundle, the level table and the leader file say about a CCA to its stats. */
+function perCcaReport(stats: CcaStats, cca: CcaRow, bundle: SplitBundle, leaders: readonly CheckedLeader[]): PerCcaReport {
+  const row = bundle.ccas.rows.find((c) => c.ccaID === cca.ccaID)
+  const leader = leaders.find((l) => l.ccaID === cca.ccaID)
+  return {
+    ...stats.report,
+    type: row?.type ?? null,
+    isSport: row?.isSport ?? false,
+    ihgResult: row?.ihgResult ?? null,
+    ihgCap: row?.ihgCap ?? null,
+    level: cca.level,
+    bonusOverride: cca.bonusOverride,
+    multiplierOverride: cca.multiplierOverride,
+    outgoingLeaders: leader?.rows.filter((r) => r.outgoingRole !== 'none').length ?? 0,
+  }
+}
+
 /**
- * Parses and checks the dropped files. Pure: the same files and config always give the
- * same report. A mean or SD outside the range is a warning, never an error.
+ * Parses and checks the dropped files with the values entered in the sandbox (the level table).
+ * Pure: the same files, config and sandbox values always give the same report. A mean or SD
+ * outside the range is a warning, never an error.
  */
 export function validateImport(
   files: readonly SourceFile[],
   config: ScenarioConfig,
+  sandbox: Partial<SandboxInput> = {},
 ): ImportReport {
+  const ccaLevels = sandbox.ccaLevels ?? []
   const issues: Issue[] = []
   const classified = files.map((file) => classify(file, issues))
   issues.push(...fileLevelIssues(classified))
+  issues.push(...levelProblems(config))
   const residents = loadFirst(classified, 'residents', parseResidents, issues)
-  const loadedCcas = loadFirst(classified, 'ccas', parseCcas, issues)
-  const settingsFile = loadFirst(classified, 'settings', parseSettings, issues)
-  const settings = readSettings(settingsFile)
-  const applied = settings ? applySettings(loadedCcas, settings) : null
+  const bundle = splitBundle(classified, issues)
+  // A standalone settings or flat file is only read when there is no bundle (it is a duplicate beside one).
+  const settingsSource = bundle ? bundle.settings : loadFirst(classified, 'settings', parseSettings, issues)
+  const flatFile = bundle ? bundle.flat : loadFirst(classified, 'flat', parseFlat, issues)
+  const settings = readSettings(settingsSource)
+  const applied = settings && bundle ? knownWaivers(settings, bundle.ccas.seenKeys, bundle.fileName) : null
   if (applied) issues.push(...applied.issues)
-  const ccas = applied ? applied.ccas : loadedCcas
-  // While a settings file is loaded, its default replaces the sandbox's own for every check.
+  const ccaIds = new Set(bundle?.ccas.seenKeys ?? [])
+  const entries = bundle ? usableEntries(ccaLevels, config, ccaIds, issues) : []
+  const ccas = bundle ? synthesiseCcas(bundle, applied?.waivers ?? {}, entries, issues) : null
+  // While settings are loaded, their default replaces the sandbox's own for every check.
   const checkConfig: ScenarioConfig = settings ? { ...config, meanSdDefault: settings.defaultRange } : config
   const ihg = loadFirst(classified, 'ihg', parseIhg, issues)
   const leaderFiles = loadLeaders(classified, issues)
-  const flatFile = loadFirst(classified, 'flat', parseFlat, issues)
+  if (bundle) issues.push(...levelNotSet(bundle, new Set(leaderFiles.map((f) => f.ccaID)), ccaLevels))
   if (residents) issues.push(...checkResidentRows(residents, config))
-  if (ccas) issues.push(...checkCcaRows(ccas, config))
   const checked: CheckedLeader[] = []
   for (const leader of leaderFiles) {
     const outcome = checkLeaderFile(leader, residents, ccas)
@@ -289,19 +436,22 @@ export function validateImport(
     ? checkFlatFile(flatFile, residents, ccas, new Set(leaderFiles.map((f) => f.ccaID)))
     : null
   if (flatOutcome) issues.push(...flatOutcome.issues)
-  const flats = flatOutcome?.checked ?? []
+  const grouped = bundle ? bundleFlatGroups(bundle, flatOutcome?.checked ?? [], leaderFiles) : null
+  if (grouped) issues.push(...grouped.issues)
+  const flats = grouped?.flats ?? flatOutcome?.checked ?? []
   const ihgOutcome = ihg ? checkIhgRows(ihg, residents, ccas) : null
   if (ihgOutcome) issues.push(...ihgOutcome.issues)
-  if (ccas) issues.push(...checkOutgoing(ccas, checked), ...leaderWarnings(ccas, checked))
+  if (ccas) issues.push(...leaderWarnings(ccas, checked))
   if (ihg && config.ihgInSportNet) issues.push(...ihgNonMemberWarnings(ihg, checked, flats))
   if (ihg) issues.push(...ihgOnFlatWarnings(ihg, flats))
   const stats = (ccas?.result.rows ?? []).map((cca) => {
     const flat = flats.find((f) => f.ccaID === cca.ccaID)
-    return flat
+    const result = flat
       ? flatStats(cca, flat, checkConfig)
       : ccaStats(cca, checked.find((l) => l.ccaID === cca.ccaID), checkConfig)
+    return { cca, result }
   })
-  for (const s of stats) {
+  for (const { result: s } of stats) {
     if (s.issue) issues.push(s.issue)
     if (s.report.status === 'missing_file') {
       issues.push(makeIssue('NO_LEADER_FILE', '', `${s.report.name} (${s.report.ccaID}) has no points file.`, { ccaID: s.report.ccaID }))
@@ -313,10 +463,11 @@ export function validateImport(
   const reportSettings: LoadedSettings | null = settings && applied ? { ...settings, waivers: applied.waivers } : settings
   return {
     canCompute,
+    bundle: loadedBundle(bundle),
     settings: reportSettings,
     issues,
-    perCca: stats.map((s) => s.report),
-    outOfRange: stats.flatMap((s) => (s.outOfRange ? [s.outOfRange] : [])),
+    perCca: bundle ? stats.map(({ cca, result }) => perCcaReport(result, cca, bundle, checked)) : [],
+    outOfRange: stats.flatMap(({ result }) => (result.outOfRange ? [result.outOfRange] : [])),
     ...(input ? { input } : {}),
   }
 }

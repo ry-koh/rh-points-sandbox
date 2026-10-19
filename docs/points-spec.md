@@ -83,27 +83,50 @@ Filename: `points_<ccaID>_<YYYYMMDD>.csv`. One file per CCA.
 
 A resident may have several rows; their IHG points are summed.
 
-### (d) ccas.csv — JCRC
+### (d) RH-app bundle — produced by the RH app (JCRC)
 
-| Column | Type / allowed values |
+Filename: `points_bundle_<YYYYMMDD>.csv`. UTF-8, CRLF line endings, RFC 4180 quoting, the
+apostrophe formula guard on `ccaName`, `name` and `note` (kept verbatim for display). One file
+carries the CCA list, the mean/SD ranges and the flat members. Header exactly (18 columns):
+
+```
+formatVersion,section,scope,ccaID,ccaName,matric,name,flatPoints,type,sport,ihgResult,ihgCap,meanMin,meanMax,sdMin,sdMax,note,exportedAt
+```
+
+Rows come in this order: `settings` rows (the default row, then waivers by `ccaID`), `cca`
+rows (by `ccaID`), `flat` rows (by `ccaID`, members in the app's order). `formatVersion`,
+`section` and `exportedAt` are filled on every row; every other column must be blank unless the
+row's section uses it (`BAD_BUNDLE_FILE`, naming the line and column).
+
+| Section | Columns it uses | Rules |
+|---|---|---|
+| `settings` | `scope`, `ccaID`, `ccaName`, `meanMin`, `meanMax`, `sdMin`, `sdMax`, `note` | as the settings file's rows (2g): exactly one `default` row, then `waiver` rows with the effective range |
+| `cca` | `ccaID`, `ccaName`, `flatPoints`, `type`, `sport`, `ihgResult`, `ihgCap` | one row per CCA, `ccaID` unique (`DUPLICATE_CCA`); at least one `cca` row |
+| `flat` | `ccaID`, `ccaName`, `matric`, `name`, `flatPoints` | as the flat-points file's rows (2e) |
+
+| `cca` column | Type / allowed values |
 |---|---|
-| `ccaID` | string, unique |
+| `ccaID` | string, unique among the `cca` rows |
 | `ccaName` | string |
-| `type` | `1x` / `0.5x` |
-| `placement` | `pass` / `bronze` / `silver` / `gold` |
-| `outgoingTier` | blank, or a level name from `levels` (the CCA's level; see 3) |
-| `outgoingMultiplier` | blank, or a number > 0 (the CCA's multiplier tweak) |
-| `meanMin`, `meanMax`, `sdMin`, `sdMax` | blank, or a number |
+| `flatPoints` | blank, or a number ≥ 0 (the CCA is flat; its `flat` rows must carry the same value, `FLAT_VALUE_MISMATCH`) |
+| `type` | `1x` / `0.5x`, or blank = not set in RH-app (`1x` is assumed, `TYPE_NOT_SET`; never for a flat CCA) |
+| `sport` | `Y` / `N`, never blank |
+| `ihgResult` | blank, or `1st` / `2nd` / `3rd` / `3rd4th_no_match`; only on a `sport` = `Y` row (`BAD_BUNDLE_FILE`) |
+| `ihgCap` | blank, or a whole number ≥ 1 (`BAD_IHG_CAP`, read as blank); only on a `sport` = `Y` row (`BAD_BUNDLE_FILE`) |
 
-A **blank range field means "use the default"** (`meanSdDefault`). That is how a waiver is
-stored: a waived CCA simply carries its own non-blank override values. Each of the four
-fields falls back independently.
+`formatVersion` must equal `1` (`BAD_FORMAT_VERSION`). A file is detected by its header (or,
+failing that, a `points_bundle_` file name). The bundle is required (`MISSING_BUNDLE_FILE`);
+a second one is `DUPLICATE_BUNDLE_FILE`. It takes precedence over the standalone files: beside
+a bundle, a standalone settings (2g) or flat-points (2e) file is `DUPLICATE_SETTINGS_FILE` /
+`DUPLICATE_FLAT_FILE` and is ignored. A `cca` row with `flatPoints` and no `flat` rows is a
+flat CCA with no members.
 
-**While a points settings file (2g) is loaded, these four range columns are ignored**: the
-mean/SD ranges come only from the settings file, and the affected CCAs get one
-`CCAS_RANGE_IGNORED` warning.
+ccas.csv (spec ≤ v2.2) is retired: `CCAS_FILE_RETIRED`.
 
 ### (e) flat-points file — produced by the RH app (JCRC), optional
+
+Older standalone export, recognised but superseded by the bundle (needs a bundle for the CCA
+list; beside one it is a duplicate).
 
 Filename: `flat_points_<YYYYMMDD>.csv`. UTF-8, CRLF line endings, RFC 4180 quoting. **One file
 covers every flat CCA**; one row per member per flat CCA. Header exactly:
@@ -115,7 +138,7 @@ formatVersion,ccaID,ccaName,matric,name,flatPoints,exportedAt
 | Column | Type / allowed values |
 |---|---|
 | `formatVersion` | integer, must equal `1` |
-| `ccaID` | string, must exist in ccas.csv, and must NOT also have a leader file |
+| `ccaID` | string, must be a `cca` row of the bundle, and must NOT also have a leader file |
 | `ccaName` | string |
 | `matric` | matric pattern |
 | `name` | string |
@@ -129,6 +152,9 @@ ccas.csv are ignored for the points (the CCA still needs a ccas.csv row). A flat
 **not** mean/SD checked and does **not** raise `NO_LEADER_FILE`.
 
 ### (g) points settings file — produced by the RH app (JCRC)
+
+Older standalone export, recognised but superseded by the bundle (needs a bundle for the CCA
+list; beside one it is a duplicate).
 
 Filename: `points_settings_<YYYYMMDD>.csv`. UTF-8, CRLF line endings, RFC 4180 quoting.
 Config only: it holds no names of people, no matrics and no scores. Header exactly:
@@ -210,6 +236,29 @@ already has `levels` is left as it is. The reader reports that `levels` was migr
 
 Overrides (6.2), discretion (6.3) and wheel resolutions (5.6) are **resident data**, not
 config. They are never part of the scenario JSON.
+
+## 3b. Per-CCA sandbox values (levels)
+
+Each CCA's level is picked in the sandbox (on the Review step) and saved in the workspace
+file; it is not read from any input file. One entry per CCA:
+
+| Field | Type / allowed values |
+|---|---|
+| `ccaID` | a `cca` row of the bundle |
+| `level` | null, or the name of one of `levels` (3) |
+| `bonusOverride` | null, or a number ≥ 0 (this CCA's members' bonus instead of the level's) |
+| `multiplierOverride` | null, or a number > 0 (this CCA's outgoing multiplier instead of the level's) |
+
+| Code | Sev | Meaning |
+|---|---|---|
+| `LEVEL_NOT_SET` | warning | a non-flat CCA with a leader file has no entry (or one with nothing set): bonus 0 and ×1 are assumed |
+| `UNKNOWN_LEVEL` | error | `level` is not one of the `levels`; the CCA is handed to the engine with no level |
+| `BAD_LEVEL_TWEAK` | error | a tweak is not a finite number in its range |
+| `DUPLICATE_LEVEL_NAME` | error | two `levels` in Settings share a name |
+| `LEVEL_UNKNOWN_CCA` | warning | an entry names a CCA that is not in the bundle; the entry is ignored |
+
+A level renamed in Settings carries its CCAs with it (8b); a level removed while CCAs use it is
+an error until they are re-picked.
 
 ## 4. Formulas
 
@@ -566,97 +615,109 @@ Block results until each is fixed by re-importing a corrected file.
 - `basePoints` not an integer in 0–20
 - bad enum or Y/N value
 - mixed `ccaID` within one file
-- `ccaID` not in ccas.csv
+- `ccaID` not in the bundle
 - two files for the same `ccaID`
 - wrong `formatVersion` or wrong header
-- an outgoing leader in a CCA whose `outgoingTier` and `outgoingMultiplier` are both blank
 - duplicate matric in residents.csv
 - bad `gender`, `sem2` or `aux` value
 - ihg.csv `matric` not in residents.csv
-- ihg.csv `ccaID` not in ccas.csv
-- an `outgoingTier` name in ccas.csv that is not one of the `levels`
-- an `outgoingMultiplier` in ccas.csv that is not a positive number
+- ihg.csv `ccaID` not in the bundle
+- no RH-app bundle, more than one bundle, a value in a column its section does not use, an IHG
+  column on a `sport` = `N` row, an unknown `section`, no `cca` rows, an `ihgCap` that is not
+  a whole number ≥ 1, or the same `ccaID` on two `cca` rows
+- a ccas.csv (retired)
+- a level entry whose `level` is not one of the `levels`, or whose tweak is out of range; two
+  `levels` with the same name
 - residents.csv: `jcrc` not `N` / `FULL` / `EXCHANGE`, or `jcrc` other than `N` on a `sem2` = `Y` resident
-- flat-points file: `ccaID` not in ccas.csv, `ccaID` that also has a leader file, `flatPoints`
-  not a number ≥ 0, rows of one `ccaID` with different `flatPoints`, more than one flat file,
-  and the usual matric checks (bad, unknown, duplicate within one `ccaID`)
+- flat rows: `ccaID` not in the bundle, `ccaID` that also has a leader file, `flatPoints`
+  not a number ≥ 0, rows of one `ccaID` with different `flatPoints` (or a value other than the
+  `cca` row's), a standalone flat file beside the bundle, and the usual matric checks (bad,
+  unknown, duplicate within one `ccaID`)
 - points settings file: not exactly one `default` row, a `scope` other than `default` /
   `waiver`, a waiver row without a `ccaID`, a range value that is not a number or is outside
   0–20 (mean) / 0–10 (SD) or has min above max, the same `ccaID` on two waiver rows, a wrong
-  `formatVersion`, and more than one settings file
+  `formatVersion`, and a standalone settings file beside the bundle
 
 ### 7.3 WARNINGS
 
 Shown, do not block.
 
 - mean or SD outside the CCA's range (allowed; shown on Import and Review)
-- a CCA in ccas.csv with no leader file
+- a CCA in the bundle with no leader file
+- a non-flat CCA whose `type` is blank in the bundle (1x is assumed)
+- a non-flat CCA with a leader file and no level picked (bonus 0 and ×1 are assumed)
+- a level entry for a CCA that is not in the bundle (the entry is ignored)
 - `semesterOnly` on a `0.5x` CCA (the tick is ignored)
 - `aux` above `auxCap`
 - IHG for a non-member when `ihgInSportNet` is on
 - more than 10 `0.5x` memberships for one resident
 - an IHG row for a flat or overridden membership (the row is always ignored)
-- ccas.csv range columns that are ignored because a points settings file is loaded
-- a settings-file waiver for a `ccaID` that is not in ccas.csv (the row is ignored)
+- a waiver for a `ccaID` that is not in the bundle (the row is ignored)
 
 ### 7.4 Issue codes
 
 Every issue carries `severity`, `code`, `fileName`, and where known `line`,
 `column`, `ccaID` and `matric`, plus a plain-English `message`. Line numbers count the header as
 line 1. `canCompute` is true when no error remains. Checks that need a
-reference file (residents.csv, ccas.csv) are skipped when that file is missing, so one mistake
+reference file (residents.csv, the bundle) are skipped when that file is missing, so one mistake
 raises one issue rather than a cascade. The IHG file is optional.
 
 | Code | Sev | Raised when |
 |---|---|---|
 | `UNRECOGNISED_FILE` | error | header matches no file kind and the file name gives no hint |
 | `CSV_SYNTAX` | error | unterminated quote, or a row whose cell count differs from the header |
-| `BAD_HEADER` | error | file name says leader (`points_*`) / flat (`flat_points_*`) / residents / ihg / ccas but the header columns are not exactly right (a residents.csv without the `jcrc` column lands here) |
-| `BAD_FORMAT_VERSION` | error | leader, flat or settings `formatVersion` is not `1` |
+| `BAD_HEADER` | error | file name says bundle (`points_bundle_*`) / leader (`points_*`) / flat (`flat_points_*`) / residents / ihg but the header columns are not exactly right (a residents.csv without the `jcrc` column lands here) |
+| `BAD_FORMAT_VERSION` | error | bundle, leader, flat or settings `formatVersion` is not `1` |
 | `MIXED_CCA_ID` | error | one leader file contains more than one `ccaID` |
 | `DUPLICATE_CCA_FILE` | error | two leader files for the same `ccaID` |
 | `MISSING_RESIDENTS_FILE` | error | no residents.csv |
-| `MISSING_CCAS_FILE` | error | no ccas.csv |
-| `DUPLICATE_RESIDENTS_OR_CCAS_FILE` | error | more than one residents, ccas or ihg file |
-| `DUPLICATE_FLAT_FILE` | error | more than one flat-points file (the extra copy is ignored) |
+| `MISSING_BUNDLE_FILE` | error | no RH-app bundle |
+| `DUPLICATE_BUNDLE_FILE` | error | more than one bundle (the extra copy is ignored; remove the older one) |
+| `BAD_BUNDLE_FILE` | error | a bundle value in a column its section does not use, an `ihgResult` / `ihgCap` on a `sport` = `N` row, an unknown `section`, a `cca` row without a `ccaID`, or no `cca` rows at all |
+| `BAD_IHG_CAP` | error | a bundle `ihgCap` that is not blank and not a whole number ≥ 1 (read as blank) |
+| `CCAS_FILE_RETIRED` | error | a ccas.csv (by its header or a `ccas` file name); its rows are not read |
+| `DUPLICATE_RESIDENTS_OR_IHG_FILE` | error | more than one residents or ihg file |
+| `DUPLICATE_FLAT_FILE` | error | a standalone flat-points file beside the bundle, or more than one without a bundle (the extra copy is ignored) |
 | `BAD_MATRIC` | error | matric does not match `^A\d{7}[A-Z]$` after uppercasing |
 | `UNKNOWN_MATRIC` | error | leader matric not in residents.csv |
 | `DUPLICATE_MATRIC_IN_FILE` | error | same matric twice in one leader file, or twice within one `ccaID` of the flat file (the later row is ignored) |
 | `DUPLICATE_RESIDENT` | error | same matric twice in residents.csv |
 | `BAD_BASE_POINTS` | error | `basePoints` not a whole number 0–20 |
-| `BAD_ENUM` | error | bad `outgoingRole` / `incomingRole` / `type` / `placement` value |
-| `BAD_YN` | error | `semesterOnly` / `sem2` not `Y` or `N` |
+| `BAD_ENUM` | error | bad `outgoingRole` / `incomingRole` / `type` / `ihgResult` / `placement` value |
+| `BAD_YN` | error | `semesterOnly` / `sem2` / `sport` not `Y` or `N` |
 | `BAD_GENDER` | error | `gender` not `M` or `F` |
 | `BAD_AUX` | error | `aux` not a whole number ≥ 0 |
-| `UNKNOWN_CCA` | error | leader file or flat-file `ccaID` not in ccas.csv |
+| `UNKNOWN_CCA` | error | leader file or flat-row `ccaID` not in the bundle |
 | `BAD_JCRC` | error | `jcrc` not `N`, `FULL` or `EXCHANGE` |
 | `JCRC_AND_SEM2` | error | `jcrc` is `FULL` or `EXCHANGE` and `sem2` is `Y` for the same resident |
 | `BAD_FLAT_POINTS` | error | `flatPoints` not a number ≥ 0 |
-| `FLAT_VALUE_MISMATCH` | error | rows of one flat `ccaID` carry different `flatPoints` |
-| `FLAT_AND_LEADER_FILE` | error | a `ccaID` has both a flat-points row and a leader file |
+| `FLAT_VALUE_MISMATCH` | error | rows of one flat `ccaID` carry different `flatPoints`, or a value other than its `cca` row's (or that row's is blank) |
+| `FLAT_AND_LEADER_FILE` | error | a `ccaID` has both flat points (member rows, or `flatPoints` on its `cca` row) and a leader file |
 | `BAD_FINAL_POINTS` | error | (override entry) `finalPoints` is not a finite number |
 | `MISSING_REASON` | error | (override or discretion entry) reason empty or over 200 characters |
 | `OVERRIDE_UNKNOWN_MEMBERSHIP` | error | (override entry) no such membership |
 | `BAD_DISCRETION_POINTS` | error | (discretion entry) a delta is not a finite number |
 | `DISCRETION_UNKNOWN_RESIDENT` | error | (discretion entry) no such resident |
 | `IHG_UNKNOWN_MATRIC` | error | ihg.csv matric not in residents.csv |
-| `IHG_UNKNOWN_CCA` | error | ihg.csv `ccaID` not in ccas.csv |
-| `UNKNOWN_TIER` | error | `outgoingTier` not blank and not one of the `levels` |
-| `BAD_MANUAL_MULTIPLIER` | error | `outgoingMultiplier` not blank and not a positive number |
-| `MISSING_OUTGOING_MULTIPLIER` | error | a CCA has an outgoing leader but both `outgoingTier` and `outgoingMultiplier` are blank |
-| `DUPLICATE_CCA` | error | same `ccaID` twice in ccas.csv |
-| `BAD_RANGE` | error | a mean/SD range field in ccas.csv is not blank and not a number; or a settings-file range value is not a number, is outside 0–20 (mean) / 0–10 (SD), or has min above max |
-| `BAD_SETTINGS_FILE` | error | settings file without exactly one `default` row, with a `scope` other than `default` / `waiver`, or a waiver row without a `ccaID` |
+| `IHG_UNKNOWN_CCA` | error | ihg.csv `ccaID` not in the bundle |
+| `UNKNOWN_LEVEL` | error | (level entry, 3b) `level` not one of the `levels` |
+| `BAD_LEVEL_TWEAK` | error | (level entry, 3b) `bonusOverride` not a number ≥ 0, or `multiplierOverride` not a number > 0 |
+| `DUPLICATE_LEVEL_NAME` | error | two `levels` in Settings have the same name |
+| `DUPLICATE_CCA` | error | same `ccaID` on two `cca` rows of the bundle (the later row is ignored) |
+| `BAD_RANGE` | error | a settings range value (bundle or settings file) is not a number, is outside 0–20 (mean) / 0–10 (SD), or has min above max |
+| `BAD_SETTINGS_FILE` | error | settings rows (bundle or settings file) without exactly one `default` row, with a `scope` other than `default` / `waiver`, or a waiver row without a `ccaID` |
 | `DUPLICATE_WAIVER` | error | the same `ccaID` on two waiver rows of the settings file (the later row is ignored) |
-| `DUPLICATE_SETTINGS_FILE` | error | more than one settings file (the extra copy is ignored) |
+| `DUPLICATE_SETTINGS_FILE` | error | a standalone settings file beside the bundle, or more than one without a bundle (the extra copy is ignored) |
 | `MEAN_SD_OUT_OF_RANGE` | warning | mean or population SD outside the CCA's range (also raised for a leader file with no members) |
-| `NO_LEADER_FILE` | warning | a CCA in ccas.csv has no leader file and is not a flat CCA |
+| `NO_LEADER_FILE` | warning | a CCA in the bundle has no leader file and is not a flat CCA |
+| `TYPE_NOT_SET` | warning | a non-flat `cca` row with a blank `type` (1x is assumed) |
+| `LEVEL_NOT_SET` | warning | (3b) a non-flat CCA with a leader file and no level or tweak picked (bonus 0 and ×1 are assumed) |
+| `LEVEL_UNKNOWN_CCA` | warning | (3b) a level entry for a CCA not in the bundle; the entry is ignored |
 | `SEMESTER_ONLY_ON_HALF_CCA` | warning | `semesterOnly` = `Y` on a `0.5x` CCA (ignored) |
 | `AUX_ABOVE_CAP` | warning | `aux` above `auxCap` |
 | `IHG_NON_MEMBER` | warning | IHG row for a CCA the resident is not in, only when `ihgInSportNet` is on |
 | `MANY_HALF_CCAS` | warning | a resident has more than 10 `0.5x` memberships |
-| `CCAS_RANGE_IGNORED` | warning | a settings file is loaded and ccas.csv has range values for one or more CCAs; they are ignored (the message lists the CCAs) |
-| `SETTINGS_UNKNOWN_CCA` | warning | a settings-file waiver names a `ccaID` not in ccas.csv; the row is ignored |
+| `SETTINGS_UNKNOWN_CCA` | warning | a waiver names a `ccaID` not in the bundle; the row is ignored |
 | `IHG_ON_FINAL_CCA` | warning | an IHG row for a flat or overridden membership; the row is always ignored, whatever `ihgInSportNet` says |
 
 The five entry codes (`BAD_FINAL_POINTS` … `DISCRETION_UNKNOWN_RESIDENT`) are returned by the

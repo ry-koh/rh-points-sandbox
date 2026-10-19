@@ -14,8 +14,8 @@ import {
 } from '../../engine'
 import { validateImport, type ImportReport, type SourceFile } from '../../import'
 
-/** Why Finalise is refused until JCRC's points settings file is loaded (spec 2g). */
-export const SETTINGS_REQUIRED_REASON = "Load JCRC's points settings file before finalising."
+/** Why Finalise is refused until the RH-app bundle (with its settings) is loaded (spec 2d). */
+export const BUNDLE_REQUIRED_REASON = 'Load the RH-app bundle before finalising.'
 
 /** One applied penalty as shown in the Penalties panel. */
 export interface PenaltyLogEntry {
@@ -97,11 +97,11 @@ function revalidate(state: Inputs): AppState {
 }
 
 /**
- * Why the lists cannot be finalised yet, or null when they can. Finalising needs a usable JCRC
- * settings file (so every range check used JCRC's own ranges) and an import without errors.
+ * Why the lists cannot be finalised yet, or null when they can. Finalising needs the RH-app bundle
+ * with usable settings (so every range check used JCRC's own ranges) and an import without errors.
  */
 export function finaliseBlock(state: Pick<AppState, 'report'>): string | null {
-  if (!state.report.settings) return SETTINGS_REQUIRED_REASON
+  if (!state.report.settings) return BUNDLE_REQUIRED_REASON
   if (!state.report.canCompute) return 'Fix the import errors before finalising.'
   return null
 }

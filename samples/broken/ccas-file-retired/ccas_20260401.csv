@@ -1,0 +1,2 @@
+ccaID,ccaName,type,placement,outgoingTier,outgoingMultiplier,meanMin,meanMax,sdMin,sdMax
+C1,Test CCA One,1x,gold,,,,,,

@@ -1,4 +1,5 @@
 import { Plus, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { DEFAULT_CONFIG, type Level } from '../../engine'
 import { ChangedMark, MULTIPLIER_SLIDER, NumberField, NumberInput, SegmentedField, differs } from './fields'
 import { INCOMING_LABELS, STACKING_OPTIONS, SETTINGS_TEXT as T } from './labels'
@@ -53,6 +54,59 @@ interface LevelsTableProps extends SectionProps {
 
 const usedBy = (n: number): string => `used by ${n} ${n === 1 ? 'CCA' : 'CCAs'}`
 
+/**
+ * Why a typed level name cannot be stored yet, or null when it can (D24): it must be non-blank
+ * and differ from every other level's name. The store never holds a half-typed name.
+ */
+export function levelNameProblem(draft: string, index: number, levels: readonly Level[]): string | null {
+  const name = draft.trim()
+  if (name === '') return "Name can't be blank"
+  if (levels.some((level, i) => i !== index && level.name === name)) return `Another level is already called ${name}`
+  return null
+}
+
+interface LevelNameInputProps {
+  readonly index: number
+  readonly levels: readonly Level[]
+  readonly onCommit: (name: string) => void
+}
+
+/** Keeps a local draft; commits on blur or Enter when the name is usable, reverts on Escape or a bad blur. */
+function LevelNameInput({ index, levels, onCommit }: LevelNameInputProps) {
+  const stored = levels[index]?.name ?? ''
+  const [draft, setDraft] = useState(stored)
+  useEffect(() => setDraft(stored), [stored])
+  const problem = draft === stored ? null : levelNameProblem(draft, index, levels)
+  const commit = (): boolean => {
+    if (problem !== null) return false
+    const name = draft.trim()
+    if (name !== stored) onCommit(name)
+    setDraft(name)
+    return true
+  }
+  return (
+    <div className="min-w-0 flex-1">
+      <input
+        aria-label={`Level ${index + 1} name`}
+        aria-invalid={problem !== null}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => {
+          if (!commit()) setDraft(stored)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') commit()
+          if (event.key === 'Escape') setDraft(stored)
+        }}
+        className={`motion h-7 w-full rounded-[3px] border bg-transparent px-1.5 text-body ${
+          problem === null ? 'border-transparent hover:border-ink/20' : 'border-error'
+        }`}
+      />
+      {problem !== null && <p role="alert" className="px-1.5 text-cap text-error">{problem}</p>}
+    </div>
+  )
+}
+
 export function LevelsTable({ config, update, usage }: LevelsTableProps) {
   const levels = config.levels
   const set = (next: readonly Level[]): void => update('levels', next)
@@ -74,12 +128,7 @@ export function LevelsTable({ config, update, usage }: LevelsTableProps) {
           return (
             <li key={i} className="py-1">
               <div className="flex items-center gap-1.5">
-                <input
-                  aria-label={`Level ${i + 1} name`}
-                  value={level.name}
-                  onChange={(event) => patch(i, { name: event.target.value })}
-                  className="motion h-7 min-w-0 flex-1 rounded-[3px] border border-transparent bg-transparent px-1.5 text-body hover:border-ink/20"
-                />
+                <LevelNameInput index={i} levels={levels} onCommit={(name) => patch(i, { name })} />
                 <NumberInput label={`${level.name} bonus`} value={level.bonus} min={0} step={BONUS_STEP} onChange={(b) => patch(i, { bonus: b })} className="w-[76px]" />
                 <NumberInput label={`${level.name} multiplier`} value={level.multiplier} min={0} step={MULTIPLIER_SLIDER.step} onChange={(m) => patch(i, { multiplier: m })} className="w-[76px]" />
                 <IconButton

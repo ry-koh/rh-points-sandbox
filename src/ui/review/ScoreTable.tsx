@@ -1,7 +1,7 @@
-import { Check, TriangleAlert } from 'lucide-react'
+import { TriangleAlert } from 'lucide-react'
 import { useEffect, useState, type KeyboardEvent } from 'react'
 import { BASE_POINTS_MAX, BASE_POINTS_MIN, MAX_REASON_LENGTH } from '../../engine'
-import type { CheckedReviewEdit, LeaderRow } from '../../import'
+import type { CheckedReviewEdit, CheckedTickEdit, LeaderRow } from '../../import'
 import { Chip } from '../common/controls'
 import { roleLabel } from '../drawer/drawerData'
 
@@ -9,6 +9,8 @@ export interface ScoreRow {
   readonly member: LeaderRow
   /** This membership's edit as last judged; null when it has none. */
   readonly edit: CheckedReviewEdit | null
+  /** This membership's IHG tick edit as last judged; null when it has none. */
+  readonly tickEdit: CheckedTickEdit | null
   readonly hasFinalOverride: boolean
 }
 
@@ -18,6 +20,8 @@ interface ScoreTableProps {
   readonly locked: boolean
   /** Stores (or reverts) a reviewed score; returns the problem in words, or null. */
   readonly onSave: (member: LeaderRow, score: string, reason: string) => string | null
+  /** Sets the member's IHG tick (and its reason), or reverts it when `ticked` is the file's tick. */
+  readonly onTick: (member: LeaderRow, ticked: boolean, reason: string) => void
 }
 
 const SCORE_ATTR = 'data-score-index'
@@ -26,12 +30,67 @@ const focusScore = (index: number): void => {
   document.querySelector<HTMLInputElement>(`[${SCORE_ATTR}="${index}"]`)?.focus()
 }
 
-function ScoreLine({ row, index, isSport, locked, onSave }: {
+function IhgCell({ row, locked, onTick }: {
+  readonly row: ScoreRow
+  readonly locked: boolean
+  readonly onTick: ScoreTableProps['onTick']
+}) {
+  const { member, tickEdit } = row
+  const applied = tickEdit?.status === 'applied' ? tickEdit.entry : null
+  const ticked = applied?.to ?? member.ihg
+  const storedReason = applied?.reason ?? ''
+  const [reason, setReason] = useState(storedReason)
+  useEffect(() => setReason(storedReason), [storedReason])
+  const changed = tickEdit?.status === 'changed'
+  return (
+    <td className="py-1.5 pr-3">
+      <label className={`inline-flex items-center gap-1.5 rounded-[3px] border px-1.5 py-0.5 ${applied ? 'border-gold bg-gold-soft' : 'border-transparent'}`}>
+        <input
+          type="checkbox"
+          checked={ticked}
+          disabled={locked}
+          aria-label={`IHG tick for ${member.name}`}
+          onChange={(event) => onTick(member, event.target.checked, reason)}
+          className="accent-raffles disabled:opacity-60"
+        />
+        <span className="text-cap text-muted">{ticked ? 'Ticked' : 'No'}</span>
+      </label>
+      {applied && (
+        <input
+          type="text"
+          value={reason}
+          maxLength={MAX_REASON_LENGTH}
+          disabled={locked}
+          placeholder="Reason (optional)"
+          aria-label={`Reason for ${member.name}'s IHG tick`}
+          onChange={(event) => setReason(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              if (reason !== storedReason) onTick(member, ticked, reason)
+            }
+            if (event.key === 'Escape') setReason(storedReason)
+          }}
+          className="motion mt-1 block h-8 w-full min-w-36 rounded-[3px] border border-ink/20 bg-card px-2 text-body hover:border-ink/50 disabled:opacity-60"
+        />
+      )}
+      {applied && reason !== storedReason && <p className="mt-0.5 text-cap text-muted">Enter saves · Esc cancels</p>}
+      {changed && tickEdit && (
+        <p className="mt-0.5 flex items-center gap-1 text-cap text-warning">
+          <TriangleAlert aria-hidden size={12} /> Edit to {tickEdit.entry.to ? 'ticked' : 'not ticked'} not applied: the file changed.
+        </p>
+      )}
+    </td>
+  )
+}
+
+function ScoreLine({ row, index, isSport, locked, onSave, onTick }: {
   readonly row: ScoreRow
   readonly index: number
   readonly isSport: boolean
   readonly locked: boolean
   readonly onSave: ScoreTableProps['onSave']
+  readonly onTick: ScoreTableProps['onTick']
 }) {
   const { member, edit } = row
   const applied = edit?.status === 'applied' ? edit.entry : null
@@ -61,7 +120,7 @@ function ScoreLine({ row, index, isSport, locked, onSave }: {
   }
   const changed = edit?.status === 'changed'
   return (
-    <tr className={`border-b border-rule align-top ${applied ? 'bg-gold-soft/50' : 'hover:bg-ink/[0.03]'}`}>
+    <tr className={`border-b border-rule align-top ${applied || row.tickEdit?.status === 'applied' ? 'bg-gold-soft/50' : 'hover:bg-ink/[0.03]'}`}>
       <td className="py-1.5 pr-3">
         <div className="font-medium">{member.name}</div>
         <div className="font-mono text-cap text-muted">{member.matric}</div>
@@ -111,18 +170,14 @@ function ScoreLine({ row, index, isSport, locked, onSave }: {
         {roleLabel(member.outgoingRole)} / {roleLabel(member.incomingRole)}
       </td>
       <td className="py-1.5 pr-3 text-body">{member.semesterOnly ? 'Yes' : <span className="text-muted">—</span>}</td>
-      {isSport && (
-        <td className="py-1.5 pr-3">
-          {member.ihg ? <Check aria-label="Ticked for IHG" size={15} className="text-ok" /> : <span className="text-muted">—</span>}
-        </td>
-      )}
+      {isSport && <IhgCell row={row} locked={locked} onTick={onTick} />}
       <td className="py-1.5">{row.hasFinalOverride && <Chip tone="gold">final points set on Results</Chip>}</td>
     </tr>
   )
 }
 
-/** The leader file's members: the reviewed score is the only editable value (spec 6.4). */
-export function ScoreTable({ rows, isSport, locked, onSave }: ScoreTableProps) {
+/** The leader file's members: the reviewed score and (for a sport) the IHG tick are editable (spec 6.4). */
+export function ScoreTable({ rows, isSport, locked, onSave, onTick }: ScoreTableProps) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[880px] border-collapse text-body">
@@ -134,13 +189,13 @@ export function ScoreTable({ rows, isSport, locked, onSave }: ScoreTableProps) {
             <th scope="col" className="py-2 pr-3">Reason</th>
             <th scope="col" className="py-2 pr-3" title="Outgoing / incoming role">Out / In</th>
             <th scope="col" className="py-2 pr-3" title="Semester-only">Sem</th>
-            {isSport && <th scope="col" className="py-2 pr-3" title="Ticked for IHG points in the RH app">IHG</th>}
+            {isSport && <th scope="col" className="py-2 pr-3" title="Gets the sport's IHG points; a change here is logged">IHG</th>}
             <th scope="col" className="py-2"><span className="sr-only">Notes</span></th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <ScoreLine key={row.member.matric} row={row} index={i} isSport={isSport} locked={locked} onSave={onSave} />
+            <ScoreLine key={row.member.matric} row={row} index={i} isSport={isSport} locked={locked} onSave={onSave} onTick={onTick} />
           ))}
         </tbody>
       </table>

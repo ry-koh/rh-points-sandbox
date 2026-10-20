@@ -52,6 +52,7 @@ function Facts({ cca }: { readonly cca: PerCcaReport }) {
                 <span className="num font-medium">
                   {cca.ihgTicked} of {cca.ihgCap} ticked · {IHG_LABELS[cca.ihgResult]}
                 </span>
+                {cca.ihgCap !== null && cca.ihgTicked > cca.ihgCap && <Chip tone="warning">over cap · allowed</Chip>}
                 <FromApp />
               </>
             )}

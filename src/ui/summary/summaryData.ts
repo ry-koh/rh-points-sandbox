@@ -21,15 +21,24 @@ export interface SummaryMembership {
   readonly levelName: string | null
   readonly tweaked: boolean
   readonly flatPoints: number | null
+  /** A flat value edited on Review; `flatFile` is the RH-app value (null when the CCA is not flat). */
+  readonly flatEdited: boolean
+  readonly flatFile: number | null
 }
+
+/** How an AUX edit was judged against residents.csv. */
+export type AuxEditState = 'applied' | 'changed' | 'stale'
 
 export interface SummaryRow {
   readonly matric: string
   readonly name: string
   readonly gender: Gender
   readonly sem2: boolean
-  /** The AUX count (an input), not AUX points. */
+  /** The AUX count in use (an input), not AUX points. */
   readonly aux: number
+  /** residents.csv's count. */
+  readonly auxFile: number
+  readonly auxEdit: AuxEditState | null
   readonly jcrc: JcrcStatus
   readonly jcrcNote: string | null
   readonly ihg: readonly { readonly ccaID: string; readonly result: IhgPlacement }[]
@@ -42,6 +51,8 @@ export interface SummaryCounts {
   readonly discretion: number
   readonly edits: number
   readonly ihgRecipients: number
+  readonly auxEdits: number
+  readonly flatEdits: number
 }
 
 const byName = (a: SummaryRow, b: SummaryRow): number =>
@@ -65,6 +76,10 @@ export function summaryRows(
   )
   const perCca = new Map(report.perCca.map((c) => [c.ccaID, c]))
   const ccaNames = new Map(input.ccas.map((c) => [c.ccaID, c.ccaName]))
+  const auxJudged = new Map(report.review.auxEdits.map((e) => [e.entry.matric, e]))
+  const flatApplied = new Map(
+    report.review.flatEdits.filter((e) => e.status === 'applied').map((e) => [reviewKey(e.entry), e.entry.from]),
+  )
   const ticked = new Set(input.ihg.map((e) => reviewKey(e)))
   const rows = input.residents.map((resident): SummaryRow => ({
     matric: resident.matric,
@@ -72,6 +87,8 @@ export function summaryRows(
     gender: resident.gender,
     sem2: resident.sem2,
     aux: resident.aux,
+    auxFile: auxJudged.get(resident.matric)?.status === 'applied' ? auxJudged.get(resident.matric)!.entry.from : (auxJudged.get(resident.matric)?.current ?? resident.aux),
+    auxEdit: auxJudged.get(resident.matric)?.status ?? null,
     jcrc: resident.jcrc,
     jcrcNote: resident.jcrc === 'N' ? null : JCRC_NOTE,
     ihg: input.ihg.filter((e) => e.matric === resident.matric).map((e) => ({ ccaID: e.ccaID, result: e.placement })),
@@ -89,6 +106,8 @@ export function summaryRows(
         levelName: perCca.get(m.ccaID)?.level ?? null,
         tweaked: tweakedIds.has(m.ccaID),
         flatPoints: m.flatPoints ?? null,
+        flatEdited: flatApplied.has(reviewKey(m)),
+        flatFile: m.flatPoints === undefined ? null : (flatApplied.get(reviewKey(m)) ?? m.flatPoints),
       })),
     discretion: discretion.find((d) => d.matric === resident.matric) ?? null,
   }))
@@ -101,5 +120,7 @@ export function summaryCounts(rows: readonly SummaryRow[]): SummaryCounts {
     discretion: rows.filter((r) => r.discretion !== null).length,
     edits: rows.reduce((sum, r) => sum + r.memberships.filter((m) => m.edited).length, 0),
     ihgRecipients: rows.filter((r) => r.ihg.length > 0).length,
+    auxEdits: rows.filter((r) => r.auxEdit === 'applied').length,
+    flatEdits: rows.reduce((sum, r) => sum + r.memberships.filter((m) => m.flatEdited).length, 0),
   }
 }

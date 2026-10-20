@@ -10,7 +10,7 @@ function MembershipLine({ m }: { readonly m: SummaryMembership }) {
     <tr className="border-b border-rule/70">
       <td className="py-1.5 pr-4 font-medium">{m.ccaName}</td>
       <td className="num py-1.5 pr-4 text-right">
-        {m.flatPoints !== null ? <>flat {m.flatPoints}</> : m.basePoints}
+        {m.flatPoints !== null ? <>flat {m.flatPoints}{m.flatEdited && <> (was {m.flatFile})</>}</> : m.basePoints}
         {m.edited && <span className="ml-1.5 align-middle"><Chip tone="warning">edited</Chip></span>}
       </td>
       <td className="py-1.5 pr-4">{m.semesterOnly ? 'yes' : '—'}</td>

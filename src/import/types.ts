@@ -7,7 +7,10 @@ import type {
   PipelineInput,
   Role,
 } from '../engine'
+import type { AuxEdit, CheckedAuxEdit } from './auxEdits'
+import type { CheckedFlatEdit, FlatEdit } from './flatEdits'
 import type { CheckedReviewEdit, ReviewEdit } from './review'
+import type { CheckedTickEdit, IhgTickEdit } from './tickEdits'
 
 export type FileKind = 'leader' | 'residents' | 'flat' | 'settings' | 'bundle'
 
@@ -198,6 +201,12 @@ export interface SandboxInput {
   readonly edits: readonly ReviewEdit[]
   /** ccaIDs marked "not submitting" on the checklist: no NO_LEADER_FILE for them (spec 6.5). */
   readonly notSubmitting: readonly string[]
+  /** IHG ticks set or cleared on the Review step. */
+  readonly tickEdits: readonly IhgTickEdit[]
+  /** One member's value in a flat CCA, set on the Review step. */
+  readonly flatEdits: readonly FlatEdit[]
+  /** AUX counts set on the Summary step. */
+  readonly auxEdits: readonly AuxEdit[]
 }
 
 export interface ParseResult<T> {
@@ -239,6 +248,12 @@ export interface PerCcaReport extends BaseCcaReport {
   readonly ihgTicked: number
   /** FNV-1a of the leader file's text (spec 6.5); null when the CCA has none. The bundle is never hashed. */
   readonly fileHash: string | null
+  /**
+   * What a vetted mark is checked against (R2): the leader file's hash; for a flat CCA, FNV-1a of
+   * `flat|<flat value>|<sorted matrics>` from the bundle's content (not its exportedAt or names);
+   * null for a CCA with neither.
+   */
+  readonly vetHash: string | null
 }
 
 /** A CCA whose mean or SD is outside its allowed range: allowed, but listed on every export. */
@@ -275,7 +290,32 @@ export interface ImportReport {
   readonly input?: PipelineInput
 }
 
+/** One member of a flat CCA as the Review flat table shows it. */
+export interface FlatMemberRow {
+  readonly matric: string
+  readonly name: string
+  /** The value the bundle gives this member. */
+  readonly fileValue: number
+  /** The value in use: the file value, or an applied flat edit's. */
+  readonly value: number
+}
+
+/** A flat CCA's members for the Review flat table. */
+export interface FlatTable {
+  readonly ccaID: string
+  /** The CCA's flat value. */
+  readonly flatPoints: number
+  readonly rows: readonly FlatMemberRow[]
+}
+
 export interface ReviewReport {
   readonly edits: readonly CheckedReviewEdit[]
   readonly flatIds: readonly string[]
+  readonly tickEdits: readonly CheckedTickEdit[]
+  readonly flatEdits: readonly CheckedFlatEdit[]
+  /** Empty while `auxUnchecked`. */
+  readonly auxEdits: readonly CheckedAuxEdit[]
+  /** No residents file is loaded, so the AUX edits cannot be judged (never called stale). */
+  readonly auxUnchecked: boolean
+  readonly flats: readonly FlatTable[]
 }

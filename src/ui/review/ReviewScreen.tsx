@@ -10,18 +10,23 @@ import {
   validateReviewEdit,
   vettedStatus,
   type CcaLevelEntry,
+  type FlatMemberRow,
   type LeaderRow,
   type ReviewEditCode,
   type SourceFile,
 } from '../../import'
+import { groupedOrder, type GroupSection } from '../../import/groups'
 import { Button, Chip } from '../common/controls'
 import { SettingsPanel } from '../settings/SettingsPanel'
-import type { Action, AppState } from '../state/store'
+import { vettedLocked, type Action, type AppState } from '../state/store'
 import { CcaHeader } from './CcaHeader'
 import { CcaList, type CcaListItem } from './CcaList'
 import { EditLog } from './EditLog'
+import { FlatTable, type FlatLineData } from './FlatTable'
+import { GroupManager } from './GroupManager'
 import { MeanSdMeter } from './MeanSdMeter'
 import { ScoreTable, type ScoreRow } from './ScoreTable'
+import { flatAction, groupAction, tickAction } from './reviewHelpers'
 
 interface ReviewScreenProps {
   readonly state: AppState
@@ -34,7 +39,7 @@ interface ReviewScreenProps {
 const EDIT_PROBLEMS: Readonly<Record<Exclude<ReviewEditCode, 'REVIEW_NO_CHANGE'>, string>> = {
   BAD_REVIEW_POINTS: 'Use a whole number from 0 to 20.',
   MISSING_REASON: 'The reason is too long.',
-  REVIEW_FLAT_CCA: 'Flat CCAs are set in the RH app and cannot be edited.',
+  REVIEW_FLAT_CCA: "Change a flat member's value in the flat table.",
   REVIEW_UNKNOWN_MEMBERSHIP: 'This member is not in the leader file any more.',
 }
 
@@ -57,10 +62,13 @@ function StalePanel({ state, dispatch, locked, ccaName }: {
   readonly locked: boolean
   readonly ccaName: (ccaID: string) => string
 }) {
-  const edits = state.report.review.edits.filter((e) => e.status !== 'applied')
+  const { edits: scoreEdits, tickEdits, flatEdits } = state.report.review
+  const edits = scoreEdits.filter((e) => e.status !== 'applied')
+  const ticks = tickEdits.filter((e) => e.status !== 'applied')
+  const flats = flatEdits.filter((e) => e.status !== 'applied')
   const bundleIds = new Set(state.report.bundle?.ccas.map((c) => c.ccaID) ?? [])
   const levels = state.ccaLevels.filter((e) => !bundleIds.has(e.ccaID))
-  if (edits.length === 0 && levels.length === 0) return null
+  if (edits.length === 0 && ticks.length === 0 && flats.length === 0 && levels.length === 0) return null
   const now = (): string => new Date().toISOString()
   return (
     <section role="alert" className="mt-6 border-l-4 border-warning bg-warning-bg px-4 py-3">
@@ -77,6 +85,32 @@ function StalePanel({ state, dispatch, locked, ccaName }: {
                 : 'this member is no longer in the leader file.'}
             </span>
             <Button small variant="ghost" disabled={locked} onClick={() => dispatch({ type: 'removeReviewEdit', matric: entry.matric, ccaID: entry.ccaID, at: now() })}>
+              Remove
+            </Button>
+          </li>
+        ))}
+        {ticks.map(({ entry, status }) => (
+          <li key={`tick-${reviewKey(entry)}`} className="flex flex-wrap items-center gap-3 py-1.5">
+            <span className="min-w-0 flex-1">
+              {ccaName(entry.ccaID)} · <span className="font-mono text-cap">{entry.matric}</span> · IHG tick {entry.to ? 'ticked' : 'not ticked'}:{' '}
+              {status === 'changed'
+                ? 'the leader file now has a different tick, so the edit is not applied.'
+                : 'this member is no longer in the leader file.'}
+            </span>
+            <Button small variant="ghost" disabled={locked} onClick={() => dispatch({ type: 'removeTickEdit', matric: entry.matric, ccaID: entry.ccaID, at: now() })}>
+              Remove
+            </Button>
+          </li>
+        ))}
+        {flats.map(({ entry, status, current }) => (
+          <li key={`flat-${reviewKey(entry)}`} className="flex flex-wrap items-center gap-3 py-1.5">
+            <span className="min-w-0 flex-1">
+              {ccaName(entry.ccaID)} · <span className="font-mono text-cap">{entry.matric}</span> · flat value {entry.from} → {entry.to}:{' '}
+              {status === 'changed'
+                ? `the RH-app bundle now says ${current}, so the edit is not applied.`
+                : 'this member is no longer in the bundle.'}
+            </span>
+            <Button small variant="ghost" disabled={locked} onClick={() => dispatch({ type: 'removeFlatEdit', matric: entry.matric, ccaID: entry.ccaID, at: now() })}>
               Remove
             </Button>
           </li>
@@ -141,6 +175,7 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
   const { report, review, config } = state
   const locked = state.finalised !== null
   const [showSettings, setShowSettings] = useState(false)
+  const [showGroups, setShowGroups] = useState(false)
   const items = useMemo((): CcaListItem[] =>
     reviewOrder(report.perCca).map((cca) => {
       const mark = review.vetted.find((m) => m.ccaID === cca.ccaID)
@@ -151,8 +186,16 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
         edits: review.edits.filter((e) => e.ccaID === cca.ccaID).length,
       }
     }), [report.perCca, review])
+  const sections = useMemo((): GroupSection<CcaListItem>[] => {
+    const byId = new Map(items.map((i) => [i.cca.ccaID, i]))
+    return groupedOrder(report.perCca, state.groups).map((section) => ({
+      ...section,
+      ccas: section.ccas.flatMap((cca) => byId.get(cca.ccaID) ?? []),
+    }))
+  }, [items, report.perCca, state.groups])
   const [picked, setPicked] = useState<string | null>(null)
-  const item = items.find((i) => i.cca.ccaID === picked) ?? items[0] ?? null
+  const shown = useMemo(() => sections.flatMap((section) => section.ccas), [sections])
+  const item = shown.find((i) => i.cca.ccaID === picked) ?? shown[0] ?? null
   const fileNames = useMemo(
     () => new Map(report.perCca.flatMap((c) => (c.fileName !== null && c.status !== 'flat' ? [[c.ccaID, c.fileName] as const] : []))),
     [report.perCca],
@@ -183,6 +226,17 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
     dispatch({ type: 'setReviewEdit', entry })
     return null
   }
+  const saveTick = (member: LeaderRow, ticked: boolean, reason: string): void => {
+    const hasEdit = report.review.tickEdits.some((e) => e.status !== 'stale' && reviewKey(e.entry) === reviewKey(member))
+    const action = tickAction({ matric: member.matric, ccaID: member.ccaID, fileTick: member.ihg, to: ticked, reason: reason.trim(), hasEdit, at: new Date().toISOString() })
+    if (action) dispatch(action)
+  }
+  const saveFlat = (ccaID: string, member: FlatMemberRow, value: string, reason: string): string | null => {
+    const hasEdit = report.review.flatEdits.some((e) => e.status !== 'stale' && reviewKey(e.entry) === reviewKey({ matric: member.matric, ccaID }))
+    const { action, problem } = flatAction({ matric: member.matric, ccaID, fileValue: member.fileValue, to: value, reason: reason.trim(), hasEdit, at: new Date().toISOString() })
+    if (action) dispatch(action)
+    return problem
+  }
   const checkEntry = (entry: CcaLevelEntry): string | null =>
     validateCcaLevelEntry(entry, config, ccaIds).find((issue) => issue.code === 'BAD_LEVEL_TWEAK' || issue.code === 'UNKNOWN_LEVEL')?.message ?? null
 
@@ -191,18 +245,36 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
     ? (leaders.get(cca.ccaID) ?? []).map((member) => ({
         member,
         edit: report.review.edits.find((e) => reviewKey(e.entry) === reviewKey(member) && e.status !== 'stale') ?? null,
+        tickEdit: report.review.tickEdits.find((e) => reviewKey(e.entry) === reviewKey(member) && e.status !== 'stale') ?? null,
         hasFinalOverride: state.finalOverrides.some((o) => o.matric === member.matric && o.ccaID === member.ccaID),
       }))
     : []
+  const flatRows: FlatLineData[] = cca
+    ? (report.review.flats.find((f) => f.ccaID === cca.ccaID)?.rows ?? []).map((member) => ({
+        member,
+        edit: report.review.flatEdits.find((e) => reviewKey(e.entry) === reviewKey({ matric: member.matric, ccaID: cca.ccaID }) && e.status !== 'stale') ?? null,
+        hasFinalOverride: state.finalOverrides.some((o) => o.matric === member.matric && o.ccaID === cca.ccaID),
+      }))
+    : []
+  const vetLocked = cca ? vettedLocked(state, cca.ccaID) : false
+  const storedLevel = cca ? (ccaLevelFor(state.ccaLevels, cca.ccaID)?.level ?? null) : null
+  const levelGone = storedLevel !== null && !config.levels.some((l) => l.name === storedLevel)
   const levelNotSet = cca ? (report.issues.find((i) => i.code === 'LEVEL_NOT_SET' && i.ccaID === cca.ccaID)?.message ?? null) : null
 
   return (
     <div className={`grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] ${showSettings ? 'grid-cols-[260px_minmax(0,1fr)_320px] xl:grid-cols-[300px_minmax(0,1fr)_340px]' : 'grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)]'}`}>
-      <CcaList items={items} selected={cca?.ccaID ?? null} onSelect={setPicked} />
+      <CcaList sections={sections} grouped={state.groups.length > 0} selected={cca?.ccaID ?? null} onSelect={setPicked} onOpenGroups={() => setShowGroups(true)} />
+      <GroupManager open={showGroups} groups={state.groups} dispatch={dispatch} onClose={() => setShowGroups(false)} />
       <main className="min-h-0 min-w-0 overflow-y-auto px-8 pt-6 pb-16">
         {locked && (
           <p role="status" className="mb-5 flex items-center gap-2 border-l-4 border-gold bg-gold-soft px-4 py-3 text-body font-medium">
             <Lock aria-hidden size={15} /> Finalised · review locked. Unlock the lists on the Results screen to change scores, levels or vetting.
+          </p>
+        )}
+        {vetLocked && (
+          <p role="status" className="mb-5 flex items-center gap-2 border-l-4 border-ok bg-ok-bg px-4 py-3 text-body font-medium">
+            <ShieldCheck aria-hidden size={15} /> Vetted · locked. Clear vetted to change the level, tweaks, scores, flat values or IHG ticks.
+            {levelGone && ' The level is no longer in Settings: clear vetted to pick another level.'}
           </p>
         )}
         {cca && item ? (
@@ -211,19 +283,42 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
               cca={cca}
               entry={ccaLevelFor(state.ccaLevels, cca.ccaID)}
               levels={config.levels}
-              locked={locked}
+              locked={locked || vetLocked}
               levelNotSet={levelNotSet}
               levelChange={state.lastLevelChange}
+              groups={state.groups}
               checkEntry={checkEntry}
               onSetEntry={(entry) => dispatch({ type: 'setCcaLevel', entry })}
               onEditLevels={editLevels}
+              onAssignGroup={(groupId) => {
+                const { action } = groupAction(state.groups, { type: 'assign', ccaID: cca.ccaID, groupId })
+                if (action) dispatch(action)
+              }}
             />
             <StalePanel state={state} dispatch={dispatch} locked={locked} ccaName={ccaName} />
-            {cca.status === 'flat' || cca.fileName === null ? (
+            {cca.status === 'flat' ? (
+              <>
+                <VetBar
+                  item={item}
+                  locked={locked || cca.vetHash === null}
+                  onVet={() => dispatch({ type: 'setVetted', ccaID: cca.ccaID, at: new Date().toISOString() })}
+                  onClear={() => dispatch({ type: 'clearVetted', ccaID: cca.ccaID })}
+                />
+                <section aria-labelledby="flat-title" className="mt-6">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-ink pb-2">
+                    <h2 id="flat-title" className="text-title font-semibold">
+                      Flat values
+                    </h2>
+                    <span className="text-cap text-muted">
+                      {cca.n} members get {cca.flatPoints ?? 0} pts each (set in RH-app) · change one member's value here · Enter saves · Esc cancels
+                    </span>
+                  </div>
+                  <FlatTable rows={flatRows} locked={locked || vetLocked} onSave={(member, value, reason) => saveFlat(cca.ccaID, member, value, reason)} />
+                </section>
+              </>
+            ) : cca.fileName === null ? (
               <p className="mt-6 rounded-[4px] border border-dashed border-ink/20 px-4 py-6 text-center text-body text-muted">
-                {cca.status === 'flat'
-                  ? `${cca.n} members get ${cca.flatPoints ?? 0} pts each. Read-only: flat CCAs are set in the RH app.`
-                  : 'No leader file: marked not submitting on the checklist. Nothing to review.'}
+                No leader file: marked not submitting on the checklist. Nothing to review.
               </p>
             ) : (
               <>
@@ -242,14 +337,14 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
                       Scores
                     </h2>
                     <span className="text-cap text-muted">
-                      Whole numbers 0–20 · Enter saves and moves down · Esc cancels · ticks, roles and semester-only come from the leader file
+                      Whole numbers 0–20 · Enter saves and moves down · Esc cancels · roles and semester-only come from the leader file
                     </span>
                   </div>
-                  <ScoreTable rows={rows} isSport={cca.isSport} locked={locked} onSave={saveScore} />
+                  <ScoreTable rows={rows} isSport={cca.isSport} locked={locked || vetLocked} onSave={saveScore} onTick={saveTick} />
                 </section>
               </>
             )}
-            <EditLog log={review.log} selected={cca.ccaID} ccaName={ccaName} memberName={(m) => names.get(m) ?? m} />
+            <EditLog log={review.log} tickLog={review.tickLog} flatLog={review.flatLog} selected={cca.ccaID} ccaName={ccaName} memberName={(m) => names.get(m) ?? m} />
           </>
         ) : (
           <p className="text-body text-muted">No CCAs in the bundle.</p>

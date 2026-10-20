@@ -3,6 +3,7 @@ import { useMemo, useState, type Dispatch } from 'react'
 import { Eyebrow } from '../common/controls'
 import { drawerEditing } from '../state/editing'
 import type { Action, AppState } from '../state/store'
+import { AuxLog } from './AuxLog'
 import { SummaryTable } from './SummaryTable'
 import { summaryCounts, summaryRows } from './summaryData'
 
@@ -52,14 +53,14 @@ export function SummaryScreen({ state, dispatch }: SummaryScreenProps) {
       </div>
       {state.finalised !== null && (
         <p role="status" className="mt-6 flex items-center gap-2 border-l-4 border-gold bg-gold-soft px-4 py-3 text-body font-medium">
-          <Lock aria-hidden size={15} /> Finalised · discretion locked. Unlock the lists on the Results screen to change it.
+          <Lock aria-hidden size={15} /> Finalised · discretion and AUX locked. Unlock the lists on the Results screen to change them.
         </p>
       )}
       <section aria-labelledby="summary-title" className="mt-8">
         <div className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-ink pb-2">
           <h2 id="summary-title" className="text-title font-semibold">Residents</h2>
           <Eyebrow>
-            {counts.residents} residents · {counts.discretion} with discretion · {counts.edits} reviewed-score edits · {counts.ihgRecipients} IHG recipients
+            {counts.residents} residents · {counts.discretion} with discretion · {counts.edits} reviewed-score edits · {counts.ihgRecipients} IHG recipients · {counts.auxEdits} AUX edits · {counts.flatEdits} flat edits
           </Eyebrow>
         </div>
         {editing === null ? (
@@ -70,6 +71,9 @@ export function SummaryScreen({ state, dispatch }: SummaryScreenProps) {
           <SummaryTable
             rows={shown}
             editing={editing}
+            auxCap={state.config.auxCap}
+            locked={state.finalised !== null}
+            dispatch={dispatch}
             expanded={expanded}
             discretionOpen={discretionOpen}
             onToggleExpanded={(matric) => setExpanded(toggled(expanded, matric))}
@@ -77,6 +81,7 @@ export function SummaryScreen({ state, dispatch }: SummaryScreenProps) {
           />
         )}
       </section>
+      {editing !== null && <AuxLog log={review.auxLog} nameOf={(matric) => rows.find((r) => r.matric === matric)?.name ?? matric} />}
     </main>
   )
 }

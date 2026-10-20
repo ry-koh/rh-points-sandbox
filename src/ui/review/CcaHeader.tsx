@@ -2,6 +2,7 @@ import { SlidersHorizontal } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 import type { Level } from '../../engine'
 import type { CcaLevelEntry, PerCcaReport } from '../../import'
+import type { CcaGroup } from '../../import/groups'
 import { Button, Chip } from '../common/controls'
 import { IHG_LABELS, notSet } from '../import/CcaTable'
 import { levelChangeText } from '../settings/tableSections'
@@ -20,10 +21,14 @@ interface CcaHeaderProps {
   /** The LEVEL_NOT_SET sentence for this CCA, when it applies. */
   readonly levelNotSet: string | null
   readonly levelChange: LevelChange | null
+  /** The JCRC's CCA groups; the Group select is left out while there are none. */
+  readonly groups: readonly CcaGroup[]
   /** Checks an entry before it is stored; returns the problem in words, or null. */
   readonly checkEntry: (entry: CcaLevelEntry) => string | null
   readonly onSetEntry: (entry: CcaLevelEntry) => void
   readonly onEditLevels: () => void
+  /** Moves this CCA into a group, or out of all groups with null. */
+  readonly onAssignGroup: (groupId: string | null) => void
 }
 
 function FromApp() {
@@ -52,6 +57,7 @@ function Facts({ cca }: { readonly cca: PerCcaReport }) {
                 <span className="num font-medium">
                   {cca.ihgTicked} of {cca.ihgCap} ticked · {IHG_LABELS[cca.ihgResult]}
                 </span>
+                {cca.ihgCap !== null && cca.ihgTicked > cca.ihgCap && <Chip tone="warning">over cap · allowed</Chip>}
                 <FromApp />
               </>
             )}
@@ -135,6 +141,34 @@ function TweakBox({ label, value, levelValue, format, step, disabled, onCommit }
 }
 
 const NOT_SET = ''
+
+const UNGROUPED = ''
+
+/** Not locked by finalising or vetting: grouping only orders the list. */
+function GroupSelect({ ccaID, groups, onAssignGroup }: Pick<CcaHeaderProps, 'groups' | 'onAssignGroup'> & { readonly ccaID: string }) {
+  const selectId = useId()
+  const current = groups.find((group) => group.ccaIDs.includes(ccaID))?.id ?? UNGROUPED
+  return (
+    <div className="ml-auto">
+      <label htmlFor={selectId} className="text-cap font-medium text-muted">
+        Group
+      </label>
+      <select
+        id={selectId}
+        value={current}
+        onChange={(event) => onAssignGroup(event.target.value === UNGROUPED ? null : event.target.value)}
+        className="motion mt-0.5 block h-8 min-w-40 rounded-[3px] border border-ink/20 bg-card px-2 text-ui font-medium hover:border-ink/50"
+      >
+        <option value={UNGROUPED}>Ungrouped</option>
+        {groups.map((group) => (
+          <option key={group.id} value={group.id}>
+            {group.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
 
 function LevelControls({ cca, entry, levels, locked, levelNotSet, levelChange, checkEntry, onSetEntry, onEditLevels }: CcaHeaderProps) {
   const selectId = useId()
@@ -230,13 +264,14 @@ export function CcaHeader(props: CcaHeaderProps) {
   const { cca } = props
   return (
     <header>
-      <div className="flex flex-wrap items-baseline gap-3">
+      <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
         <h1 className="text-display font-semibold tracking-tight">{cca.name}</h1>
-        <span className="font-mono text-ui text-muted">{cca.ccaID}</span>
+        <span className="pb-1.5 font-mono text-ui text-muted">{cca.ccaID}</span>
+        {props.groups.length > 0 && <GroupSelect ccaID={cca.ccaID} groups={props.groups} onAssignGroup={props.onAssignGroup} />}
       </div>
       {cca.status === 'flat' ? (
         <p className="mt-2 text-body text-muted">
-          Flat · <span className="num font-medium text-ink">{cca.flatPoints ?? 0}</span> pts to every member, set in the RH app. No scores, level or vetting here.
+          Flat · <span className="num font-medium text-ink">{cca.flatPoints ?? 0}</span> pts to every member, set in the RH app. Change one member's value in the table below; vet it when checked.
         </p>
       ) : (
         <>

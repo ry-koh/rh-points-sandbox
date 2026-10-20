@@ -58,7 +58,7 @@ export function CompareScreen({ state, scenarios }: CompareScreenProps) {
         <h1 className="text-display font-semibold tracking-tight">Compare</h1>
         <SidePicker label="A" value={sideA} scenarios={scenarios} onChange={setSideA} />
         <SidePicker label="B" value={sideB} scenarios={scenarios} onChange={setSideB} />
-        <Button className="ml-auto" disabled={!comparison} onClick={() => comparison && downloadCsv(`rhps_comparison_${exportStamp(new Date())}.csv`, buildComparisonCsv(comparison, state.report.outOfRange, { a: labelOf(sideA), b: labelOf(sideB) }, entryCounts(null, state.report.review), { perCca: state.report.perCca, levels: state.config.levels }))}>
+        <Button className="ml-auto" disabled={!comparison} onClick={() => comparison && downloadCsv(`rhps_comparison_${exportStamp(new Date())}.csv`, buildComparisonCsv(comparison, state.report.outOfRange, { a: labelOf(sideA), b: labelOf(sideB) }, entryCounts(null, state.report.review, state.report.perCca), { perCca: state.report.perCca, levels: state.config.levels }))}>
           <Download aria-hidden size={15} /> Export comparison
         </Button>
       </div>

@@ -33,7 +33,7 @@ interface ResultsScreenProps {
 function exportLists(lists: Lists, keys: readonly ListKey[], state: AppState): void {
   const now = new Date()
   const penalties = state.finalised ? state.finalised.log.length : null
-  const counts = entryCounts(state.results, state.report.review)
+  const counts = entryCounts(state.results, state.report.review, state.report.perCca)
   for (const key of keys) downloadCsv(exportFileName(key, now), buildListCsv(lists[key], state.report.outOfRange, penalties, counts, { perCca: state.report.perCca, levels: state.config.levels }))
 }
 

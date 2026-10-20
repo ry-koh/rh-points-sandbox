@@ -24,6 +24,7 @@ const WARNING_CODES: ReadonlySet<IssueCode> = new Set<IssueCode>([
   'LEVEL_NOT_SET',
   'LEVEL_UNKNOWN_CCA',
   'IHG_NOT_SET',
+  'IHG_OVER_CAP',
   'IHG_TICK_IGNORED',
   'IHG_NO_TICKS',
 ])

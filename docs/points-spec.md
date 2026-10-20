@@ -1,4 +1,29 @@
-# RH Hall Points Spec — v2.3
+# RH Hall Points Spec — v2.4
+
+**Changes in v2.4**
+
+- 2(c): more IHG ticks than the sport's cap is a **warning**, never a block. The sandbox lets
+  JCRC tick and untick IHG recipients (6.4); an edit that leaves a sport over its cap is still
+  allowed, and every export lists the sports over their cap.
+- 6.4: IHG ticks and a flat CCA's per-member values are editable on the Review step, like scores.
+  Every edit keeps the `from` rule (it applies only while the source still has `from`). A vetted CCA
+  is locked: no level, tweak, score, flat value or IHG tick changes until vetted is cleared.
+- 6.5: flat CCAs can be vetted. A flat CCA's vetted mark is tied to a content fingerprint of its
+  flat value and members, not to a file. Finalise counts flat CCAs in "n of N vetted" (D1).
+- 6.6: every list and comparison export adds `# IHG tick edits: N`, `# flat value edits: N`,
+  `# AUX edits: N` and `# IHG over cap: ...` after `# review edits: N`. Counts and CCA names only.
+- 6.7 (new): AUX edits. JCRC may change a resident's AUX **count** on the Summary step.
+- 6.8 (new): CCA groups on the Review step. Browser storage holds only group ids, names and CCA
+  ids; the workspace holds them too. A file with groups replaces this computer's groups (D3).
+- 7.3 / 7.4: new entry codes `TICK_NOT_SPORT`, `BAD_FLAT_VALUE`, `FLAT_EDIT_NOT_FLAT`,
+  `BAD_AUX_EDIT`, `AUX_UNKNOWN_RESIDENT`; `REVIEW_FLAT_CCA`, `REVIEW_UNKNOWN_MEMBERSHIP`,
+  `MISSING_REASON` and `REVIEW_NO_CHANGE` also apply to the new edit kinds.
+- 8b: workspace **version 3** adds `review.tickEdits`, `tickLog`, `flatEdits`, `flatLog`,
+  `auxEdits`, `auxLog` and a top-level `groups`. Version 1 and 2 files are migrated with empty
+  lists and `groups: null`, and Open workspace lists changed or stale tick, flat and AUX edits.
+- A level's number edited in Settings clears that number's tweak on every CCA at that level,
+  vetted ones included; vetted CCAs stay vetted, and Settings says how many tweaks were cleared (D2).
+
 
 **Changes in v2.3**
 
@@ -134,8 +159,10 @@ The RH app writes version 2; a file's `formatVersion` must match its columns.
 ### (c) ihg.csv — retired
 
 ihg.csv (spec ≤ v2.2) is retired: `IHG_FILE_RETIRED`. IHG rows are built from the leader files'
-`ihg` ticks and the bundle's `ihgResult` for that sport; more ticks than `ihgCap` is
-`IHG_OVER_CAP`; a sport with a leader file and no result or cap is `IHG_NOT_SET`.
+`ihg` ticks and the bundle's `ihgResult` for that sport; more ticks than `ihgCap` is the warning
+`IHG_OVER_CAP` (allowed: every ticked member still gets the points; it never blocks Finalise or an
+export); a sport with a leader file and no result or cap is `IHG_NOT_SET`. JCRC may tick or untick
+members on the Review step (6.4); the cap check uses the ticks after those edits.
 
 ### (d) RH-app bundle — produced by the RH app (JCRC)
 
@@ -676,9 +703,48 @@ on edits, log entries or marks).
 - Precedence: an edit changes `basePoints` BEFORE everything else. The mean/SD check (7.1),
   the IHG ticks and the engine (4) all see the same reviewed scores. A final-points override
   (6.2) still wins at compute; the mean/SD uses the reviewed base, never the override.
-- An edit changes the score only. Semester-only, roles and IHG ticks are not editable in the
-  sandbox; a wrong tick or role needs a corrected leader file.
+- A score edit changes the score only. Semester-only and roles are not editable in the sandbox;
+  a wrong role needs a corrected leader file.
 - Edits are resident data (workspace file only, 8b).
+
+**IHG tick edits.** JCRC may tick or untick a member of a **sport** (the bundle's `sport` = `Y`):
+
+```
+tickEdit = { matric, ccaID, from, to, reason, at }     from / to are true / false
+```
+
+`from` is the leader file's `ihg` tick when the edit was made. The edit is judged like a score
+edit: **applied** while the file still has `from` (the member's `ihg` becomes `to`, before the
+mean/SD check, the IHG rows and the engine), **changed** when the file's tick moved, **stale** when
+the membership is gone or a later edit replaces it. At most one per `(matric, ccaID)`; a tick log
+keeps every edit and removal. Validation, in order: `TICK_NOT_SPORT` (the CCA is not a sport),
+`REVIEW_FLAT_CCA`, `REVIEW_UNKNOWN_MEMBERSHIP`, `MISSING_REASON` (over 200 characters),
+`REVIEW_NO_CHANGE`. A sport with no IHG result or cap may still be ticked. Going over the cap is
+allowed (2c, `IHG_OVER_CAP`).
+
+**Flat value edits.** JCRC may change one member's value in a **flat** CCA (for example 12 → 10);
+the other members and the CCA's own flat value keep the bundle's value:
+
+```
+flatEdit = { matric, ccaID, from, to, reason, at }     from / to are the member's value
+```
+
+`from` is the member's flat value in the bundle when the edit was made; the same applied / changed
+/ stale judging and one-per-member rule apply, with a flat log. Validation, in order:
+`BAD_FLAT_VALUE` (`to` not a finite number of 0 or more), `FLAT_EDIT_NOT_FLAT`,
+`REVIEW_UNKNOWN_MEMBERSHIP`, `MISSING_REASON`, `REVIEW_NO_CHANGE`. An edited member is marked on
+Review and on Summary, and the edits are counted on the exports (6.6). The edited value is FINAL
+for that member like the flat value itself (4.1).
+
+**The `from` rule.** Every edit kind (score, tick, flat value, AUX in 6.7) stores the source value
+it started from and applies only while the source still has it. A corrected file never silently
+keeps an old edit: the edit shows as `changed` until removed or set again.
+
+**The vetted lock.** While a CCA's vetted mark counts (6.5), the Review step refuses every change
+to that CCA's level, tweaks, scores, flat values and IHG ticks, and says so ("Vetted · locked.
+Clear vetted to change the level, tweaks, scores, flat values or IHG ticks."). If the vetted
+CCA's level is no longer in Settings the line adds that vetted must be cleared to pick another
+level. Clearing vetted (or a changed file, 6.5) lifts the lock.
 
 ### 6.5 Checklist and vetting
 
@@ -699,14 +765,20 @@ submitting" mark suppresses that CCA's `NO_LEADER_FILE` warning and nothing else
 `ccaID` the bundle does not list is ignored. Each row also shows the CCA's type, sport flag,
 IHG result and cap (blank = "not set in RH-app"), level and flat value.
 
-**Vetting.** Each CCA can be marked vetted on Review. The mark stores the FNV-1a (32-bit, 8
-lowercase hex characters) hash of the CCA's **leader file text**, exactly as loaded, so CRLF
-and LF copies differ. The import report carries each CCA's current `fileHash` (null with no
-leader file). Only a CCA **with** a leader file can be vetted: flat and not-submitting CCAs have
-no scores to review, are never vetted and never block Finalise. A mark counts (`vetted`) while
-the hashes match; `file_changed` when the file changed; `gone` when the CCA has no leader file
-or is no longer in the report. The bundle is never hashed: downloading it again never un-vets a CCA.
-Unvetted CCAs block only Finalise. No reviewer is recorded on a mark.
+**Vetting.** Each CCA can be marked vetted on Review. The mark stores a content hash (FNV-1a,
+32-bit, 8 lowercase hex characters), the CCA's `vetHash`, kept in the mark's `fileHash` field:
+
+- a CCA **with a leader file**: the hash of the leader file text, exactly as loaded, so CRLF and LF
+  copies differ (the report's `fileHash`);
+- a **flat** CCA: the hash of `flat|<flat value>|<sorted member matrics, comma-joined>`, built from
+  the bundle's rows only. A re-exported bundle (new `exportedAt`) or a renamed CCA keeps it; a
+  changed flat value or roster changes it. Per-member flat edits (6.4) are not part of it;
+- null for a CCA with neither (not submitting, or no file): it cannot be vetted.
+
+A mark counts (`vetted`) while the hashes match; `file_changed` when the content changed; `gone`
+when the CCA has no content to hash or is no longer in the report. Vetted **locks** the CCA (6.4).
+Not-submitting CCAs are never vetted and never block Finalise. Unvetted CCAs block only
+Finalise. No reviewer is recorded on a mark.
 
 ### 6.6 Finalise gate and export header lines
 
@@ -720,15 +792,20 @@ Unvetted CCAs block only Finalise. No reviewer is recorded on a mark.
    file and no level. Flat and not-submitting CCAs never count; a CCA with no leader file counts
    for type only.
 3. Checklist incomplete (6.5): "Complete the checklist before finalising."
-4. Unvetted: "Vet every CCA before finalising (n of N vetted)." N counts only CCAs with a leader
-   file (flat and not-submitting CCAs have nothing to vet); a vetted mark whose file changed does
-   not count.
+4. Unvetted: "Vet every CCA before finalising (n of N vetted)." N counts every CCA that can be
+   vetted: those with a leader file **and flat CCAs** (D1); not-submitting CCAs have nothing to
+   vet. A vetted mark whose content changed does not count.
 5. Import errors: "Fix the import errors before finalising."
 
 **Export header lines.** Every list export and the comparison export start with comment lines
 in this order: `# mean/SD out of range: ...`, `# final-points overrides: N`,
-`# discretion adjustments: N`, `# review edits: N` (applied edits only), `# levels: ...`,
-`# level tweaks: ...`, and, only while finalised, `# finalised: yes · penalties: N`.
+`# discretion adjustments: N`, `# review edits: N` (applied score edits only),
+`# IHG tick edits: N`, `# flat value edits: N`, `# AUX edits: N` (applied edits only),
+`# IHG over cap: ...`, `# levels: ...`, `# level tweaks: ...`, and, only while finalised,
+`# finalised: yes · penalties: N`.
+
+- `# IHG over cap:` lists each sport with more members ticked than its cap as `Name (ccaID)`,
+  joined with `, `, or `none`: `# IHG over cap: Soccer (C05), Chess (C01)`.
 
 - `# levels:` is grouped by level in Settings order, CCAs by name inside each group (written as
   `ccaID`), `not set` last, `none` when there are no CCAs, all on one line:
@@ -737,6 +814,46 @@ in this order: `# mean/SD out of range: ...`, `# final-points overrides: N`,
   `# level tweaks: Soccer (C05): Gold, multiplier 1.31 (level 1.3)`; a bonus tweak reads
   `bonus 2.5 (level 2)`.
 - No header line holds a score, a matric or a resident's name.
+
+### 6.7 AUX edits
+
+On the Summary step JCRC may change a resident's AUX **count** (for example 6 → 7). The AUX table
+(4.2) still turns the count into points, capped at `auxCap`; the points are not shown or edited
+here. A count above the cap is allowed (`AUX_ABOVE_CAP` warns as before).
+
+```
+auxEdit = { matric, from, to, reason, at }     from / to are whole-number counts
+```
+
+`from` is the residents list's `aux` when the edit was made. Judged like every edit (6.4):
+**applied** while the residents list still has `from` (the resident's `aux` becomes `to` before the
+engine), **changed** when it moved, **stale** when the resident is gone or a later edit replaces
+it; one per matric; the reason is optional (over 200 characters is `MISSING_REASON`); an AUX log
+keeps every edit and removal. Validation, in order: `BAD_AUX_EDIT` (`to` not a whole number of 0 or
+more), `AUX_UNKNOWN_RESIDENT`, `MISSING_REASON`, `REVIEW_NO_CHANGE`. residents.csv itself is never
+changed. With no residents list loaded the edits cannot be judged: they are kept, `auxUnchecked`,
+and never called stale. AUX edits are resident data (workspace file only, 8b).
+
+### 6.8 CCA groups
+
+On the Review step JCRC can create named groups (for example portfolios) and move CCAs into them.
+
+```
+group = { id, name, ccaIDs }
+```
+
+CCAs are A-Z inside a group and ungrouped CCAs come last (`Ungrouped`). A name is trimmed and cut
+to 40 characters; it may not be blank (`BLANK_NAME`) or repeat another group's name,
+case-insensitively (`DUPLICATE_NAME`); ids are unique (`DUPLICATE_ID`); an unknown group id is
+`UNKNOWN_GROUP`. A CCA sits in at most one group. These four are group errors, not import issue codes.
+
+- **Browser storage** (key `rhps.groups.v1`, this computer only) holds **only group ids, names and
+  CCA ids**. No resident data, score or file is stored there. Groups are temporary until RH-app
+  provides portfolios.
+- The **workspace** holds the groups too (8b `groups`).
+- **D3:** opening a workspace whose file has at least one group replaces this computer's groups with
+  the file's, and the open summary says "Groups from the file replaced this computer's groups". A file
+  with no groups (or an older file, `groups: null`) leaves this computer's groups alone.
 
 ## 7. Validation
 
@@ -768,7 +885,6 @@ Block results until each is fixed by re-importing a corrected file.
 - duplicate matric in residents.csv, or more than one residents.csv
 - bad `gender`, `sem2` or `aux` value
 - an ihg.csv (retired, `IHG_FILE_RETIRED`)
-- more leader-file `ihg` ticks than the sport's `ihgCap`
 - no RH-app bundle, more than one bundle, a value in a column its section does not use, an IHG
   column on a `sport` = `N` row, an unknown `section`, no `cca` rows, an `ihgCap` that is not
   a whole number ≥ 1, or the same `ccaID` on two `cca` rows
@@ -800,7 +916,9 @@ Shown, do not block.
 - a sport with a leader file and no IHG result or cap (its ticks get no IHG points yet)
 - `ihg` ticks in a leader file of a CCA that is not a sport in the bundle (ignored)
 - a sport with an IHG result and no member ticked
+- more leader-file `ihg` ticks than the sport's `ihgCap` (allowed: every ticked member gets the points; untick on the Review step if it is a mistake)
 - more than 10 `0.5x` memberships for one resident
+- an applied IHG tick edit (6.4) that leaves a sport over its cap is the same `IHG_OVER_CAP` warning
 - an IHG row for a flat or overridden membership (the row is always ignored)
 - a waiver for a `ccaID` that is not in the bundle (the row is ignored)
 
@@ -846,15 +964,20 @@ leader files' ticks and the bundle (2c).
 | `FLAT_VALUE_MISMATCH` | error | rows of one flat `ccaID` carry different `flatPoints`, or a value other than its `cca` row's (or that row's is blank) |
 | `FLAT_AND_LEADER_FILE` | error | a `ccaID` has both flat points (member rows, or `flatPoints` on its `cca` row) and a leader file |
 | `BAD_FINAL_POINTS` | error | (override entry) `finalPoints` is not a finite number |
-| `MISSING_REASON` | error | (override or discretion entry) reason empty or over 200 characters; (review edit) reason over 200 characters |
+| `MISSING_REASON` | error | (override or discretion entry) reason empty or over 200 characters; (review, tick, flat or AUX edit) reason over 200 characters |
 | `OVERRIDE_UNKNOWN_MEMBERSHIP` | error | (override entry) no such membership |
 | `BAD_DISCRETION_POINTS` | error | (discretion entry) a delta is not a finite number |
 | `DISCRETION_UNKNOWN_RESIDENT` | error | (discretion entry) no such resident |
 | `BAD_REVIEW_POINTS` | error | (review edit, 6.4) `to` not a whole number 0–20 |
-| `REVIEW_FLAT_CCA` | error | (review edit) the CCA is flat |
-| `REVIEW_UNKNOWN_MEMBERSHIP` | error | (review edit) no such member in that CCA's leader file |
-| `REVIEW_NO_CHANGE` | error | (review edit) `to` equals `from` |
-| `IHG_OVER_CAP` | error | a sport's leader file has more `ihg` ticks than its `ihgCap`; that CCA gets no IHG entries |
+| `REVIEW_FLAT_CCA` | error | (review or tick edit) the CCA is flat |
+| `REVIEW_UNKNOWN_MEMBERSHIP` | error | (review, tick or flat edit) no such member in that CCA's leader file (the flat roster for a flat edit) |
+| `REVIEW_NO_CHANGE` | error | (review, tick, flat or AUX edit) `to` equals `from` |
+| `TICK_NOT_SPORT` | error | (tick edit, 6.4) the CCA is not a sport in the bundle |
+| `BAD_FLAT_VALUE` | error | (flat edit, 6.4) `to` is not a finite number of 0 or more |
+| `FLAT_EDIT_NOT_FLAT` | error | (flat edit) the CCA is not a flat CCA |
+| `BAD_AUX_EDIT` | error | (AUX edit, 6.7) `to` is not a whole number of 0 or more |
+| `AUX_UNKNOWN_RESIDENT` | error | (AUX edit) no such resident in residents.csv |
+| `IHG_OVER_CAP` | warning | a sport's leader file has more `ihg` ticks than its `ihgCap`; allowed, every ticked member still gets an IHG entry |
 | `UNKNOWN_LEVEL` | error | (level entry, 3b) `level` not one of the `levels` |
 | `BAD_LEVEL_TWEAK` | error | (level entry, 3b) `bonusOverride` not a number ≥ 0, or `multiplierOverride` not a number > 0 |
 | `DUPLICATE_LEVEL_NAME` | error | two `levels` in Settings have the same name |
@@ -886,8 +1009,10 @@ leader file and so no ticks.
 
 The five review codes (`BAD_REVIEW_POINTS`, `MISSING_REASON`, `REVIEW_FLAT_CCA`,
 `REVIEW_UNKNOWN_MEMBERSHIP`, `REVIEW_NO_CHANGE`) are returned by `validateReviewEdit` when an
-edit is entered (6.4); they are not raised by file import, which reports each edit's status
-(`applied` / `changed` / `stale`) in `report.review` instead. `NO_LEADER_FILE` is not raised for
+edit is entered (6.4). `validateTickEdit` (`TICK_NOT_SPORT` first), `validateFlatEdit`
+(`BAD_FLAT_VALUE`, `FLAT_EDIT_NOT_FLAT`) and `validateAuxEdit` (`BAD_AUX_EDIT`,
+`AUX_UNKNOWN_RESIDENT`) return theirs the same way (6.4, 6.7). None is raised by file import, which
+reports each edit's status (`applied` / `changed` / `stale`) in `report.review` instead. `NO_LEADER_FILE` is not raised for
 a CCA marked "not submitting" on the checklist (6.5).
 
 `exportedAt` is not validated. Mean/SD is computed from every valid, non-duplicate leader row,
@@ -1157,9 +1282,10 @@ A **workspace** is everything needed to resume a session, saved only as a file t
 downloads explicitly. It is never written to localStorage, sessionStorage or IndexedDB.
 
 ```
-{ format: "rhps-workspace", version: 2, savedAt, files: [{name, text}], config,
-  ccaLevels, review: { edits, log, vetted, notSubmitting }, step,
-  finalOverrides, discretion, resolutions, finalised }
+{ format: "rhps-workspace", version: 3, savedAt, files: [{name, text}], config,
+  ccaLevels, review: { edits, log, vetted, notSubmitting, tickEdits, tickLog,
+  flatEdits, flatLog, auxEdits, auxLog }, step,
+  finalOverrides, discretion, resolutions, finalised, groups }
 ```
 
 `files` are the imported CSVs as text; `config` the scenario config; `ccaLevels` the per-CCA
@@ -1169,7 +1295,9 @@ matric + ccaID, 6.4), `log` (every edit set or removed, oldest first: the edit f
 `vetted` (ccaID, leader-file hash, time; 6.5) and `notSubmitting` (ccaID, optional note, time;
 6.5); `step` the open step (`import`, `checklist`, `review`, `summary`, `results`, `publish`,
 `compare`); `finalOverrides`, `discretion` and `resolutions` the entries of 6.2, 6.3 and 5.6;
-`finalised` the penalty state or `null`. No reviewer is recorded anywhere. The workspace contains
+`finalised` the penalty state or `null`. Version 3 adds `tickEdits` / `tickLog` (6.4), `flatEdits`
+/ `flatLog` (6.4), `auxEdits` / `auxLog` (6.7), each log shaped like `log`, and `groups` (6.8:
+`[{id, name, ccaIDs}]`, or `null` when the file records none). No reviewer is recorded anywhere. The workspace contains
 resident data and must be handled like the input files. Moving between steps is not an unsaved
 change; every other change to these fields is.
 
@@ -1183,14 +1311,19 @@ as in section 3. Opening shows up to two notes, each at most once:
 - when the config had the old placement bonus and tiers: "The settings' levels were built from
   the old placement bonus and tiers; check them in Settings."
 
-Version 1 and 2 are read; version 2 is written; any other version is `UNSUPPORTED_VERSION`.
+**Version 2 files** are read and migrated to version 3 with empty `tickEdits`, `tickLog`,
+`flatEdits`, `flatLog`, `auxEdits`, `auxLog` and `groups: null`. Nothing is lost, so there is no
+note. A version 1 file is migrated to 2 and then to 3.
+
+Version 1, 2 and 3 are read; version 3 is written; any other version is `UNSUPPORTED_VERSION`.
 
 **Levels and the level table.** Renaming a level in Settings renames it in every CCA's entry
 (only when exactly one level's name changed and the old name was unique among the levels);
 removing a level, reordering, a reset or a loaded scenario does not touch the entries (an entry
 on a missing level is `UNKNOWN_LEVEL`, 3b). Editing one level's bonus (or multiplier) sets the
-bonus (or multiplier) tweak to blank on every CCA at that level, so they follow the new value,
-and Settings says how many tweaks were cleared.
+bonus (or multiplier) tweak to blank on every CCA at that level, vetted ones included, so they
+follow the new value. Vetted CCAs stay vetted. Settings says how many tweaks were cleared, for
+example "2 tweaks on Gold were cleared so those CCAs follow the new value".
 
 - **Filename:** `rhps_workspace_<YYYYMMDD-HHmm>.rhps` (local time).
 - **Encrypted form** (optional password): a JSON envelope
@@ -1206,14 +1339,18 @@ and Settings says how many tweaks were cleared.
 - **Loading** migrates the file and config (above, section 3) and **re-runs the import
   validation on the saved files** with the saved level table, edits and not-submitting marks.
   Final-points overrides, discretion entries and wheel resolutions that no longer match (6.2,
-  6.3, 5.6), score edits that are `changed` or `stale` (6.4), vetted marks that no longer count
-  (6.5) and level entries for CCAs not in the bundle are reported, with the migration notes, and
+  6.3, 5.6), score, IHG tick and flat value edits that are `changed` or `stale` (6.4), AUX edits
+  that are `changed` or `stale` (6.7), vetted marks that no longer count (6.5) and level entries
+  for CCAs not in the bundle are reported, with the migration notes, and
   never applied silently.
   What cannot be checked yet is **not** reported as stale: with no usable bundle the score edits,
-  vetted marks and level entries are `unchecked.review`; while the import cannot compute the
-  overrides, discretion entries and wheel resolutions are `unchecked.computed`. The open summary
-  then shows one line saying they will be checked once the bundle is loaded (or once the import
-  has no errors). Nothing is deleted or applied by this.
+  vetted marks, tick and flat edits and level entries are `unchecked.review`; while the import
+  cannot compute the overrides, discretion entries and wheel resolutions are `unchecked.computed`;
+  with no residents list the AUX edits are `unchecked.aux`. The open summary then shows one line
+  saying they will be checked once the bundle is loaded (or once the import has no errors), and
+  for AUX edits a line saying they are unchecked until the residents list is loaded. When the
+  file's groups replaced this computer's groups (6.8) it says "Groups from the file replaced this
+  computer's groups". Nothing is deleted or applied by this.
 
 ## 9. Open items for JCRC
 

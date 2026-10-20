@@ -21,7 +21,7 @@ const CODE_HINTS: Readonly<Partial<Record<Issue['code'], string>>> = {
   TYPE_NOT_SET: RH_APP_HINT,
   IHG_NOT_SET: RH_APP_HINT,
   LEVEL_NOT_SET: 'Pick the level on the Review step.',
-  IHG_OVER_CAP: 'Raise the cap in the RH app and download the bundle again, or ask the head for a corrected file.',
+  IHG_OVER_CAP: 'Allowed. Untick on the Review step if this is a mistake.',
   UNKNOWN_LEVEL: 'Pick another level on the Review step or add it back in Settings.',
   CCAS_FILE_RETIRED: 'Remove this file.',
   IHG_FILE_RETIRED: 'Remove this file.',

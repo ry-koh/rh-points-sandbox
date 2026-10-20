@@ -164,11 +164,12 @@ describe('RH-app leader export, formatVersion 2 with IHG ticks', () => {
     expect(player('A9920103X')?.bidding.flatIHG).toBe(0)
   })
 
-  it('with the cap edited to 1: IHG_OVER_CAP and no compute', () => {
+  it('with the cap edited to 1: IHG_OVER_CAP is a warning; it computes and both ticked members keep the points', () => {
     const over = run(withSoccerRow(',Y,1st,12,', ',Y,1st,1,'), levels)
     expect(codesOf(over)).toEqual(['IHG_OVER_CAP', 'NO_LEADER_FILE'])
-    expect(over.canCompute).toBe(false)
-    expect(over.input).toBeUndefined()
+    expect(over.issues.find((i) => i.code === 'IHG_OVER_CAP')?.severity).toBe('warning')
+    expect(over.canCompute).toBe(true)
+    expect(over.input?.ihg).toHaveLength(2)
   })
 
   it('with the result blanked: IHG_NOT_SET, a warning; it computes with no IHG', () => {

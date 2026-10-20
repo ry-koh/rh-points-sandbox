@@ -2,7 +2,16 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG } from '../../engine'
 import { fnv1a32 } from '../../import'
-import { leaderFileName, leaderRows, matricOf, scenario } from '../../import/__tests__/fixtures'
+import {
+  BASE_SCORES,
+  baseCcas,
+  baseResidents,
+  leaderFileName,
+  leaderRows,
+  matricOf,
+  patchRow,
+  scenario,
+} from '../../import/__tests__/fixtures'
 import {
   LEVELS_MIGRATED_NOTE,
   RETIRED_FILES_NOTE,
@@ -11,6 +20,7 @@ import {
   migrateWorkspace,
   parseWorkspaceFile,
   restoreWorkspace,
+  sandboxInputOf,
   serializeWorkspace,
   workspaceFilename,
   type Workspace,
@@ -23,9 +33,11 @@ const AT = '2027-04-02T10:00:00.000Z'
 const files = scenario()
 const c1File = files.find((f) => f.name === leaderFileName('C1'))?.text ?? ''
 
+const EMPTY_NEW_LISTS = { tickEdits: [], tickLog: [], flatEdits: [], flatLog: [], auxEdits: [], auxLog: [] }
+
 const workspace: Workspace = {
   format: WORKSPACE_FORMAT,
-  version: 2,
+  version: 3,
   savedAt: '2027-04-01T09:30:00.000Z',
   files,
   config: { ...DEFAULT_CONFIG, headcounts: { ...DEFAULT_CONFIG.headcounts, maleGreen: 2, maleGrey: 1, sem2Green: 1 } },
@@ -42,12 +54,36 @@ const workspace: Workspace = {
     ],
     vetted: [{ ccaID: 'C1', fileHash: fnv1a32(c1File), at: AT }],
     notSubmitting: [{ ccaID: 'C9', note: 'disbanded', at: AT }],
+    ...EMPTY_NEW_LISTS,
   },
   step: 'review',
   finalOverrides: [{ matric: 'A9900001Z', ccaID: 'C1', finalPoints: 5, reason: 'withdrawn' }],
   discretion: [{ matric: 'A9900002Z', stayingDelta: 2, biddingDelta: -1, reason: 'service' }],
   resolutions: [{ list: 'maleStaying', order: ['A9900003Z', 'A9900001Z'] }],
   finalised: null,
+  groups: null,
+}
+
+const tickEdit = { matric: matricOf(3), ccaID: 'C1', from: false, to: true, reason: 'played', at: AT }
+const flatEdit = { matric: matricOf(2), ccaID: 'C3', from: 12, to: 10, reason: '', at: AT }
+const auxEdit = { matric: matricOf(4), from: 5, to: 7, reason: 'late form', at: AT }
+
+/** A v3 workspace with every new list and a group filled. */
+const filled: Workspace = {
+  ...workspace,
+  review: {
+    ...workspace.review,
+    tickEdits: [tickEdit],
+    tickLog: [{ ...tickEdit, kind: 'edit' }],
+    flatEdits: [flatEdit],
+    flatLog: [{ ...flatEdit, kind: 'edit' }, { ...flatEdit, kind: 'remove' }],
+    auxEdits: [auxEdit],
+    auxLog: [{ ...auxEdit, kind: 'edit' }],
+  },
+  groups: [
+    { id: 'g1', name: 'Sports', ccaIDs: ['C1'] },
+    { id: 'g2', name: 'Empty', ccaIDs: [] },
+  ],
 }
 
 const ok = async (text: string, password?: string) => {
@@ -67,9 +103,13 @@ describe('plain workspace', () => {
     expect(workspace.ccaLevels).toHaveLength(2)
   })
 
-  it('is written as version 2, with the level table and no meanSdOverrides', () => {
+  it('round-trips the v3 tick, flat and AUX edits, their logs and the groups', async () => {
+    expect(await parseWorkspaceFile(serializeWorkspace(filled))).toEqual({ ok: true, workspace: filled, notes: [] })
+  })
+
+  it('is written as version 3, with the level table and no meanSdOverrides', () => {
     const written = JSON.parse(serializeWorkspace(workspace)) as Record<string, unknown>
-    expect(written.version).toBe(2)
+    expect(written.version).toBe(3)
     expect(written.ccaLevels).toEqual(workspace.ccaLevels)
     expect('meanSdOverrides' in written).toBe(false)
   })
@@ -88,6 +128,11 @@ describe('encrypted workspace', () => {
   it('round-trips with the password', { timeout: TIMEOUT }, async () => {
     const envelope = await encryptWorkspace(serializeWorkspace(workspace), PASSWORD)
     expect(await ok(envelope, PASSWORD)).toEqual(workspace)
+  })
+
+  it('round-trips a filled v3 workspace with the password', { timeout: TIMEOUT }, async () => {
+    const envelope = await encryptWorkspace(serializeWorkspace(filled), PASSWORD)
+    expect(await ok(envelope, PASSWORD)).toEqual(filled)
   })
 
   it('writes the specified envelope and hides the data', { timeout: TIMEOUT }, async () => {
@@ -161,7 +206,7 @@ describe('rejecting other files', () => {
   })
 
   it('UNSUPPORTED_VERSION for another workspace version', async () => {
-    expect(await codeOf(JSON.stringify({ ...workspace, version: 3 }))).toBe('UNSUPPORTED_VERSION')
+    expect(await codeOf(JSON.stringify({ ...workspace, version: 4 }))).toBe('UNSUPPORTED_VERSION')
     expect(await codeOf(JSON.stringify({ ...workspace, version: 0 }))).toBe('UNSUPPORTED_VERSION')
     expect(await codeOf(JSON.stringify({ ...workspace, version: undefined }))).toBe('UNSUPPORTED_VERSION')
   })
@@ -192,6 +237,37 @@ describe('rejecting other files', () => {
       expect(await codeOf(JSON.stringify({ ...workspace, ...bad }))).toBe('CORRUPT')
     }
   })
+
+  it('CORRUPT for a tick edit whose to is not a boolean', async () => {
+    const bad = { ...filled, review: { ...filled.review, tickEdits: [{ ...tickEdit, to: 'yes' }] } }
+    expect(await codeOf(JSON.stringify(bad))).toBe('CORRUPT')
+  })
+
+  it('CORRUPT for any wrong-shaped v3 list, log entry or group', async () => {
+    const review = filled.review
+    const { tickLog: _t, ...noTickLog } = review
+    for (const bad of [
+      { review: noTickLog },
+      { review: { ...review, tickEdits: [{ ...tickEdit, from: 0 }] } },
+      { review: { ...review, tickEdits: [{ ...tickEdit, matric: 1 }] } },
+      { review: { ...review, tickLog: [{ ...tickEdit, kind: 'undo' }] } },
+      { review: { ...review, tickLog: [tickEdit] } },
+      { review: { ...review, flatEdits: [{ ...flatEdit, to: '10' }] } },
+      { review: { ...review, flatEdits: [{ ...flatEdit, ccaID: null }] } },
+      { review: { ...review, flatLog: [{ ...flatEdit, kind: 'set' }] } },
+      { review: { ...review, auxEdits: [{ ...auxEdit, to: true }] } },
+      { review: { ...review, auxEdits: [{ ...auxEdit, reason: undefined }] } },
+      { review: { ...review, auxLog: [{ ...auxEdit, at: 5, kind: 'edit' }] } },
+      { review: { ...review, flatEdits: 'none' } },
+      { groups: undefined },
+      { groups: {} },
+      { groups: [{ id: 'g1', name: 'Sports' }] },
+      { groups: [{ id: 'g1', name: 2, ccaIDs: [] }] },
+      { groups: [{ id: 'g1', name: 'Sports', ccaIDs: [1] }] },
+    ]) {
+      expect(await codeOf(JSON.stringify({ ...filled, ...bad }))).toBe('CORRUPT')
+    }
+  })
 })
 
 describe('version 1 files (spec 8b migration)', () => {
@@ -203,8 +279,9 @@ describe('version 1 files (spec 8b migration)', () => {
     if (!parsed.ok) throw new Error(`expected ok, got ${parsed.code}`)
     expect(parsed.notes).toEqual([RETIRED_FILES_NOTE, LEVELS_MIGRATED_NOTE])
     const opened = parsed.workspace
-    expect(opened.version).toBe(2)
-    expect(opened.review).toEqual({ edits: [], log: [], vetted: [], notSubmitting: [] })
+    expect(opened.version).toBe(3)
+    expect(opened.review).toEqual({ edits: [], log: [], vetted: [], notSubmitting: [], ...EMPTY_NEW_LISTS })
+    expect(opened.groups).toBeNull()
     expect(opened.ccaLevels).toEqual([])
     expect(opened.step).toBe('import')
     expect('meanSdOverrides' in opened).toBe(false)
@@ -229,8 +306,18 @@ describe('version 1 files (spec 8b migration)', () => {
     if (!parsed.ok) throw new Error('expected ok')
     const restored = restoreWorkspace(parsed.workspace, parsed.notes)
     expect(restored.notes).toHaveLength(2)
-    expect(restored.unchecked).toEqual({ review: true, computed: true })
-    expect(restored.stale).toEqual({ overrides: [], discretion: [], resolutions: [], edits: [], vetted: [], ccaLevels: [] })
+    expect(restored.unchecked).toEqual({ review: true, computed: true, aux: false })
+    expect(restored.stale).toEqual({
+      overrides: [],
+      discretion: [],
+      resolutions: [],
+      edits: [],
+      vetted: [],
+      ccaLevels: [],
+      tickEdits: [],
+      flatEdits: [],
+      auxEdits: [],
+    })
     expect(restored.workspace.discretion).toEqual(v1.discretion)
   })
 
@@ -253,9 +340,10 @@ describe('version 1 files (spec 8b migration)', () => {
     expect(raw.config).toEqual(DEFAULT_CONFIG)
   })
 
-  it('leaves a version 2 object alone and never changes its input', () => {
-    const v2 = JSON.parse(serializeWorkspace(workspace)) as Record<string, unknown>
-    expect(migrateWorkspace(v2)).toEqual({ raw: v2, notes: [] })
+  it('leaves a version 3 object alone and never changes its input', () => {
+    const v3 = JSON.parse(serializeWorkspace(workspace)) as Record<string, unknown>
+    expect(migrateWorkspace(v3)).toEqual({ raw: v3, notes: [] })
+    expect(migrateWorkspace(v3).raw).toBe(v3)
     const before = JSON.stringify(v1)
     migrateWorkspace(v1)
     expect(JSON.stringify(v1)).toBe(before)
@@ -264,6 +352,56 @@ describe('version 1 files (spec 8b migration)', () => {
   it('a v1 file with a broken config is CORRUPT', async () => {
     expect(await codeOf(JSON.stringify({ ...v1, config: { headcounts: 3 } }))).toBe('CORRUPT')
     expect(await codeOf(JSON.stringify({ ...v1, files: 'nope' }))).toBe('CORRUPT')
+  })
+})
+
+describe('version 2 files (R4 migration)', () => {
+  const v2Text = readFileSync('src/workspace/__tests__/v2-fixture.json', 'utf8')
+  const v2 = JSON.parse(v2Text) as Record<string, any>
+
+  it('opens the literal v2 fixture as v3 with everything intact, empty new lists, no groups and no note', async () => {
+    const parsed = await parseWorkspaceFile(v2Text)
+    if (!parsed.ok) throw new Error(`expected ok, got ${parsed.code}`)
+    expect(v2.version).toBe(2)
+    expect(parsed.notes).toEqual([])
+    const opened = parsed.workspace
+    expect(opened.version).toBe(3)
+    expect(opened.groups).toBeNull()
+    expect(opened.review).toEqual({ ...v2.review, ...EMPTY_NEW_LISTS })
+    expect(opened.review.edits).toHaveLength(1)
+    expect(opened.review.log).toHaveLength(1)
+    expect(opened.review.vetted).toHaveLength(1)
+    expect(opened.review.notSubmitting).toHaveLength(1)
+    expect(opened.ccaLevels).toEqual(v2.ccaLevels)
+    expect(opened.ccaLevels).toHaveLength(1)
+    expect(opened.step).toBe('review')
+    expect(opened.files).toEqual(v2.files)
+    expect(opened.savedAt).toBe(v2.savedAt)
+  })
+
+  it('restores the v2 fixture with its edit, vetted mark and level all still applying', async () => {
+    const parsed = await parseWorkspaceFile(v2Text)
+    if (!parsed.ok) throw new Error('expected ok')
+    const restored = restoreWorkspace(parsed.workspace, parsed.notes)
+    expect(restored.report.canCompute).toBe(true)
+    expect(restored.unchecked).toEqual({ review: false, computed: false, aux: false })
+    expect(restored.stale.edits).toEqual([])
+    expect(restored.stale.vetted).toEqual([])
+    expect(restored.stale.ccaLevels).toEqual([])
+  })
+
+  it('migrates v2 to v3 without changing its input', () => {
+    const before = JSON.stringify(v2)
+    const { raw, notes } = migrateWorkspace(v2)
+    expect(notes).toEqual([])
+    expect(raw.version).toBe(3)
+    expect(raw.groups).toBeNull()
+    expect(JSON.stringify(v2)).toBe(before)
+  })
+
+  it('a v2 file with a broken review is CORRUPT', async () => {
+    expect(await codeOf(JSON.stringify({ ...v2, review: 'nope' }))).toBe('CORRUPT')
+    expect(await codeOf(JSON.stringify({ ...v2, review: { ...v2.review, edits: [{ matric: 1 }] } }))).toBe('CORRUPT')
   })
 })
 
@@ -303,7 +441,7 @@ describe('restoreWorkspace re-validates the saved files', () => {
     const gone = { matric: 'A9999999Z', stayingDelta: 1, biddingDelta: 1, reason: 'left' }
     const restored = restoreWorkspace({ ...workspace, discretion: [...workspace.discretion, gone] })
     expect(restored.report.canCompute).toBe(true)
-    expect(restored.unchecked).toEqual({ review: false, computed: false })
+    expect(restored.unchecked).toEqual({ review: false, computed: false, aux: false })
     expect(restored.stale.discretion).toEqual([gone])
   })
 
@@ -316,7 +454,7 @@ describe('restoreWorkspace re-validates the saved files', () => {
     const restored = restoreWorkspace({ ...workspace, files })
     expect(restored.report.canCompute).toBe(false)
     expect(restored.report.bundle).not.toBeNull()
-    expect(restored.unchecked).toEqual({ review: false, computed: true })
+    expect(restored.unchecked).toEqual({ review: false, computed: true, aux: true })
     expect(restored.stale.overrides).toEqual([])
     expect(restored.stale.discretion).toEqual([])
     expect(restored.stale.resolutions).toEqual([])
@@ -324,7 +462,7 @@ describe('restoreWorkspace re-validates the saved files', () => {
   })
 
   it('has nothing unchecked when the import computes', () => {
-    expect(restoreWorkspace(workspace).unchecked).toEqual({ review: false, computed: false })
+    expect(restoreWorkspace(workspace).unchecked).toEqual({ review: false, computed: false, aux: false })
   })
 
   it('reports nothing about review or levels while everything still matches', () => {
@@ -358,5 +496,67 @@ describe('restoreWorkspace re-validates the saved files', () => {
     const before = JSON.stringify(workspace)
     restoreWorkspace(workspace)
     expect(JSON.stringify(workspace)).toBe(before)
+  })
+
+  const sportC1 = patchRow(baseCcas(), 0, { sport: 'Y', ihgResult: '1st', ihgCap: '3' })
+  const withTick = (review: Partial<Workspace['review']>, files = scenario({ ccas: sportC1 })) =>
+    restoreWorkspace({ ...workspace, files, review: { ...workspace.review, vetted: [], ...review } })
+
+  it('lists nothing for a tick edit and an AUX edit that still apply', () => {
+    const restored = withTick({ tickEdits: [tickEdit], auxEdits: [auxEdit] })
+    expect(restored.report.review.tickEdits.map((e) => e.status)).toEqual(['applied'])
+    expect(restored.stale.tickEdits).toEqual([])
+    expect(restored.stale.auxEdits).toEqual([])
+  })
+
+  it('lists a tick edit as changed when the file now ticks that member', () => {
+    const files = scenario({ ccas: sportC1, leaders: { C1: leaderRows('C1', BASE_SCORES, { ihg: [2] }), C2: leaderRows('C2') } })
+    const restored = withTick({ tickEdits: [tickEdit] }, files)
+    expect(restored.stale.tickEdits).toEqual([{ entry: tickEdit, status: 'changed', current: true }])
+  })
+
+  it('lists an AUX edit as stale when its resident left the residents list, and changed when the count moved', () => {
+    const gone = withTick({ auxEdits: [auxEdit] }, scenario({ ccas: sportC1, residents: baseResidents(3) }))
+    expect(gone.stale.auxEdits).toEqual([{ entry: auxEdit, status: 'stale', current: null }])
+    const residents = patchRow(baseResidents(), 3, { aux: '6' })
+    const moved = withTick({ auxEdits: [auxEdit] }, scenario({ ccas: sportC1, residents }))
+    expect(moved.stale.auxEdits).toEqual([{ entry: auxEdit, status: 'changed', current: 6 }])
+  })
+
+  it('lists a flat edit whose member is not in any flat CCA', () => {
+    const restored = withTick({ flatEdits: [flatEdit] })
+    expect(restored.stale.flatEdits).toEqual([{ entry: flatEdit, status: 'stale', current: null }])
+  })
+
+  it('leaves AUX edits unchecked with no residents list, and tick and flat edits unchecked with no bundle', () => {
+    const noResidents = withTick({ auxEdits: [auxEdit] }, scenario({ ccas: sportC1, residents: null }))
+    expect(noResidents.unchecked.aux).toBe(true)
+    expect(noResidents.stale.auxEdits).toEqual([])
+    const noBundle = withTick({ tickEdits: [tickEdit], flatEdits: [flatEdit], auxEdits: [auxEdit] }, scenario({ bundle: null }))
+    expect(noBundle.unchecked).toEqual({ review: true, computed: true, aux: false })
+    expect(noBundle.stale.tickEdits).toEqual([])
+    expect(noBundle.stale.flatEdits).toEqual([])
+    expect(noBundle.stale.auxEdits).toEqual([])
+  })
+})
+
+describe('sandboxInputOf', () => {
+  it('maps the review lists', () => {
+    expect(sandboxInputOf(workspace)).toEqual({
+      ccaLevels: workspace.ccaLevels,
+      edits: workspace.review.edits,
+      notSubmitting: ['C9'],
+      tickEdits: [],
+      flatEdits: [],
+      auxEdits: [],
+    })
+  })
+
+  it('passes tick, flat and AUX lists through when the review holds them (what Compare and the store use)', () => {
+    const tickEdits = [{ matric: matricOf(1), ccaID: 'C1', from: false, to: true, reason: '', at: AT }]
+    const flatEdits = [{ matric: matricOf(2), ccaID: 'C3', from: 12, to: 10, reason: '', at: AT }]
+    const auxEdits = [{ matric: matricOf(3), from: 5, to: 7, reason: '', at: AT }]
+    const review: Workspace['review'] = { ...workspace.review, tickEdits, flatEdits, auxEdits }
+    expect(sandboxInputOf({ ccaLevels: [], review })).toMatchObject({ tickEdits, flatEdits, auxEdits })
   })
 })

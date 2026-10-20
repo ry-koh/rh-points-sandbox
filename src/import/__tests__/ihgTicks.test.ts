@@ -53,14 +53,15 @@ describe('buildIhgFromTicks', () => {
     expect(out.ihg).toHaveLength(2)
   })
 
-  it('IHG_OVER_CAP is an error naming both numbers and the two ways out; no entries for that CCA', () => {
+  it('IHG_OVER_CAP is a warning naming both numbers; every ticked member still gets an entry', () => {
     const out = buildIhgFromTicks([leader([true, true, true])], [sport({ ihgCap: 2 })])
-    expect(out.ihg).toEqual([])
+    expect(out.ihg).toHaveLength(3)
+    expect(out.ihg.every((e) => e.placement === '1st')).toBe(true)
     expect(out.issues).toHaveLength(1)
-    expect(out.issues[0]).toMatchObject({ severity: 'error', code: 'IHG_OVER_CAP', fileName: FILE, ccaID: '9201' })
+    expect(out.issues[0]).toMatchObject({ severity: 'warning', code: 'IHG_OVER_CAP', fileName: FILE, ccaID: '9201' })
     expect(out.issues[0]?.message).toBe(
-      `${FILE}: Soccer (M) (9201) has 3 members ticked for IHG but the cap is 2. ` +
-        'Raise the cap on /admin/points and download the bundle again, or reopen points entry and ask the head for a corrected file.',
+      `${FILE}: Soccer (M) (9201) has 3 members ticked for IHG; the cap is 2. ` +
+        'All 3 get the points (allowed). Untick on the Review step if this is a mistake.',
     )
     expect(out.tickedByCca).toEqual({ '9201': 3 })
   })

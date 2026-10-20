@@ -18,6 +18,9 @@ const AT = '2027-04-02T10:00:00.000Z'
 const reviewEdit = { matric: matricOf(1), ccaID: 'C1', from: 8, to: 9, reason: '', at: AT }
 const level = { ccaID: 'C1', level: 'High Gold', bonusOverride: null, multiplierOverride: null }
 const notSubmitting = { ccaID: 'C2', note: 'disbanded', at: AT }
+const tickEdit = { matric: matricOf(1), ccaID: 'C1', from: false, to: true, reason: '', at: AT }
+const flatEdit = { matric: matricOf(1), ccaID: 'C3', from: 12, to: 10, reason: '', at: AT }
+const auxEdit = { matric: matricOf(1), from: 5, to: 7, reason: '', at: AT }
 
 /** Fills in what Finalise needs: a level on every CCA with a file and a vetted mark on each. */
 function prepared(state: AppState): AppState {
@@ -44,9 +47,11 @@ describe('lock rules while finalised', () => {
         { type: 'setFinalOverride', entry: override },
         { type: 'setDiscretion', entry: discretion },
         { type: 'setReviewEdit', entry: reviewEdit },
+        { type: 'setCcaLevel', entry: { ...level, ccaID: 'C2' } },
         { type: 'setVetted', ccaID: 'C2', at: AT },
         { type: 'setNotSubmitting', mark: notSubmitting },
         { type: 'setCcaLevel', entry: level },
+        { type: 'setAuxEdit', entry: auxEdit },
       ),
     )
     for (const action of [
@@ -58,6 +63,12 @@ describe('lock rules while finalised', () => {
       { type: 'clearNotSubmitting', ccaID: 'C2' },
       { type: 'setCcaLevel', entry: { ...level, level: 'Pass' } },
       { type: 'setCcaLevelsAll', list: [] },
+      { type: 'setTickEdit', entry: tickEdit },
+      { type: 'removeTickEdit', matric: tickEdit.matric, ccaID: tickEdit.ccaID, at: AT },
+      { type: 'setFlatEdit', entry: flatEdit },
+      { type: 'removeFlatEdit', matric: flatEdit.matric, ccaID: flatEdit.ccaID, at: AT },
+      { type: 'setAuxEdit', entry: { ...auxEdit, to: 9 } },
+      { type: 'removeAuxEdit', matric: auxEdit.matric, at: AT },
       { type: 'setConfig', config: DEFAULT_CONFIG },
       { type: 'addFiles', files: scenario() },
       { type: 'setFinalOverride', entry: { ...override, finalPoints: 9 } },
@@ -105,6 +116,12 @@ describe('unsaved-changes flag', () => {
     ['clearing a not-submitting mark', (s) => reducer(run(s, { type: 'setNotSubmitting', mark: notSubmitting }, { type: 'markSaved', at: AT }), { type: 'clearNotSubmitting', ccaID: 'C2' })],
     ['a CCA level', (s) => reducer(s, { type: 'setCcaLevel', entry: level })],
     ['the whole level table', (s) => reducer(s, { type: 'setCcaLevelsAll', list: [level] })],
+    ['tick edits', (s) => reducer(s, { type: 'setTickEdit', entry: tickEdit })],
+    ['removing a tick edit', (s) => reducer(run(s, { type: 'setTickEdit', entry: tickEdit }, { type: 'markSaved', at: AT }), { type: 'removeTickEdit', matric: tickEdit.matric, ccaID: tickEdit.ccaID, at: AT })],
+    ['flat edits', (s) => reducer(s, { type: 'setFlatEdit', entry: flatEdit })],
+    ['removing a flat edit', (s) => reducer(run(s, { type: 'setFlatEdit', entry: flatEdit }, { type: 'markSaved', at: AT }), { type: 'removeFlatEdit', matric: flatEdit.matric, ccaID: flatEdit.ccaID, at: AT })],
+    ['AUX edits', (s) => reducer(s, { type: 'setAuxEdit', entry: auxEdit })],
+    ['removing an AUX edit', (s) => reducer(run(s, { type: 'setAuxEdit', entry: auxEdit }, { type: 'markSaved', at: AT }), { type: 'removeAuxEdit', matric: auxEdit.matric, at: AT })],
     ['unlock', (s) => reducer(finalised(s), { type: 'unlock' })],
   ])('is set by a change to %s', (_, change) => {
     const clean = reducer(loaded(), { type: 'markSaved', at: '2027-04-01T06:32:00.000Z' })
@@ -147,14 +164,14 @@ describe('unsaved-changes flag', () => {
       { type: 'setFinalOverride', entry: override },
       { type: 'setDiscretion', entry: discretion },
       { type: 'setReviewEdit', entry: reviewEdit },
+      { type: 'setCcaLevel', entry: level },
       { type: 'setVetted', ccaID: 'C1', at: AT },
       { type: 'setNotSubmitting', mark: notSubmitting },
-      { type: 'setCcaLevel', entry: level },
       { type: 'setStep', step: 'results' },
     )
     const done = finalised(before)
     const workspace = toWorkspace(done, new Date(2027, 3, 1))
-    expect(workspace.version).toBe(2)
+    expect(workspace.version).toBe(3)
     expect('meanSdOverrides' in workspace).toBe(false)
     const opened = reducer(run(initialState(), { type: 'setConfig', config: DEFAULT_CONFIG }), { type: 'loadWorkspace', workspace: fromRestored(restoreWorkspace(workspace)) })
     expect(opened.dirty).toBe(false)

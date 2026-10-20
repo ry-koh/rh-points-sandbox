@@ -8,6 +8,8 @@ import { OpenSummaryDialog } from './OpenSummaryDialog'
 
 interface OpenWorkspaceProps {
   readonly dirty: boolean
+  /** The last opened file's groups replaced the groups saved on this computer. */
+  readonly groupsReplaced?: boolean
   readonly dispatch: Dispatch<Action>
   /** Renders the trigger; call `start` to begin opening. */
   readonly children: (start: () => void) => React.ReactNode
@@ -21,7 +23,7 @@ type Stage =
   | { readonly kind: 'summary'; readonly restored: RestoredWorkspace }
 
 /** Open workspace: confirm unsaved changes, pick a .rhps file, ask for its password, load, summarise. */
-export function OpenWorkspace({ dirty, dispatch, children }: OpenWorkspaceProps) {
+export function OpenWorkspace({ dirty, groupsReplaced, dispatch, children }: OpenWorkspaceProps) {
   const input = useRef<HTMLInputElement>(null)
   const [stage, setStage] = useState<Stage>({ kind: 'idle' })
   const [password, setPassword] = useState('')
@@ -83,7 +85,7 @@ export function OpenWorkspace({ dirty, dispatch, children }: OpenWorkspaceProps)
       <ConfirmDialog open={stage.kind === 'error'} title="This workspace cannot be opened" confirmLabel="Choose another file" onCancel={close} onConfirm={pick}>
         {stage.kind === 'error' ? stage.message : ''}
       </ConfirmDialog>
-      <OpenSummaryDialog restored={stage.kind === 'summary' ? stage.restored : null} onClose={close} />
+      <OpenSummaryDialog restored={stage.kind === 'summary' ? stage.restored : null} groupsReplaced={groupsReplaced} onClose={close} />
     </>
   )
 }

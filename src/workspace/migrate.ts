@@ -26,11 +26,9 @@ function isRetiredFile(file: unknown): boolean {
 
 /**
  * Turns a version-1 workspace object into the version-2 shape (spec 8b), with a plain note for
- * each thing the user must redo. Retired files are dropped, never converted (D11). A v2 object
- * is returned unchanged. Never mutates; the result is still checked by the reader.
+ * each thing the user must redo. Retired files are dropped, never converted (D11).
  */
-export function migrateWorkspace(raw: Rec): { readonly raw: Rec; readonly notes: string[] } {
-  if (raw.version !== 1) return { raw, notes: [] }
+function v1ToV2(raw: Rec): { readonly raw: Rec; readonly notes: string[] } {
   const notes: string[] = []
   const { meanSdOverrides: _dropped, ...rest } = raw
   const files = Array.isArray(raw.files) ? raw.files.filter((file) => !isRetiredFile(file)) : raw.files
@@ -49,4 +47,27 @@ export function migrateWorkspace(raw: Rec): { readonly raw: Rec; readonly notes:
     },
     notes,
   }
+}
+
+/** The review lists added in version 3, all empty. */
+const EMPTY_V3_LISTS = { tickEdits: [], tickLog: [], flatEdits: [], flatLog: [], auxEdits: [], auxLog: [] }
+
+/**
+ * Version 2 to 3 (R4): empty tick, flat and AUX lists and no groups. Nothing is lost, so no
+ * note. A review that is not an object is left as it is for the reader to call CORRUPT.
+ */
+function v2ToV3(raw: Rec): Rec {
+  const review = isRec(raw.review) ? { ...raw.review, ...EMPTY_V3_LISTS } : raw.review
+  return { ...raw, version: 3, review, groups: null }
+}
+
+/**
+ * Brings an older workspace object up to the current version, v1 → v2 → v3, with a plain note
+ * for each thing the user must redo. A v3 object is returned unchanged. Never mutates; the
+ * result is still checked by the reader.
+ */
+export function migrateWorkspace(raw: Rec): { readonly raw: Rec; readonly notes: string[] } {
+  if (raw.version !== 1 && raw.version !== 2) return { raw, notes: [] }
+  const v2 = raw.version === 1 ? v1ToV2(raw) : { raw, notes: [] }
+  return { raw: v2ToV3(v2.raw), notes: v2.notes }
 }

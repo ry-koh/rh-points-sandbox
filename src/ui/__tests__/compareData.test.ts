@@ -16,11 +16,15 @@ describe('the comparison CSV carries the review, levels and tweaks lines', () =>
       { ccaID: 'C2', name: 'Test CCA Two', fileName: 'b.csv', status: 'ok' as const, level: null, bonusOverride: null, multiplierOverride: null },
     ]
     const levels = [{ name: 'High Gold', bonus: 4, multiplier: 1.3 }]
-    const counts = { ...entryCounts(null), reviewEdits: 3 }
+    const counts = { ...entryCounts(null), reviewEdits: 3, tickEdits: 1, ihgOverCap: ['Test CCA One (C1)'] }
     const csv = buildComparisonCsv(compareRuns(side.run, side.run), [], { a: 'A', b: 'B' }, counts, { perCca, levels })
     const header = csv.split('\n').filter((line) => line.startsWith('#'))
     expect(header.slice(3)).toEqual([
       '# review edits: 3',
+      '# IHG tick edits: 1',
+      '# flat value edits: 0',
+      '# AUX edits: 0',
+      '# IHG over cap: Test CCA One (C1)',
       '# levels: High Gold: C1; not set: C2',
       '# level tweaks: Test CCA One (C1): High Gold, multiplier 1.31 (level 1.3)',
       '# A: A · B: B',

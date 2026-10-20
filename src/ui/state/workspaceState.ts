@@ -24,6 +24,7 @@ export function toWorkspace(state: AppState, savedAt: Date): Workspace {
     discretion: state.discretion,
     resolutions: state.resolutions,
     finalised: state.finalised?.penalty ?? null,
+    groups: state.groups.length > 0 ? state.groups : null,
   }
 }
 
@@ -47,6 +48,7 @@ export function fromRestored(restored: RestoredWorkspace): LoadedWorkspace {
     config: workspace.config,
     ccaLevels: workspace.ccaLevels,
     review: workspace.review,
+    groups: workspace.groups,
     step: workspace.step,
     finalOverrides: workspace.finalOverrides,
     discretion: workspace.discretion,

@@ -1,19 +1,23 @@
 import { useEffect, useReducer, type Dispatch } from 'react'
 import { computeAll } from '../../engine'
-import { loadSettings, saveSettings } from './settingsStorage'
+import { loadGroups, loadSettings, saveGroups, saveSettings } from './settingsStorage'
 import { entryOptions, initialState, reducer, type Action, type AppState } from './store'
 
 const COMPUTE_DEBOUNCE_MS = 150
 
 /** App store: validation runs inside the reducer; computeAll is debounced here. */
 export function useAppStore(): { state: AppState; dispatch: Dispatch<Action> } {
-  const [state, dispatch] = useReducer(reducer, undefined, () => initialState(loadSettings()))
-  const { report, config, finalOverrides, discretion, resolutions } = state
+  const [state, dispatch] = useReducer(reducer, undefined, () => initialState(loadSettings(), loadGroups()))
+  const { report, config, groups, finalOverrides, discretion, resolutions } = state
   const penalty = state.finalised?.penalty
 
   useEffect(() => {
     saveSettings(config)
   }, [config])
+
+  useEffect(() => {
+    saveGroups(groups)
+  }, [groups])
 
   useEffect(() => {
     const input = report.input

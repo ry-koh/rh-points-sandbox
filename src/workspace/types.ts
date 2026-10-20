@@ -6,22 +6,32 @@ import type {
   WheelResolution,
 } from '../engine'
 import type {
+  AuxEdit,
+  AuxLogEntry,
   CcaLevelEntry,
+  CheckedAuxEdit,
+  CheckedFlatEdit,
   CheckedReviewEdit,
+  CheckedTickEdit,
+  FlatEdit,
+  FlatLogEntry,
+  IhgTickEdit,
   ImportReport,
   NotSubmittingMark,
   ReviewEdit,
   ReviewLogEntry,
   SourceFile,
+  TickLogEntry,
   VettedMark,
 } from '../import'
+import type { CcaGroup } from '../import/groups'
 
 export const WORKSPACE_FORMAT = 'rhps-workspace'
 export const WORKSPACE_ENCRYPTED_FORMAT = 'rhps-workspace-encrypted'
-/** The version written. Version 1 files are migrated on read (spec 8b). */
-export const WORKSPACE_VERSION = 2
-export const WORKSPACE_READABLE_VERSIONS: readonly number[] = [1, 2]
-/** The encrypted envelope has its own version; its layout did not change with workspace v2. */
+/** The version written. Version 1 and 2 files are migrated on read (spec 8b, R4). */
+export const WORKSPACE_VERSION = 3
+export const WORKSPACE_READABLE_VERSIONS: readonly number[] = [1, 2, 3]
+/** The encrypted envelope has its own version; its layout did not change with workspace v2 or v3. */
 export const ENVELOPE_VERSION = 1
 
 /** The steps of the guided workflow, in order. The top bar's screens are these. */
@@ -29,12 +39,21 @@ export type WorkflowStep = 'import' | 'checklist' | 'review' | 'summary' | 'resu
 
 export const WORKFLOW_STEPS: readonly WorkflowStep[] = ['import', 'checklist', 'review', 'summary', 'results', 'publish', 'compare']
 
-/** The Review step's state: score edits and their log, vetted marks and not-submitting marks. */
+/**
+ * The Review and Summary steps' state: score, IHG tick, flat value and AUX edits with their logs,
+ * vetted marks and not-submitting marks.
+ */
 export interface WorkspaceReview {
   readonly edits: readonly ReviewEdit[]
   readonly log: readonly ReviewLogEntry[]
   readonly vetted: readonly VettedMark[]
   readonly notSubmitting: readonly NotSubmittingMark[]
+  readonly tickEdits: readonly IhgTickEdit[]
+  readonly tickLog: readonly TickLogEntry[]
+  readonly flatEdits: readonly FlatEdit[]
+  readonly flatLog: readonly FlatLogEntry[]
+  readonly auxEdits: readonly AuxEdit[]
+  readonly auxLog: readonly AuxLogEntry[]
 }
 
 /**
@@ -56,6 +75,8 @@ export interface Workspace {
   readonly discretion: readonly Discretion[]
   readonly resolutions: readonly WheelResolution[]
   readonly finalised: PenaltyState | null
+  /** The CCA groups; null when the file records no groups (older files, or none saved yet). */
+  readonly groups: readonly CcaGroup[] | null
 }
 
 export type WorkspaceErrorCode =
@@ -100,12 +121,19 @@ export interface RestoredWorkspace {
     readonly vetted: readonly VettedMark[]
     /** Level entries for CCAs the loaded bundle does not list. */
     readonly ccaLevels: readonly CcaLevelEntry[]
+    /** IHG tick edits not applied: the file's tick moved, or the membership is gone. */
+    readonly tickEdits: readonly CheckedTickEdit[]
+    /** Flat value edits not applied: the flat value moved, or the member is gone. */
+    readonly flatEdits: readonly CheckedFlatEdit[]
+    /** AUX edits not applied: the residents list's count moved, or the resident is gone. */
+    readonly auxEdits: readonly CheckedAuxEdit[]
   }
   /**
    * Groups that could not be checked yet, so nothing in them is listed as stale: `review` while
-   * no RH-app bundle is loaded, `computed` while the import cannot compute.
+   * no RH-app bundle is loaded, `computed` while the import cannot compute, `aux` while no
+   * residents list is loaded.
    */
-  readonly unchecked: { readonly review: boolean; readonly computed: boolean }
+  readonly unchecked: { readonly review: boolean; readonly computed: boolean; readonly aux: boolean }
   /** The migration notes, passed through from reading the file. */
   readonly notes: readonly string[]
 }

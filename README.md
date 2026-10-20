@@ -64,13 +64,17 @@ The steps run in order along the top; each opens once the one before it is done.
      the levels themselves are edited in Settings, and editing a level clears the tweaks on it);
    - for a sport, **tick or untick IHG recipients** (the members the sport's head ticked in the RH
      app are the starting point). Going over the cap is a warning, not a block;
+   - **correct a member's outgoing role, incoming role or full year / 1 sem** when the leader
+     file has them wrong (sandbox side only; the RH app is unchanged). Changing someone to
+     1 sem moves the lists, not the average and spread, which use full scores;
    - for a flat CCA, **change one member's value** (for example 12 to 10); the others keep the
      flat value;
    - **mark it vetted**, flat CCAs included. The mark is tied to the leader file (for a flat CCA,
      to its flat value and members): a changed file un-vets the CCA. **A vetted CCA is locked**: its
-     level, tweaks, scores, flat values and IHG ticks cannot change until you clear vetted.
+     level, tweaks, scores, roles, full year / 1 sem, flat values and IHG ticks cannot change until
+     you clear vetted.
 
-   Every score, tick and flat-value change is logged with the value it started from and applies only
+   Every score, tick, role, semester and flat-value change is logged with the value it started from and applies only
    while the file still has that value. The left list shows each CCA's level and a clear vetted
    mark, and you can sort CCAs into named **groups** (kept on this computer, and saved in the
    workspace file; only the group names and CCA ids). A CCA's type, and a sport's IHG result and

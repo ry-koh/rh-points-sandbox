@@ -2,6 +2,8 @@ import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 import type { RestoredWorkspace } from '../../workspace'
 import { Button } from '../common/controls'
 import { Modal } from '../common/Modal'
+import { cap } from '../drawer/drawerData'
+import { MEMBERSHIP_FIELD_WORDS } from '../review/reviewHelpers'
 import { countIssues, plural } from '../shell/blockReason'
 
 interface OpenSummaryDialogProps {
@@ -21,7 +23,7 @@ function Line({ ok, children }: { readonly ok: boolean; readonly children: React
 }
 
 const WAITING_FOR_BUNDLE =
-  'Score edits, IHG tick edits, flat value edits, vetted marks, CCA levels, discretion points, final-points overrides and wheel results will be checked once the RH-app bundle is loaded.'
+  'Score edits, IHG tick edits, flat value edits, role and semester edits, vetted marks, CCA levels, discretion points, final-points overrides and wheel results will be checked once the RH-app bundle is loaded.'
 const WAITING_FOR_IMPORT = 'Discretion points, final-points overrides and wheel results will be checked once the import has no errors.'
 
 const WAITING_FOR_RESIDENTS = 'AUX edits are unchecked: load the residents list and they will be checked then.'
@@ -34,7 +36,7 @@ export function OpenSummaryDialog({ restored, groupsReplaced = false, onClose }:
   if (!restored) return <Modal open={false} title="Workspace opened" onClose={onClose} footer={null}>{null}</Modal>
   const { workspace, report, stale, notes, unchecked } = restored
   const ccaName = (ccaID: string): string => report.bundle?.ccas.find((c) => c.ccaID === ccaID)?.ccaName ?? ccaID
-  const reviewStale = stale.edits.length + stale.vetted.length + stale.ccaLevels.length + stale.tickEdits.length + stale.flatEdits.length + stale.auxEdits.length
+  const reviewStale = stale.edits.length + stale.vetted.length + stale.ccaLevels.length + stale.tickEdits.length + stale.flatEdits.length + stale.auxEdits.length + stale.membershipEdits.length
   const { errors, warnings } = countIssues(report)
   const staleCount = stale.overrides.length + stale.discretion.length + stale.resolutions.length
   return (
@@ -81,6 +83,7 @@ export function OpenSummaryDialog({ restored, groupsReplaced = false, onClose }:
           {stale.tickEdits.map((t) => <li key={`t-${t.entry.matric}-${t.entry.ccaID}-${t.entry.at}`}>IHG tick edit for {t.entry.matric} in {t.entry.ccaID} no longer matches the file</li>)}
           {stale.flatEdits.map((f) => <li key={`f-${f.entry.matric}-${f.entry.ccaID}-${f.entry.at}`}>Flat value edit for {f.entry.matric} in {f.entry.ccaID} no longer matches the file</li>)}
           {stale.auxEdits.map((a) => <li key={`a-${a.entry.matric}-${a.entry.at}`}>AUX edit for {a.entry.matric} no longer matches the residents list</li>)}
+          {stale.membershipEdits.map((m) => <li key={`m-${m.entry.matric}-${m.entry.ccaID}-${m.entry.field}-${m.entry.at}`}>{cap(MEMBERSHIP_FIELD_WORDS[m.entry.field])} for {m.entry.matric} in {m.entry.ccaID} no longer matches the file</li>)}
           {stale.ccaLevels.map((l) => <li key={`l-${l.ccaID}`}>{l.ccaID} has a level set but is not in the bundle</li>)}
         </ul>
       )}

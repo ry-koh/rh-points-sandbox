@@ -1,9 +1,10 @@
 import { TriangleAlert } from 'lucide-react'
 import { useEffect, useState, type KeyboardEvent } from 'react'
 import { BASE_POINTS_MAX, BASE_POINTS_MIN, MAX_REASON_LENGTH } from '../../engine'
-import type { CheckedReviewEdit, CheckedTickEdit, LeaderRow } from '../../import'
+import type { Role } from '../../engine'
+import type { CheckedMembershipEdit, CheckedReviewEdit, CheckedTickEdit, LeaderRow, MembershipField } from '../../import'
 import { Chip } from '../common/controls'
-import { roleLabel } from '../drawer/drawerData'
+import { MEMBERSHIP_FIELD_WORDS, membershipWords } from './reviewHelpers'
 
 export interface ScoreRow {
   readonly member: LeaderRow
@@ -11,6 +12,8 @@ export interface ScoreRow {
   readonly edit: CheckedReviewEdit | null
   /** This membership's IHG tick edit as last judged; null when it has none. */
   readonly tickEdit: CheckedTickEdit | null
+  /** This membership's role and semester edits as last judged (at most one per field). */
+  readonly membershipEdits: readonly CheckedMembershipEdit[]
   readonly hasFinalOverride: boolean
 }
 
@@ -22,7 +25,15 @@ interface ScoreTableProps {
   readonly onSave: (member: LeaderRow, score: string, reason: string) => string | null
   /** Sets the member's IHG tick (and its reason), or reverts it when `ticked` is the file's tick. */
   readonly onTick: (member: LeaderRow, ticked: boolean, reason: string) => void
+  /** Sets a role or the semester flag (and its reason), or reverts it when `to` is the file's value. */
+  readonly onMembership: (member: LeaderRow, field: MembershipField, to: Role | boolean, reason: string) => void
 }
+
+const ROLE_OPTIONS: readonly { readonly value: Role; readonly label: string }[] = [
+  { value: 'none', label: 'None' },
+  { value: 'head', label: 'Head' },
+  { value: 'vice_head', label: 'Vice head' },
+]
 
 const SCORE_ATTR = 'data-score-index'
 
@@ -84,13 +95,93 @@ function IhgCell({ row, locked, onTick }: {
   )
 }
 
-function ScoreLine({ row, index, isSport, locked, onSave, onTick }: {
+const FIELD_LABELS: Readonly<Record<MembershipField, string>> = {
+  outgoingRole: 'Outgoing role',
+  incomingRole: 'Incoming role',
+  semesterOnly: '1 sem',
+}
+
+/** A role select or the full year / 1 sem toggle; gold and with a reason box while an edit is in use. */
+function MembershipCell({ row, field, locked, onMembership }: {
+  readonly row: ScoreRow
+  readonly field: MembershipField
+  readonly locked: boolean
+  readonly onMembership: ScoreTableProps['onMembership']
+}) {
+  const { member } = row
+  const judged = row.membershipEdits.find((e) => e.entry.field === field)
+  const applied = judged?.status === 'applied' ? judged.entry : null
+  const fileValue: Role | boolean = member[field]
+  const shown = applied?.to ?? fileValue
+  const storedReason = applied?.reason ?? ''
+  const [reason, setReason] = useState(storedReason)
+  useEffect(() => setReason(storedReason), [storedReason])
+  const label = `${FIELD_LABELS[field]} for ${member.name}`
+  const frame = `inline-flex items-center gap-1.5 rounded-[3px] border px-1 py-0.5 ${applied ? 'border-gold bg-gold-soft' : 'border-transparent'}`
+  return (
+    <td className="py-1.5 pr-3">
+      {typeof shown === 'boolean' ? (
+        <label className={frame}>
+          <input
+            type="checkbox"
+            checked={shown}
+            disabled={locked}
+            aria-label={label}
+            onChange={(event) => onMembership(member, field, event.target.checked, reason)}
+            className="accent-raffles disabled:opacity-60"
+          />
+          <span className="text-cap text-muted">{shown ? '1 sem' : 'Full year'}</span>
+        </label>
+      ) : (
+        <select
+          value={shown}
+          disabled={locked}
+          aria-label={label}
+          onChange={(event) => onMembership(member, field, event.target.value as Role, reason)}
+          className={`motion h-8 rounded-[3px] border bg-card px-1 text-body disabled:opacity-60 ${applied ? 'border-gold bg-gold-soft' : 'border-ink/20 hover:border-ink/50'}`}
+        >
+          {ROLE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      )}
+      {applied && (
+        <input
+          type="text"
+          value={reason}
+          maxLength={MAX_REASON_LENGTH}
+          disabled={locked}
+          placeholder="Reason (optional)"
+          aria-label={`Reason for ${member.name}'s ${MEMBERSHIP_FIELD_WORDS[field]}`}
+          onChange={(event) => setReason(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              if (reason !== storedReason) onMembership(member, field, shown, reason)
+            }
+            if (event.key === 'Escape') setReason(storedReason)
+          }}
+          className="motion mt-1 block h-8 w-28 rounded-[3px] border border-ink/20 bg-card px-2 text-body hover:border-ink/50 disabled:opacity-60"
+        />
+      )}
+      {applied && reason !== storedReason && <p className="mt-0.5 text-cap text-muted">Enter saves · Esc cancels</p>}
+      {judged?.status === 'changed' && (
+        <p className="mt-0.5 flex items-center gap-1 text-cap text-warning">
+          <TriangleAlert aria-hidden size={12} /> Edit to {membershipWords(judged.entry.to)} not applied: the file changed.
+        </p>
+      )}
+    </td>
+  )
+}
+
+function ScoreLine({ row, index, isSport, locked, onSave, onTick, onMembership }: {
   readonly row: ScoreRow
   readonly index: number
   readonly isSport: boolean
   readonly locked: boolean
   readonly onSave: ScoreTableProps['onSave']
   readonly onTick: ScoreTableProps['onTick']
+  readonly onMembership: ScoreTableProps['onMembership']
 }) {
   const { member, edit } = row
   const applied = edit?.status === 'applied' ? edit.entry : null
@@ -120,7 +211,7 @@ function ScoreLine({ row, index, isSport, locked, onSave, onTick }: {
   }
   const changed = edit?.status === 'changed'
   return (
-    <tr className={`border-b border-rule align-top ${applied || row.tickEdit?.status === 'applied' ? 'bg-gold-soft/50' : 'hover:bg-ink/[0.03]'}`}>
+    <tr className={`border-b border-rule align-top ${applied || row.tickEdit?.status === 'applied' || row.membershipEdits.some((e) => e.status === 'applied') ? 'bg-gold-soft/50' : 'hover:bg-ink/[0.03]'}`}>
       <td className="py-1.5 pr-3">
         <div className="font-medium">{member.name}</div>
         <div className="font-mono text-cap text-muted">{member.matric}</div>
@@ -166,18 +257,17 @@ function ScoreLine({ row, index, isSport, locked, onSave, onTick }: {
           </p>
         )}
       </td>
-      <td className="num py-1.5 pr-3 text-body">
-        {roleLabel(member.outgoingRole)} / {roleLabel(member.incomingRole)}
-      </td>
-      <td className="py-1.5 pr-3 text-body">{member.semesterOnly ? 'Yes' : <span className="text-muted">—</span>}</td>
+      <MembershipCell row={row} field="outgoingRole" locked={locked} onMembership={onMembership} />
+      <MembershipCell row={row} field="incomingRole" locked={locked} onMembership={onMembership} />
+      <MembershipCell row={row} field="semesterOnly" locked={locked} onMembership={onMembership} />
       {isSport && <IhgCell row={row} locked={locked} onTick={onTick} />}
       <td className="py-1.5">{row.hasFinalOverride && <Chip tone="gold">final points set on Results</Chip>}</td>
     </tr>
   )
 }
 
-/** The leader file's members: the reviewed score and (for a sport) the IHG tick are editable (spec 6.4). */
-export function ScoreTable({ rows, isSport, locked, onSave, onTick }: ScoreTableProps) {
+/** The leader file's members: the reviewed score, roles, full year / 1 sem and (for a sport) the IHG tick are editable (spec 6.4). */
+export function ScoreTable({ rows, isSport, locked, onSave, onTick, onMembership }: ScoreTableProps) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[880px] border-collapse text-body">
@@ -187,15 +277,16 @@ export function ScoreTable({ rows, isSport, locked, onSave, onTick }: ScoreTable
             <th scope="col" className="py-2 pr-3 text-right" title="The leader file's score">File</th>
             <th scope="col" className="py-2 pr-3">Reviewed</th>
             <th scope="col" className="py-2 pr-3">Reason</th>
-            <th scope="col" className="py-2 pr-3" title="Outgoing / incoming role">Out / In</th>
-            <th scope="col" className="py-2 pr-3" title="Semester-only">Sem</th>
+            <th scope="col" className="py-2 pr-3" title="Outgoing role">Out</th>
+            <th scope="col" className="py-2 pr-3" title="Incoming role">In</th>
+            <th scope="col" className="py-2 pr-3" title="Full year or semester-only">Sem</th>
             {isSport && <th scope="col" className="py-2 pr-3" title="Gets the sport's IHG points; a change here is logged">IHG</th>}
             <th scope="col" className="py-2"><span className="sr-only">Notes</span></th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <ScoreLine key={row.member.matric} row={row} index={i} isSport={isSport} locked={locked} onSave={onSave} onTick={onTick} />
+            <ScoreLine key={row.member.matric} row={row} index={i} isSport={isSport} locked={locked} onSave={onSave} onTick={onTick} onMembership={onMembership} />
           ))}
         </tbody>
       </table>

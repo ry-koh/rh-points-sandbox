@@ -34,10 +34,11 @@ const files = scenario()
 const c1File = files.find((f) => f.name === leaderFileName('C1'))?.text ?? ''
 
 const EMPTY_NEW_LISTS = { tickEdits: [], tickLog: [], flatEdits: [], flatLog: [], auxEdits: [], auxLog: [] }
+const EMPTY_MEMBERSHIP_LISTS = { membershipEdits: [], membershipLog: [] }
 
 const workspace: Workspace = {
   format: WORKSPACE_FORMAT,
-  version: 3,
+  version: 4,
   savedAt: '2027-04-01T09:30:00.000Z',
   files,
   config: { ...DEFAULT_CONFIG, headcounts: { ...DEFAULT_CONFIG.headcounts, maleGreen: 2, maleGrey: 1, sem2Green: 1 } },
@@ -55,6 +56,7 @@ const workspace: Workspace = {
     vetted: [{ ccaID: 'C1', fileHash: fnv1a32(c1File), at: AT }],
     notSubmitting: [{ ccaID: 'C9', note: 'disbanded', at: AT }],
     ...EMPTY_NEW_LISTS,
+    ...EMPTY_MEMBERSHIP_LISTS,
   },
   step: 'review',
   finalOverrides: [{ matric: 'A9900001Z', ccaID: 'C1', finalPoints: 5, reason: 'withdrawn' }],
@@ -67,8 +69,10 @@ const workspace: Workspace = {
 const tickEdit = { matric: matricOf(3), ccaID: 'C1', from: false, to: true, reason: 'played', at: AT }
 const flatEdit = { matric: matricOf(2), ccaID: 'C3', from: 12, to: 10, reason: '', at: AT }
 const auxEdit = { matric: matricOf(4), from: 5, to: 7, reason: 'late form', at: AT }
+const roleEdit = { matric: matricOf(1), ccaID: 'C1', field: 'outgoingRole' as const, from: 'none' as const, to: 'head' as const, reason: 'took over', at: AT }
+const semEdit = { matric: matricOf(2), ccaID: 'C1', field: 'semesterOnly' as const, from: false, to: true, reason: '', at: AT }
 
-/** A v3 workspace with every new list and a group filled. */
+/** A workspace with every v3 list and a group filled. */
 const filled: Workspace = {
   ...workspace,
   review: {
@@ -84,6 +88,20 @@ const filled: Workspace = {
     { id: 'g1', name: 'Sports', ccaIDs: ['C1'] },
     { id: 'g2', name: 'Empty', ccaIDs: [] },
   ],
+}
+
+/** A v4 workspace with the membership lists filled as well. */
+const filledV4: Workspace = {
+  ...filled,
+  review: {
+    ...filled.review,
+    membershipEdits: [roleEdit, semEdit],
+    membershipLog: [
+      { ...roleEdit, kind: 'edit' },
+      { ...semEdit, kind: 'edit' },
+      { ...semEdit, from: true, to: false, reason: '', kind: 'remove' },
+    ],
+  },
 }
 
 const ok = async (text: string, password?: string) => {
@@ -107,9 +125,13 @@ describe('plain workspace', () => {
     expect(await parseWorkspaceFile(serializeWorkspace(filled))).toEqual({ ok: true, workspace: filled, notes: [] })
   })
 
-  it('is written as version 3, with the level table and no meanSdOverrides', () => {
+  it('round-trips the v4 role and semester edits and their log', async () => {
+    expect(await parseWorkspaceFile(serializeWorkspace(filledV4))).toEqual({ ok: true, workspace: filledV4, notes: [] })
+  })
+
+  it('is written as version 4, with the level table and no meanSdOverrides', () => {
     const written = JSON.parse(serializeWorkspace(workspace)) as Record<string, unknown>
-    expect(written.version).toBe(3)
+    expect(written.version).toBe(4)
     expect(written.ccaLevels).toEqual(workspace.ccaLevels)
     expect('meanSdOverrides' in written).toBe(false)
   })
@@ -133,6 +155,11 @@ describe('encrypted workspace', () => {
   it('round-trips a filled v3 workspace with the password', { timeout: TIMEOUT }, async () => {
     const envelope = await encryptWorkspace(serializeWorkspace(filled), PASSWORD)
     expect(await ok(envelope, PASSWORD)).toEqual(filled)
+  })
+
+  it('round-trips a filled v4 workspace with the password', { timeout: TIMEOUT }, async () => {
+    const envelope = await encryptWorkspace(serializeWorkspace(filledV4), PASSWORD)
+    expect(await ok(envelope, PASSWORD)).toEqual(filledV4)
   })
 
   it('writes the specified envelope and hides the data', { timeout: TIMEOUT }, async () => {
@@ -206,7 +233,7 @@ describe('rejecting other files', () => {
   })
 
   it('UNSUPPORTED_VERSION for another workspace version', async () => {
-    expect(await codeOf(JSON.stringify({ ...workspace, version: 4 }))).toBe('UNSUPPORTED_VERSION')
+    expect(await codeOf(JSON.stringify({ ...workspace, version: 5 }))).toBe('UNSUPPORTED_VERSION')
     expect(await codeOf(JSON.stringify({ ...workspace, version: 0 }))).toBe('UNSUPPORTED_VERSION')
     expect(await codeOf(JSON.stringify({ ...workspace, version: undefined }))).toBe('UNSUPPORTED_VERSION')
   })
@@ -270,6 +297,48 @@ describe('rejecting other files', () => {
   })
 })
 
+describe('CORRUPT v4 membership lists', () => {
+  const review = filledV4.review
+  const bad = (patch: Record<string, unknown>) => ({ ...filledV4, review: { ...review, ...patch } })
+
+  it('a role value outside ROLES is CORRUPT', async () => {
+    expect(await codeOf(JSON.stringify(bad({ membershipEdits: [{ ...roleEdit, to: 'boss' }] })))).toBe('CORRUPT')
+    expect(await codeOf(JSON.stringify(bad({ membershipEdits: [{ ...roleEdit, from: 'boss' }] })))).toBe('CORRUPT')
+    expect(await codeOf(JSON.stringify(bad({ membershipLog: [{ ...roleEdit, to: 'boss', kind: 'edit' }] })))).toBe('CORRUPT')
+  })
+
+  it('a semesterOnly value that is not a boolean is CORRUPT', async () => {
+    expect(await codeOf(JSON.stringify(bad({ membershipEdits: [{ ...semEdit, to: 'yes' }] })))).toBe('CORRUPT')
+    expect(await codeOf(JSON.stringify(bad({ membershipEdits: [{ ...semEdit, from: 0 }] })))).toBe('CORRUPT')
+  })
+
+  it('a value of the wrong type for its field is CORRUPT', async () => {
+    expect(await codeOf(JSON.stringify(bad({ membershipEdits: [{ ...roleEdit, to: true }] })))).toBe('CORRUPT')
+    expect(await codeOf(JSON.stringify(bad({ membershipEdits: [{ ...semEdit, to: 'head' }] })))).toBe('CORRUPT')
+  })
+
+  it('an unknown field, a non-string matric, ccaID, reason or at, or a bad kind is CORRUPT', async () => {
+    for (const entry of [
+      { ...roleEdit, field: 'level' },
+      { ...roleEdit, field: undefined },
+      { ...roleEdit, matric: 1 },
+      { ...roleEdit, ccaID: null },
+      { ...roleEdit, reason: undefined },
+      { ...roleEdit, at: 5 },
+    ]) {
+      expect(await codeOf(JSON.stringify(bad({ membershipEdits: [entry] })))).toBe('CORRUPT')
+    }
+    expect(await codeOf(JSON.stringify(bad({ membershipLog: [{ ...roleEdit, kind: 'undo' }] })))).toBe('CORRUPT')
+    expect(await codeOf(JSON.stringify(bad({ membershipLog: [roleEdit] })))).toBe('CORRUPT')
+  })
+
+  it('a missing or non-list membership list is CORRUPT', async () => {
+    const { membershipLog: _l, ...noLog } = review
+    expect(await codeOf(JSON.stringify({ ...filledV4, review: noLog }))).toBe('CORRUPT')
+    expect(await codeOf(JSON.stringify(bad({ membershipEdits: 'none' })))).toBe('CORRUPT')
+  })
+})
+
 describe('version 1 files (spec 8b migration)', () => {
   const v1Text = readFileSync('src/workspace/__tests__/v1-fixture.json', 'utf8')
   const v1 = JSON.parse(v1Text) as Record<string, any>
@@ -279,8 +348,8 @@ describe('version 1 files (spec 8b migration)', () => {
     if (!parsed.ok) throw new Error(`expected ok, got ${parsed.code}`)
     expect(parsed.notes).toEqual([RETIRED_FILES_NOTE, LEVELS_MIGRATED_NOTE])
     const opened = parsed.workspace
-    expect(opened.version).toBe(3)
-    expect(opened.review).toEqual({ edits: [], log: [], vetted: [], notSubmitting: [], ...EMPTY_NEW_LISTS })
+    expect(opened.version).toBe(4)
+    expect(opened.review).toEqual({ edits: [], log: [], vetted: [], notSubmitting: [], ...EMPTY_NEW_LISTS, ...EMPTY_MEMBERSHIP_LISTS })
     expect(opened.groups).toBeNull()
     expect(opened.ccaLevels).toEqual([])
     expect(opened.step).toBe('import')
@@ -317,6 +386,7 @@ describe('version 1 files (spec 8b migration)', () => {
       tickEdits: [],
       flatEdits: [],
       auxEdits: [],
+      membershipEdits: [],
     })
     expect(restored.workspace.discretion).toEqual(v1.discretion)
   })
@@ -340,10 +410,10 @@ describe('version 1 files (spec 8b migration)', () => {
     expect(raw.config).toEqual(DEFAULT_CONFIG)
   })
 
-  it('leaves a version 3 object alone and never changes its input', () => {
-    const v3 = JSON.parse(serializeWorkspace(workspace)) as Record<string, unknown>
-    expect(migrateWorkspace(v3)).toEqual({ raw: v3, notes: [] })
-    expect(migrateWorkspace(v3).raw).toBe(v3)
+  it('leaves a version 4 object alone and never changes its input', () => {
+    const v4 = JSON.parse(serializeWorkspace(workspace)) as Record<string, unknown>
+    expect(migrateWorkspace(v4)).toEqual({ raw: v4, notes: [] })
+    expect(migrateWorkspace(v4).raw).toBe(v4)
     const before = JSON.stringify(v1)
     migrateWorkspace(v1)
     expect(JSON.stringify(v1)).toBe(before)
@@ -359,15 +429,15 @@ describe('version 2 files (R4 migration)', () => {
   const v2Text = readFileSync('src/workspace/__tests__/v2-fixture.json', 'utf8')
   const v2 = JSON.parse(v2Text) as Record<string, any>
 
-  it('opens the literal v2 fixture as v3 with everything intact, empty new lists, no groups and no note', async () => {
+  it('opens the literal v2 fixture as v4 with everything intact, empty new lists, no groups and no note', async () => {
     const parsed = await parseWorkspaceFile(v2Text)
     if (!parsed.ok) throw new Error(`expected ok, got ${parsed.code}`)
     expect(v2.version).toBe(2)
     expect(parsed.notes).toEqual([])
     const opened = parsed.workspace
-    expect(opened.version).toBe(3)
+    expect(opened.version).toBe(4)
     expect(opened.groups).toBeNull()
-    expect(opened.review).toEqual({ ...v2.review, ...EMPTY_NEW_LISTS })
+    expect(opened.review).toEqual({ ...v2.review, ...EMPTY_NEW_LISTS, ...EMPTY_MEMBERSHIP_LISTS })
     expect(opened.review.edits).toHaveLength(1)
     expect(opened.review.log).toHaveLength(1)
     expect(opened.review.vetted).toHaveLength(1)
@@ -390,11 +460,11 @@ describe('version 2 files (R4 migration)', () => {
     expect(restored.stale.ccaLevels).toEqual([])
   })
 
-  it('migrates v2 to v3 without changing its input', () => {
+  it('migrates v2 to v4 without changing its input', () => {
     const before = JSON.stringify(v2)
     const { raw, notes } = migrateWorkspace(v2)
     expect(notes).toEqual([])
-    expect(raw.version).toBe(3)
+    expect(raw.version).toBe(4)
     expect(raw.groups).toBeNull()
     expect(JSON.stringify(v2)).toBe(before)
   })
@@ -402,6 +472,53 @@ describe('version 2 files (R4 migration)', () => {
   it('a v2 file with a broken review is CORRUPT', async () => {
     expect(await codeOf(JSON.stringify({ ...v2, review: 'nope' }))).toBe('CORRUPT')
     expect(await codeOf(JSON.stringify({ ...v2, review: { ...v2.review, edits: [{ matric: 1 }] } }))).toBe('CORRUPT')
+  })
+})
+
+describe('version 3 files (v3 to v4 migration)', () => {
+  const v3Text = readFileSync('src/workspace/__tests__/v3-fixture.json', 'utf8')
+  const v3 = JSON.parse(v3Text) as Record<string, any>
+
+  it('opens the literal v3 fixture as v4 with every edit, the vetted mark and the group intact, and empty membership lists', async () => {
+    const parsed = await parseWorkspaceFile(v3Text)
+    if (!parsed.ok) throw new Error(`expected ok, got ${parsed.code}`)
+    expect(v3.version).toBe(3)
+    expect(parsed.notes).toEqual([])
+    const opened = parsed.workspace
+    expect(opened.version).toBe(4)
+    expect(opened.review).toEqual({ ...v3.review, ...EMPTY_MEMBERSHIP_LISTS })
+    expect(opened.review.tickEdits).toHaveLength(1)
+    expect(opened.review.flatEdits).toHaveLength(1)
+    expect(opened.review.auxEdits).toHaveLength(1)
+    expect(opened.review.vetted).toHaveLength(1)
+    expect(opened.groups).toEqual(v3.groups)
+    expect(opened.groups).toHaveLength(1)
+    expect(opened.files).toEqual(v3.files)
+    expect(opened.ccaLevels).toEqual(v3.ccaLevels)
+    expect(opened.step).toBe('review')
+  })
+
+  it('migrates v3 to v4 without changing its input, and adds only the two lists', () => {
+    const before = JSON.stringify(v3)
+    const { raw, notes } = migrateWorkspace(v3)
+    expect(notes).toEqual([])
+    expect(raw.version).toBe(4)
+    expect(raw.review).toEqual({ ...v3.review, ...EMPTY_MEMBERSHIP_LISTS })
+    expect(raw.groups).toEqual(v3.groups)
+    expect(JSON.stringify(v3)).toBe(before)
+  })
+
+  it('a v3 file with a broken review is CORRUPT', async () => {
+    expect(await codeOf(JSON.stringify({ ...v3, review: 'nope' }))).toBe('CORRUPT')
+    expect(await codeOf(JSON.stringify({ ...v3, review: { ...v3.review, tickEdits: [{ matric: 1 }] } }))).toBe('CORRUPT')
+  })
+
+  it('restores with no membership edits listed as stale', async () => {
+    const parsed = await parseWorkspaceFile(v3Text)
+    if (!parsed.ok) throw new Error('expected ok')
+    const restored = restoreWorkspace(parsed.workspace, parsed.notes)
+    expect(restored.stale.membershipEdits).toEqual([])
+    expect(restored.stale.edits).toEqual([])
   })
 })
 
@@ -528,6 +645,34 @@ describe('restoreWorkspace re-validates the saved files', () => {
     expect(restored.stale.flatEdits).toEqual([{ entry: flatEdit, status: 'stale', current: null }])
   })
 
+  const roleRows = patchRow(leaderRows('C1'), 0, { outgoingRole: 'head' })
+  const roleFile = scenario({ leaders: { C1: roleRows, C2: leaderRows('C2') } })
+  const withMembership = (review: Partial<Workspace['review']>, files = workspace.files) =>
+    restoreWorkspace({ ...workspace, files, review: { ...workspace.review, vetted: [], ...review } })
+
+  it('lists nothing for role and semester edits that still apply', () => {
+    const restored = withMembership({ membershipEdits: [roleEdit, semEdit] })
+    expect(restored.report.review.membershipEdits.map((e) => e.status)).toEqual(['applied', 'applied'])
+    expect(restored.stale.membershipEdits).toEqual([])
+  })
+
+  it('lists a membership edit as changed when the file now says something else, and stale when the membership is gone', () => {
+    const moved = withMembership({ membershipEdits: [roleEdit] }, roleFile)
+    expect(moved.stale.membershipEdits).toEqual([{ entry: roleEdit, status: 'changed', current: 'head' }])
+    const files = workspace.files.filter((f) => f.name !== leaderFileName('C1'))
+    const gone = withMembership({ membershipEdits: [roleEdit, semEdit] }, files)
+    expect(gone.stale.membershipEdits).toEqual([
+      { entry: roleEdit, status: 'stale', current: null },
+      { entry: semEdit, status: 'stale', current: null },
+    ])
+  })
+
+  it('leaves membership edits unchecked with no bundle', () => {
+    const noBundle = withMembership({ membershipEdits: [roleEdit] }, scenario({ bundle: null }))
+    expect(noBundle.unchecked.review).toBe(true)
+    expect(noBundle.stale.membershipEdits).toEqual([])
+  })
+
   it('leaves AUX edits unchecked with no residents list, and tick and flat edits unchecked with no bundle', () => {
     const noResidents = withTick({ auxEdits: [auxEdit] }, scenario({ ccas: sportC1, residents: null }))
     expect(noResidents.unchecked.aux).toBe(true)
@@ -549,7 +694,13 @@ describe('sandboxInputOf', () => {
       tickEdits: [],
       flatEdits: [],
       auxEdits: [],
+      membershipEdits: [],
     })
+  })
+
+  it('passes the membership edits through', () => {
+    const review: Workspace['review'] = { ...workspace.review, membershipEdits: [roleEdit, semEdit] }
+    expect(sandboxInputOf({ ccaLevels: [], review }).membershipEdits).toEqual([roleEdit, semEdit])
   })
 
   it('passes tick, flat and AUX lists through when the review holds them (what Compare and the store use)', () => {

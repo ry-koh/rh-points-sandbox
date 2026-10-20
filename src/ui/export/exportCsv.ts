@@ -35,15 +35,16 @@ export interface EntryCounts {
   readonly discretion: number
   /** Review-step score edits that are applied to the current files. */
   readonly reviewEdits: number
-  /** IHG tick edits, flat value edits and AUX edits applied to the current files. */
+  /** IHG tick edits, flat value edits, AUX edits and role / semester edits applied to the current files. */
   readonly tickEdits: number
   readonly flatEdits: number
   readonly auxEdits: number
+  readonly membershipEdits: number
   /** `Name (ccaID)` of each sport with more members ticked than its cap (allowed, but listed). */
   readonly ihgOverCap: readonly string[]
 }
 
-const NO_ENTRIES: EntryCounts = { finalOverrides: 0, discretion: 0, reviewEdits: 0, tickEdits: 0, flatEdits: 0, auxEdits: 0, ihgOverCap: [] }
+const NO_ENTRIES: EntryCounts = { finalOverrides: 0, discretion: 0, reviewEdits: 0, tickEdits: 0, flatEdits: 0, auxEdits: 0, membershipEdits: 0, ihgOverCap: [] }
 
 /** What the levels and tweaks lines are built from: each CCA's level, and the levels in Settings. */
 export interface LevelLineData {
@@ -60,7 +61,7 @@ const appliedCount = (checked: readonly { readonly status: string }[] | undefine
 
 export function entryCounts(
   results: { readonly overrides: readonly Checked<FinalOverride>[]; readonly discretion: readonly Checked<Discretion>[] } | null,
-  review: Partial<Pick<ReviewReport, 'edits' | 'tickEdits' | 'flatEdits' | 'auxEdits'>> = {},
+  review: Partial<Pick<ReviewReport, 'edits' | 'tickEdits' | 'flatEdits' | 'auxEdits' | 'membershipEdits'>> = {},
   perCca: readonly Pick<PerCcaReport, 'ccaID' | 'name' | 'ihgTicked' | 'ihgCap'>[] = [],
 ): EntryCounts {
   const appliedCounts = {
@@ -68,6 +69,7 @@ export function entryCounts(
     tickEdits: appliedCount(review.tickEdits),
     flatEdits: appliedCount(review.flatEdits),
     auxEdits: appliedCount(review.auxEdits),
+    membershipEdits: appliedCount(review.membershipEdits),
     ihgOverCap: perCca.filter((c) => c.ihgCap !== null && c.ihgTicked > c.ihgCap).map((c) => `${c.name} (${c.ccaID})`),
   }
   if (!results) return { ...NO_ENTRIES, ...appliedCounts }
@@ -85,6 +87,7 @@ export const reviewEditsLine = (count: number): string => `# review edits: ${cou
 export const tickEditsLine = (count: number): string => `# IHG tick edits: ${count}`
 export const flatEditsLine = (count: number): string => `# flat value edits: ${count}`
 export const auxEditsLine = (count: number): string => `# AUX edits: ${count}`
+export const membershipEditsLine = (count: number): string => `# role/semester edits: ${count}`
 export const ihgOverCapLine = (names: readonly string[]): string => `# IHG over cap: ${names.length > 0 ? names.join(', ') : 'none'}`
 
 const NOT_SET = 'not set'
@@ -152,6 +155,7 @@ export function headerLines(
     tickEditsLine(counts.tickEdits),
     flatEditsLine(counts.flatEdits),
     auxEditsLine(counts.auxEdits),
+    membershipEditsLine(counts.membershipEdits),
     ihgOverCapLine(counts.ihgOverCap),
     levelsLine(levelData.perCca, levelData.levels),
     tweaksLine(levelData.perCca, levelData.levels),

@@ -11,12 +11,15 @@ import type {
   CcaLevelEntry,
   CheckedAuxEdit,
   CheckedFlatEdit,
+  CheckedMembershipEdit,
   CheckedReviewEdit,
   CheckedTickEdit,
   FlatEdit,
   FlatLogEntry,
   IhgTickEdit,
   ImportReport,
+  MembershipEdit,
+  MembershipLogEntry,
   NotSubmittingMark,
   ReviewEdit,
   ReviewLogEntry,
@@ -28,10 +31,10 @@ import type { CcaGroup } from '../import/groups'
 
 export const WORKSPACE_FORMAT = 'rhps-workspace'
 export const WORKSPACE_ENCRYPTED_FORMAT = 'rhps-workspace-encrypted'
-/** The version written. Version 1 and 2 files are migrated on read (spec 8b, R4). */
-export const WORKSPACE_VERSION = 3
-export const WORKSPACE_READABLE_VERSIONS: readonly number[] = [1, 2, 3]
-/** The encrypted envelope has its own version; its layout did not change with workspace v2 or v3. */
+/** The version written. Version 1, 2 and 3 files are migrated on read (spec 8b, R4). */
+export const WORKSPACE_VERSION = 4
+export const WORKSPACE_READABLE_VERSIONS: readonly number[] = [1, 2, 3, 4]
+/** The encrypted envelope has its own version; its layout did not change with workspace v2, v3 or v4. */
 export const ENVELOPE_VERSION = 1
 
 /** The steps of the guided workflow, in order. The top bar's screens are these. */
@@ -40,8 +43,8 @@ export type WorkflowStep = 'import' | 'checklist' | 'review' | 'summary' | 'resu
 export const WORKFLOW_STEPS: readonly WorkflowStep[] = ['import', 'checklist', 'review', 'summary', 'results', 'publish', 'compare']
 
 /**
- * The Review and Summary steps' state: score, IHG tick, flat value and AUX edits with their logs,
- * vetted marks and not-submitting marks.
+ * The Review and Summary steps' state: score, IHG tick, flat value, AUX and role / semester edits
+ * with their logs, vetted marks and not-submitting marks.
  */
 export interface WorkspaceReview {
   readonly edits: readonly ReviewEdit[]
@@ -54,6 +57,8 @@ export interface WorkspaceReview {
   readonly flatLog: readonly FlatLogEntry[]
   readonly auxEdits: readonly AuxEdit[]
   readonly auxLog: readonly AuxLogEntry[]
+  readonly membershipEdits: readonly MembershipEdit[]
+  readonly membershipLog: readonly MembershipLogEntry[]
 }
 
 /**
@@ -127,6 +132,8 @@ export interface RestoredWorkspace {
     readonly flatEdits: readonly CheckedFlatEdit[]
     /** AUX edits not applied: the residents list's count moved, or the resident is gone. */
     readonly auxEdits: readonly CheckedAuxEdit[]
+    /** Role and semester edits not applied: the file's value moved, or the membership is gone. */
+    readonly membershipEdits: readonly CheckedMembershipEdit[]
   }
   /**
    * Groups that could not be checked yet, so nothing in them is listed as stale: `review` while

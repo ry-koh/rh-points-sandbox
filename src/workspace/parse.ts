@@ -185,6 +185,7 @@ export function sandboxInputOf(workspace: Pick<Workspace, 'ccaLevels' | 'review'
     tickEdits: review.tickEdits,
     flatEdits: review.flatEdits,
     auxEdits: review.auxEdits,
+    membershipEdits: (review as { readonly membershipEdits?: SandboxInput['membershipEdits'] }).membershipEdits ?? [],
   }
 }
 

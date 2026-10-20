@@ -4,6 +4,7 @@ import { RETIRED_CCAS_COLUMNS, RETIRED_IHG_COLUMNS } from '../detect'
 import { fnv1a32 } from '../hash'
 import type { AuxEdit } from '../auxEdits'
 import type { FlatEdit } from '../flatEdits'
+import type { MembershipEdit } from '../membershipEdits'
 import type { ReviewEdit } from '../review'
 import type { IhgTickEdit } from '../tickEdits'
 import { validateImport } from '../validate'
@@ -514,7 +515,7 @@ describe('review edits and not-submitting marks', () => {
     const report = run(files)
     const c1Text = files.find((f) => f.name === leaderFileName('C1'))?.text ?? ''
     expect(report.perCca.map((c) => [c.ccaID, c.fileHash])).toEqual([['C1', fnv1a32(c1Text)], ['C2', null], ['C3', null]])
-    expect(report.review).toMatchObject({ edits: [], flatIds: ['C3'], tickEdits: [], flatEdits: [], auxEdits: [], auxUnchecked: false })
+    expect(report.review).toMatchObject({ edits: [], flatIds: ['C3'], tickEdits: [], flatEdits: [], auxEdits: [], membershipEdits: [], auxUnchecked: false })
   })
 
   it('a changed leader file changes the hash; a re-downloaded bundle does not', () => {
@@ -626,6 +627,68 @@ describe('tick, flat and AUX edits', () => {
   it('a flat edit does not change the flat vetHash', () => {
     const hashOf = (report: ImportReport) => report.perCca.find((c) => c.ccaID === 'C3')?.vetHash
     expect(hashOf(run(flatScenario(), DEFAULT_CONFIG, { ccaLevels: DEMO_LEVELS, flatEdits: [flatEdit(2, 10)] }))).toBe(hashOf(run(flatScenario())))
+  })
+})
+
+describe('membership edits', () => {
+  const AT = '2027-04-02T10:00:00.000Z'
+  const memberEdit = (patch: Partial<MembershipEdit> = {}): MembershipEdit =>
+    ({ matric: matricOf(6), ccaID: 'C1', field: 'outgoingRole', from: 'none', to: 'head', reason: '', at: AT, ...patch }) as MembershipEdit
+  const withMembership = (...membershipEdits: MembershipEdit[]): Partial<SandboxInput> => ({ ...levelsWith(entry('C1', { level: 'High Gold', multiplierOverride: 1.4 })), membershipEdits })
+  const c1Net = (report: ImportReport, n = 6) => {
+    if (!report.input) throw new Error('expected an engine input')
+    const { results } = computeAll(report.input, DEFAULT_CONFIG)
+    return results.find((r) => r.matric === matricOf(n))?.memberships.find((m) => m.ccaID === 'C1')
+  }
+  const plain = run(scenario(), DEFAULT_CONFIG, withMembership())
+
+  it('an outgoing-role edit none -> head raises outgoingLeaders and gives that member the outgoing multiplier in bidding (R3)', () => {
+    const report = run(scenario(), DEFAULT_CONFIG, withMembership(memberEdit()))
+    expect(report.issues).toEqual([])
+    expect(plain.perCca[0]?.outgoingLeaders).toBe(0)
+    expect(report.perCca[0]?.outgoingLeaders).toBe(1)
+    const bonus = (c1Net(plain)?.bidNet ?? Number.NaN) - 18
+    expect(c1Net(report)?.bidNet).toBeCloseTo(18 * 1.4 + bonus, 9)
+    expect(report.input?.memberships.find((m) => m.matric === matricOf(6) && m.ccaID === 'C1')?.outgoingRole).toBe('head')
+    expect(report.review.membershipEdits).toEqual([{ entry: memberEdit(), status: 'applied', current: 'none' }])
+  })
+
+  it('a semester-only edit halves the base in the lists but leaves the mean and SD on full scores (R5)', () => {
+    const report = run(scenario(), DEFAULT_CONFIG, withMembership(memberEdit({ field: 'semesterOnly', from: false, to: true } as Partial<MembershipEdit>)))
+    expect(report.perCca[0]?.mean).toBe(plain.perCca[0]?.mean)
+    expect(report.perCca[0]?.sd).toBe(plain.perCca[0]?.sd)
+    expect((c1Net(plain)?.stayNet ?? Number.NaN) - (c1Net(report)?.stayNet ?? Number.NaN)).toBeCloseTo(9, 9)
+  })
+
+  it('an incoming-role edit applies the incoming multiplier', () => {
+    const report = run(scenario(), DEFAULT_CONFIG, withMembership(memberEdit({ field: 'incomingRole' })))
+    const gain = (c1Net(report)?.stayNet ?? Number.NaN) - (c1Net(plain)?.stayNet ?? Number.NaN)
+    expect(gain).toBeCloseTo(18 * (DEFAULT_CONFIG.incomingMultiplier.head - 1), 9)
+    expect(report.perCca[0]?.outgoingLeaders).toBe(0)
+  })
+
+  it("an edit whose file value moved is changed and not applied: the head's file stands (R1)", () => {
+    const files = scenario({ leaders: { C1: patchRow(c1, -1, { outgoingRole: 'vice_head' }), C2: leaderRows('C2') } })
+    const report = run(files, DEFAULT_CONFIG, withMembership(memberEdit()))
+    expect(report.review.membershipEdits.map((e) => [e.status, e.current])).toEqual([['changed', 'vice_head']])
+    expect(report.input?.memberships.find((m) => m.matric === matricOf(6) && m.ccaID === 'C1')?.outgoingRole).toBe('vice_head')
+  })
+
+  it('an edit on a flat CCA has no membership in a leader file, so it is stale and changes nothing', () => {
+    const files = scenario({ ccas: [...baseCcas(), flatCca('C3')], flat: flatRows('C3') })
+    const report = run(files, DEFAULT_CONFIG, withMembership(memberEdit({ ccaID: 'C3', matric: matricOf(2) })))
+    expect(report.review.membershipEdits.map((e) => e.status)).toEqual(['stale'])
+    expect(report.input?.memberships.find((m) => m.matric === matricOf(2) && m.ccaID === 'C3')?.outgoingRole).toBe('none')
+  })
+
+  it('a score edit and a membership edit on the same member both apply', () => {
+    const scoreEdit: ReviewEdit = { matric: matricOf(6), ccaID: 'C1', from: 18, to: 12, reason: '', at: AT }
+    const report = run(scenario(), DEFAULT_CONFIG, { ...withMembership(memberEdit()), edits: [scoreEdit] })
+    expect(report.input?.memberships.find((m) => m.matric === matricOf(6) && m.ccaID === 'C1')).toMatchObject({ basePoints: 12, outgoingRole: 'head' })
+  })
+
+  it('no membership edits -> an empty list', () => {
+    expect(run(scenario()).review.membershipEdits).toEqual([])
   })
 })
 

@@ -20,6 +20,7 @@ import { fnv1a32 } from './hash'
 import { applyFlatEdits, type CheckedFlatEdit } from './flatEdits'
 import { FILE_COLUMNS, RETIRED_CCAS_COLUMNS, RETIRED_IHG_COLUMNS, detectFileKind, headerMatches } from './detect'
 import { buildIhgFromTicks } from './ihgTicks'
+import { applyMembershipEdits } from './membershipEdits'
 import { parseBundle } from './parseBundle'
 import { parseFlat } from './parseFlat'
 import { makeIssue } from './parseCommon'
@@ -448,10 +449,10 @@ function perCcaReport(
 /**
  * Parses and checks the dropped files with the values entered in the sandbox (the level table,
  * the review, tick, flat and AUX edits and the not-submitting marks). Each kind of edit is applied
- * once, in this order: AUX counts to the resident rows (before their checks), scores and then
- * ticks to the checked leader rows (before the IHG is built), flat values to the flat rows (after
+ * once, in this order: AUX counts to the resident rows (before their checks), scores, then roles
+ * and semester-only, then ticks to the checked leader rows (before the IHG is built), flat values to the flat rows (after
  * the bundle's flat groups). So the checks, the mean/SD, the IHG and the engine input all see the
- * same edited data.
+ * same edited data. The mean/SD use full scores, so a semester-only edit moves the lists, not them.
  * Pure: the same files, config and sandbox values always give the same report. A mean or SD
  * outside the range is a warning, never an error.
  */
@@ -465,6 +466,7 @@ export function validateImport(
   const notSubmitting = new Set(sandbox.notSubmitting ?? [])
   const tickEdits = sandbox.tickEdits ?? []
   const flatEdits = sandbox.flatEdits ?? []
+  const membershipEdits = sandbox.membershipEdits ?? []
   const issues: Issue[] = []
   const classified = files.map((file) => classify(file, issues))
   issues.push(...fileLevelIssues(classified))
@@ -497,7 +499,8 @@ export function validateImport(
     if (outcome.checked) fileRows.push(outcome.checked)
   }
   const reviewed = applyReviewEdits(fileRows, edits)
-  const tickReviewed = applyTickEdits(reviewed.checked, tickEdits)
+  const membershipReviewed = applyMembershipEdits(reviewed.checked, membershipEdits)
+  const tickReviewed = applyTickEdits(membershipReviewed.checked, tickEdits)
   const checked = tickReviewed.checked
   const flatOutcome = flatFile
     ? checkFlatFile(flatFile, residents, ccas, new Set(leaderFiles.map((f) => f.ccaID)))
@@ -542,6 +545,7 @@ export function validateImport(
       tickEdits: tickReviewed.edits,
       flatEdits: flatReviewed.edits,
       auxEdits,
+      membershipEdits: membershipReviewed.edits,
       auxUnchecked: residents === null,
       flats: flatTables(fileFlats, flatReviewed.edits),
     },

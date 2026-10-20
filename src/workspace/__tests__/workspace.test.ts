@@ -549,6 +549,7 @@ describe('sandboxInputOf', () => {
       tickEdits: [],
       flatEdits: [],
       auxEdits: [],
+      membershipEdits: [],
     })
   })
 

@@ -9,6 +9,7 @@ import type {
 } from '../engine'
 import type { AuxEdit, CheckedAuxEdit } from './auxEdits'
 import type { CheckedFlatEdit, FlatEdit } from './flatEdits'
+import type { CheckedMembershipEdit, MembershipEdit } from './membershipEdits'
 import type { CheckedReviewEdit, ReviewEdit } from './review'
 import type { CheckedTickEdit, IhgTickEdit } from './tickEdits'
 
@@ -207,6 +208,8 @@ export interface SandboxInput {
   readonly flatEdits: readonly FlatEdit[]
   /** AUX counts set on the Summary step. */
   readonly auxEdits: readonly AuxEdit[]
+  /** Outgoing role, incoming role or semester-only changed on the Review step. */
+  readonly membershipEdits: readonly MembershipEdit[]
 }
 
 export interface ParseResult<T> {
@@ -315,6 +318,7 @@ export interface ReviewReport {
   readonly flatEdits: readonly CheckedFlatEdit[]
   /** Empty while `auxUnchecked`. */
   readonly auxEdits: readonly CheckedAuxEdit[]
+  readonly membershipEdits: readonly CheckedMembershipEdit[]
   /** No residents file is loaded, so the AUX edits cannot be judged (never called stale). */
   readonly auxUnchecked: boolean
   readonly flats: readonly FlatTable[]

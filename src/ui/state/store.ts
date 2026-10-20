@@ -53,7 +53,18 @@ export interface LevelChange {
   readonly clearedTweaks: number
 }
 
-export const EMPTY_REVIEW: WorkspaceReview = { edits: [], log: [], vetted: [], notSubmitting: [] }
+export const EMPTY_REVIEW: WorkspaceReview = {
+  edits: [],
+  log: [],
+  vetted: [],
+  notSubmitting: [],
+  tickEdits: [],
+  tickLog: [],
+  flatEdits: [],
+  flatLog: [],
+  auxEdits: [],
+  auxLog: [],
+}
 
 export interface AppState {
   readonly files: readonly SourceFile[]

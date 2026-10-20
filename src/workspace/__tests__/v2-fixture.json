@@ -1,0 +1,175 @@
+{
+  "format": "rhps-workspace",
+  "version": 2,
+  "savedAt": "2027-04-02T10:30:00.000Z",
+  "files": [
+    {
+      "name": "residents.csv",
+      "text": "matric,name,gender,sem2,aux,jcrc\nA9900001Z,Test Resident 001,M,N,5,N\nA9900002Z,Test Resident 002,F,N,5,N\nA9900003Z,Test Resident 003,M,N,5,N\nA9900004Z,Test Resident 004,F,N,5,N\nA9900005Z,Test Resident 005,M,N,5,N\nA9900006Z,Test Resident 006,F,N,5,N\nA9900007Z,Test Resident 007,M,N,5,N\nA9900008Z,Test Resident 008,F,N,5,N\nA9900009Z,Test Resident 009,M,N,5,N\nA9900010Z,Test Resident 010,F,N,5,N\n"
+    },
+    {
+      "name": "points_bundle_20270401.csv",
+      "text": "formatVersion,section,scope,ccaID,ccaName,matric,name,flatPoints,type,sport,ihgResult,ihgCap,meanMin,meanMax,sdMin,sdMax,note,exportedAt\n1,settings,default,,,,,,,,,,10,14,2,5,,2027-04-01T09:30:00.000Z\n1,cca,,C1,Test CCA One,,,,1x,N,,,,,,,,2027-04-01T09:30:00.000Z\n1,cca,,C2,Test CCA Two,,,,0.5x,N,,,,,,,,2027-04-01T09:30:00.000Z\n"
+    },
+    {
+      "name": "points_C1_20270401.csv",
+      "text": "formatVersion,ccaID,ccaName,matric,name,basePoints,semesterOnly,outgoingRole,incomingRole,ihg,exportedAt\n2,C1,Test CCA C1,A9900001Z,Test Resident 001,8,N,none,none,N,2027-04-01T00:00:00Z\n2,C1,Test CCA C1,A9900002Z,Test Resident 002,10,N,none,none,N,2027-04-01T00:00:00Z\n2,C1,Test CCA C1,A9900003Z,Test Resident 003,12,N,none,none,N,2027-04-01T00:00:00Z\n2,C1,Test CCA C1,A9900004Z,Test Resident 004,14,N,none,none,N,2027-04-01T00:00:00Z\n2,C1,Test CCA C1,A9900005Z,Test Resident 005,16,N,none,none,N,2027-04-01T00:00:00Z\n2,C1,Test CCA C1,A9900006Z,Test Resident 006,18,N,none,none,N,2027-04-01T00:00:00Z\n"
+    },
+    {
+      "name": "points_C2_20270401.csv",
+      "text": "formatVersion,ccaID,ccaName,matric,name,basePoints,semesterOnly,outgoingRole,incomingRole,ihg,exportedAt\n2,C2,Test CCA C2,A9900001Z,Test Resident 001,8,N,none,none,N,2027-04-01T00:00:00Z\n2,C2,Test CCA C2,A9900002Z,Test Resident 002,10,N,none,none,N,2027-04-01T00:00:00Z\n2,C2,Test CCA C2,A9900003Z,Test Resident 003,12,N,none,none,N,2027-04-01T00:00:00Z\n2,C2,Test CCA C2,A9900004Z,Test Resident 004,14,N,none,none,N,2027-04-01T00:00:00Z\n2,C2,Test CCA C2,A9900005Z,Test Resident 005,16,N,none,none,N,2027-04-01T00:00:00Z\n2,C2,Test CCA C2,A9900006Z,Test Resident 006,18,N,none,none,N,2027-04-01T00:00:00Z\n"
+    }
+  ],
+  "config": {
+    "meanSdDefault": {
+      "meanMin": 10,
+      "meanMax": 14,
+      "sdMin": 2,
+      "sdMax": 5
+    },
+    "levels": [
+      {
+        "name": "Unsatisfactory",
+        "bonus": 0,
+        "multiplier": 0.8
+      },
+      {
+        "name": "Pass",
+        "bonus": 0,
+        "multiplier": 1
+      },
+      {
+        "name": "Low Bronze",
+        "bonus": 0.5,
+        "multiplier": 1.05
+      },
+      {
+        "name": "High Bronze",
+        "bonus": 0.5,
+        "multiplier": 1.15
+      },
+      {
+        "name": "Low Silver",
+        "bonus": 1.5,
+        "multiplier": 1.25
+      },
+      {
+        "name": "High Silver",
+        "bonus": 1.5,
+        "multiplier": 1.5
+      },
+      {
+        "name": "Low Gold",
+        "bonus": 4,
+        "multiplier": 1.75
+      },
+      {
+        "name": "High Gold",
+        "bonus": 4,
+        "multiplier": 2
+      }
+    ],
+    "halfCcaBaseFactor": 0.5,
+    "halfCcaPlacementHalved": false,
+    "semesterOnlyFactor": 0.5,
+    "incomingMultiplier": {
+      "head": 1.2,
+      "vice_head": 1.2
+    },
+    "stackingMode": "max",
+    "droppedRoleBase": 8,
+    "auxTable": [
+      -10,
+      -8,
+      -6,
+      -4,
+      -2,
+      0,
+      2,
+      4,
+      6,
+      8,
+      10
+    ],
+    "auxCap": 10,
+    "ihgPoints": {
+      "1st": 5,
+      "2nd": 4,
+      "3rd": 3,
+      "3rd4th_no_match": 1
+    },
+    "ihgInSportNet": false,
+    "stayingWeights": [
+      1,
+      1,
+      1,
+      1,
+      0.5,
+      0.25
+    ],
+    "stayingWeightTail": "halve",
+    "mergeHalfCcas": true,
+    "headcounts": {
+      "maleGreen": 0,
+      "maleGrey": 0,
+      "femaleGreen": 0,
+      "femaleGrey": 0,
+      "sem2Green": 0,
+      "sem2Grey": 0
+    },
+    "sem2Mode": "separate",
+    "sem2Factor": 2,
+    "jcrcFullYearOffset": 1,
+    "jcrcExchangeFactor": 0.75
+  },
+  "ccaLevels": [
+    {
+      "ccaID": "C1",
+      "level": "High Gold",
+      "bonusOverride": null,
+      "multiplierOverride": null
+    }
+  ],
+  "review": {
+    "edits": [
+      {
+        "matric": "A9900001Z",
+        "ccaID": "C1",
+        "from": 8,
+        "to": 9,
+        "reason": "typo",
+        "at": "2027-04-02T10:00:00.000Z"
+      }
+    ],
+    "log": [
+      {
+        "matric": "A9900001Z",
+        "ccaID": "C1",
+        "from": 8,
+        "to": 9,
+        "reason": "typo",
+        "at": "2027-04-02T10:00:00.000Z",
+        "kind": "edit"
+      }
+    ],
+    "vetted": [
+      {
+        "ccaID": "C1",
+        "fileHash": "7f4019c4",
+        "at": "2027-04-02T10:00:00.000Z"
+      }
+    ],
+    "notSubmitting": [
+      {
+        "ccaID": "C9",
+        "note": "disbanded",
+        "at": "2027-04-02T10:00:00.000Z"
+      }
+    ]
+  },
+  "step": "review",
+  "finalOverrides": [],
+  "discretion": [],
+  "resolutions": [],
+  "finalised": null
+}

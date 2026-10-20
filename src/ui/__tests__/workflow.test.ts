@@ -154,7 +154,7 @@ describe('unsaved-changes flag', () => {
     )
     const done = finalised(before)
     const workspace = toWorkspace(done, new Date(2027, 3, 1))
-    expect(workspace.version).toBe(2)
+    expect(workspace.version).toBe(3)
     expect('meanSdOverrides' in workspace).toBe(false)
     const opened = reducer(run(initialState(), { type: 'setConfig', config: DEFAULT_CONFIG }), { type: 'loadWorkspace', workspace: fromRestored(restoreWorkspace(workspace)) })
     expect(opened.dirty).toBe(false)

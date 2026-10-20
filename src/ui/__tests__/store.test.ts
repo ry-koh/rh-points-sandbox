@@ -139,7 +139,18 @@ const levelEntry = (ccaID: string, level: string | null, patch: Partial<CcaLevel
 describe('review state', () => {
   it('starts empty, with no levels, on the import step', () => {
     const state = initialState()
-    expect(state.review).toEqual({ edits: [], log: [], vetted: [], notSubmitting: [] })
+    expect(state.review).toEqual({
+      edits: [],
+      log: [],
+      vetted: [],
+      notSubmitting: [],
+      tickEdits: [],
+      tickLog: [],
+      flatEdits: [],
+      flatLog: [],
+      auxEdits: [],
+      auxLog: [],
+    })
     expect(state.ccaLevels).toEqual([])
     expect(state.step).toBe('import')
     expect(state.lastLevelChange).toBeNull()

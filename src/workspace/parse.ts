@@ -1,5 +1,6 @@
 import { computeAll, type ComputeOptions } from '../engine'
 import { validateImport, vettedStatus, type SandboxInput } from '../import'
+import { isGroupList } from '../import/groups'
 import { readConfig } from '../ui/state/configShape'
 import { KDF_ITERATIONS, decryptEnvelope, fromBase64, isBase64 } from './crypto'
 import { migrateWorkspace } from './migrate'
@@ -20,6 +21,7 @@ type Rec = Record<string, unknown>
 const isRec = (v: unknown): v is Rec => typeof v === 'object' && v !== null && !Array.isArray(v)
 const isStr = (v: unknown): v is string => typeof v === 'string'
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+const isBool = (v: unknown): v is boolean => typeof v === 'boolean'
 const isStrArray = (v: unknown): v is string[] => Array.isArray(v) && v.every(isStr)
 const listOf = <T>(v: unknown, ok: (item: unknown) => item is T): v is T[] => Array.isArray(v) && v.every(ok)
 
@@ -42,6 +44,15 @@ const isNumOrNull = (v: unknown): boolean => v === null || isNum(v)
 const isEdit = (v: unknown): v is Rec =>
   isRec(v) && isStr(v.matric) && isStr(v.ccaID) && isNum(v.from) && isNum(v.to) && isStr(v.reason) && isStr(v.at)
 const isLogEntry = (v: unknown): boolean => isEdit(v) && (v.kind === 'edit' || v.kind === 'remove')
+const isTickEdit = (v: unknown): v is Rec =>
+  isRec(v) && isStr(v.matric) && isStr(v.ccaID) && isBool(v.from) && isBool(v.to) && isStr(v.reason) && isStr(v.at)
+const isAuxEdit = (v: unknown): v is Rec =>
+  isRec(v) && isStr(v.matric) && isNum(v.from) && isNum(v.to) && isStr(v.reason) && isStr(v.at)
+/** A log entry check from an edit check: the edit's shape plus a kind. */
+const logOf =
+  (isEntry: (v: unknown) => v is Rec) =>
+  (v: unknown): v is Rec =>
+    isEntry(v) && (v.kind === 'edit' || v.kind === 'remove')
 const isVetted = (v: unknown): boolean => isRec(v) && isStr(v.ccaID) && isStr(v.fileHash) && isStr(v.at)
 const isNotSubmitting = (v: unknown): boolean => isRec(v) && isStr(v.ccaID) && isStr(v.note) && isStr(v.at)
 const isReview = (v: unknown): v is Workspace['review'] =>
@@ -49,7 +60,13 @@ const isReview = (v: unknown): v is Workspace['review'] =>
   listOf(v.edits, isEdit) &&
   listOf(v.log, (e): e is Rec => isLogEntry(e)) &&
   listOf(v.vetted, (e): e is Rec => isVetted(e)) &&
-  listOf(v.notSubmitting, (e): e is Rec => isNotSubmitting(e))
+  listOf(v.notSubmitting, (e): e is Rec => isNotSubmitting(e)) &&
+  listOf(v.tickEdits, isTickEdit) &&
+  listOf(v.tickLog, logOf(isTickEdit)) &&
+  listOf(v.flatEdits, isEdit) &&
+  listOf(v.flatLog, logOf(isEdit)) &&
+  listOf(v.auxEdits, isAuxEdit) &&
+  listOf(v.auxLog, logOf(isAuxEdit))
 const isLevelEntry = (v: unknown): v is Workspace['ccaLevels'][number] =>
   isRec(v) &&
   isStr(v.ccaID) &&
@@ -71,8 +88,8 @@ export function workspaceFilename(at: Date): string {
 }
 
 /**
- * Checks the shape of a plain workspace object. A version-1 object is migrated to version 2
- * first (spec 8b); the config is migrated and filled on the way.
+ * Checks the shape of a plain workspace object. A version-1 or version-2 object is migrated to
+ * the current version first (spec 8b, R4); the config is migrated and filled on the way.
  */
 function readWorkspace(original: Rec): WorkspaceParse {
   if (!WORKSPACE_READABLE_VERSIONS.includes(original.version as number)) return { ok: false, code: 'UNSUPPORTED_VERSION' }
@@ -88,7 +105,8 @@ function readWorkspace(original: Rec): WorkspaceParse {
     listOf(raw.finalOverrides, isOverride) &&
     listOf(raw.discretion, isDiscretion) &&
     listOf(raw.resolutions, isResolution) &&
-    (raw.finalised === null || isPenaltyState(raw.finalised))
+    (raw.finalised === null || isPenaltyState(raw.finalised)) &&
+    (raw.groups === null || isGroupList(raw.groups))
   if (!valid || !config.ok) return { ok: false, code: 'CORRUPT' }
   return {
     ok: true,
@@ -105,6 +123,7 @@ function readWorkspace(original: Rec): WorkspaceParse {
       discretion: raw.discretion as Workspace['discretion'],
       resolutions: raw.resolutions as Workspace['resolutions'],
       finalised: raw.finalised as Workspace['finalised'],
+      groups: raw.groups as Workspace['groups'],
     },
     notes,
   }
@@ -158,44 +177,52 @@ export async function parseWorkspaceFile(text: string, password?: string): Promi
 
 /** The values entered in the sandbox, as the import validation takes them. */
 export function sandboxInputOf(workspace: Pick<Workspace, 'ccaLevels' | 'review'>): SandboxInput {
-  // The tick, flat and AUX lists join WorkspaceReview in workspace version 3; until then they may be absent.
-  const review: Workspace['review'] & Partial<Pick<SandboxInput, 'tickEdits' | 'flatEdits' | 'auxEdits'>> = workspace.review
+  const { review } = workspace
   return {
     ccaLevels: workspace.ccaLevels,
     edits: review.edits,
     notSubmitting: review.notSubmitting.map((mark) => mark.ccaID),
-    tickEdits: review.tickEdits ?? [],
-    flatEdits: review.flatEdits ?? [],
-    auxEdits: review.auxEdits ?? [],
+    tickEdits: review.tickEdits,
+    flatEdits: review.flatEdits,
+    auxEdits: review.auxEdits,
   }
 }
 
 /**
  * Loads a workspace: re-runs the import validation on the saved files, then reports every
- * override, discretion entry, wheel resolution, score edit, vetted mark and level entry that no
- * longer matches. Stale entries are never applied silently. What cannot be checked yet is not
- * called stale: with no bundle the review items are `unchecked.review`, and while the import
- * cannot compute the computed entries are `unchecked.computed`. Nothing is dropped. `notes` are
- * the migration notes from reading the file.
+ * override, discretion entry, wheel resolution, score, tick, flat and AUX edit, vetted mark and
+ * level entry that no longer matches. Stale entries are never applied silently. What cannot be
+ * checked yet is not called stale: with no bundle the review items are `unchecked.review`, while
+ * the import cannot compute the computed entries are `unchecked.computed`, and with no residents
+ * list the AUX edits are `unchecked.aux`. Nothing is dropped. `notes` are the migration notes
+ * from reading the file.
  */
 export function restoreWorkspace(workspace: Workspace, notes: readonly string[] = []): RestoredWorkspace {
   const report = validateImport(workspace.files, workspace.config, sandboxInputOf(workspace))
   const bundleIds = new Set(report.bundle?.ccas.map((cca) => cca.ccaID) ?? [])
   const reviewUnchecked = report.bundle === null
-  const review = reviewUnchecked
-    ? { edits: [], vetted: [], ccaLevels: [] }
-    : {
-        edits: report.review.edits.filter((checked) => checked.status !== 'applied'),
-        vetted: workspace.review.vetted.filter((mark) => vettedStatus(mark, report.perCca) !== 'vetted'),
-        ccaLevels: workspace.ccaLevels.filter((entry) => !bundleIds.has(entry.ccaID)),
-      }
+  const auxUnchecked = report.review.auxUnchecked
+  const notApplied = <T extends { readonly status: string }>(checked: readonly T[]): T[] =>
+    checked.filter((c) => c.status !== 'applied')
+  const review = {
+    ...(reviewUnchecked
+      ? { edits: [], vetted: [], ccaLevels: [], tickEdits: [], flatEdits: [] }
+      : {
+          edits: notApplied(report.review.edits),
+          vetted: workspace.review.vetted.filter((mark) => vettedStatus(mark, report.perCca) !== 'vetted'),
+          ccaLevels: workspace.ccaLevels.filter((entry) => !bundleIds.has(entry.ccaID)),
+          tickEdits: notApplied(report.review.tickEdits),
+          flatEdits: notApplied(report.review.flatEdits),
+        }),
+    auxEdits: auxUnchecked ? [] : notApplied(report.review.auxEdits),
+  }
   const { input } = report
   if (!report.canCompute || !input) {
     return {
       workspace,
       report,
       stale: { overrides: [], discretion: [], resolutions: [], ...review },
-      unchecked: { review: reviewUnchecked, computed: true },
+      unchecked: { review: reviewUnchecked, computed: true, aux: auxUnchecked },
       notes,
     }
   }
@@ -217,7 +244,7 @@ export function restoreWorkspace(workspace: Workspace, notes: readonly string[] 
       resolutions: staleOf(run.resolutions),
       ...review,
     },
-    unchecked: { review: reviewUnchecked, computed: false },
+    unchecked: { review: reviewUnchecked, computed: false, aux: auxUnchecked },
     notes,
   }
 }

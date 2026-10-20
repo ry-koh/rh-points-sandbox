@@ -24,6 +24,8 @@ export function toWorkspace(state: AppState, savedAt: Date): Workspace {
     discretion: state.discretion,
     resolutions: state.resolutions,
     finalised: state.finalised?.penalty ?? null,
+    // Groups join the app state in P6; until then the file records none.
+    groups: null,
   }
 }
 

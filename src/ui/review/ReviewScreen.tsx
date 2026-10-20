@@ -273,7 +273,7 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
         )}
         {vetLocked && (
           <p role="status" className="mb-5 flex items-center gap-2 border-l-4 border-ok bg-ok-bg px-4 py-3 text-body font-medium">
-            <ShieldCheck aria-hidden size={15} /> Vetted · locked. Clear vetted to change the level, tweaks, scores or IHG ticks.
+            <ShieldCheck aria-hidden size={15} /> Vetted · locked. Clear vetted to change the level, tweaks, scores, flat values or IHG ticks.
             {levelGone && ' The level is no longer in Settings: clear vetted to pick another level.'}
           </p>
         )}

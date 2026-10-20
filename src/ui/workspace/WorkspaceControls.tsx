@@ -18,7 +18,7 @@ export function WorkspaceControls({ state, dispatch }: WorkspaceControlsProps) {
   return (
     <div className="flex items-center gap-2">
       {status && <span className="hidden text-cap text-muted lg:inline" role="status">{status}</span>}
-      <OpenWorkspace dirty={state.dirty} dispatch={dispatch}>
+      <OpenWorkspace dirty={state.dirty} groupsReplaced={state.groupsReplaced} dispatch={dispatch}>
         {(start) => (
           <Button small onClick={start}>
             <FolderOpen aria-hidden size={13} /> Open workspace

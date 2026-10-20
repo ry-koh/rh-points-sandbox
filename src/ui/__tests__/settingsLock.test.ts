@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, computeAll, createPenaltyState } from '../../engine'
+import { levelChangeText } from '../settings/tableSections'
 import type { SourceFile } from '../../import'
 import {
   BUNDLE_FILE_NAME,
@@ -194,5 +195,13 @@ describe('the bundle travels in the workspace file', () => {
     const opened = reducer(initialState(), { type: 'loadWorkspace', workspace: fromRestored(restoreWorkspace(parsed.workspace)) })
     expect(opened.report.settings?.waivers['C1']).toMatchObject({ meanMin: 12, meanMax: 15 })
     expect(finaliseBlock(opened)).toBeNull()
+  })
+})
+
+describe('level-change note (D2 = B)', () => {
+  it('counts every cleared tweak and never says a vetted CCA was spared', () => {
+    expect(levelChangeText({ level: 'Gold', clearedTweaks: 2 })).toBe('2 tweaks on Gold were cleared so those CCAs follow the new value')
+    expect(levelChangeText({ level: 'Gold', clearedTweaks: 1 })).toBe('1 tweak on Gold was cleared so that CCA follows the new value')
+    expect(levelChangeText({ level: 'Gold', clearedTweaks: 3 })).not.toMatch(/vetted|kept|spared/i)
   })
 })

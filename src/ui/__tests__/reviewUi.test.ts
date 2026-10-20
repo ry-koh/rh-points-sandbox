@@ -216,7 +216,7 @@ describe('ReviewScreen lock line', () => {
   it('shows the vetted lock and disables every score, level, tweak and tick control', () => {
     const dispatch = vi.fn()
     const html = render(vetAll(load()), dispatch)
-    expect(html).toContain('Vetted · locked. Clear vetted to change the level, tweaks, scores or IHG ticks.')
+    expect(html).toContain('Vetted · locked. Clear vetted to change the level, tweaks, scores, flat values or IHG ticks.')
     const controls = [...tags(html, 'input'), ...tags(html, 'select')].filter((t) => !t.includes('class="accent-raffles"'))
     expect(controls.length).toBeGreaterThan(3)
     expect(controls.filter((t) => !isDisabled(t))).toEqual([])

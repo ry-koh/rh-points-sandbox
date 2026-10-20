@@ -35,9 +35,15 @@ export interface EntryCounts {
   readonly discretion: number
   /** Review-step score edits that are applied to the current files. */
   readonly reviewEdits: number
+  /** IHG tick edits, flat value edits and AUX edits applied to the current files. */
+  readonly tickEdits: number
+  readonly flatEdits: number
+  readonly auxEdits: number
+  /** `Name (ccaID)` of each sport with more members ticked than its cap (allowed, but listed). */
+  readonly ihgOverCap: readonly string[]
 }
 
-const NO_ENTRIES: EntryCounts = { finalOverrides: 0, discretion: 0, reviewEdits: 0 }
+const NO_ENTRIES: EntryCounts = { finalOverrides: 0, discretion: 0, reviewEdits: 0, tickEdits: 0, flatEdits: 0, auxEdits: 0, ihgOverCap: [] }
 
 /** What the levels and tweaks lines are built from: each CCA's level, and the levels in Settings. */
 export interface LevelLineData {
@@ -49,16 +55,23 @@ export type LevelLineCca = Pick<PerCcaReport, 'ccaID' | 'name' | 'fileName' | 's
 
 const NO_LEVEL_DATA: LevelLineData = { perCca: [], levels: [] }
 
-const appliedCount = <T,>(checked: readonly Checked<T>[] | undefined): number =>
+const appliedCount = (checked: readonly { readonly status: string }[] | undefined): number =>
   (checked ?? []).filter((c) => c.status === 'applied').length
 
 export function entryCounts(
   results: { readonly overrides: readonly Checked<FinalOverride>[]; readonly discretion: readonly Checked<Discretion>[] } | null,
-  review: Pick<ReviewReport, 'edits'> = { edits: [] },
+  review: Partial<Pick<ReviewReport, 'edits' | 'tickEdits' | 'flatEdits' | 'auxEdits'>> = {},
+  perCca: readonly Pick<PerCcaReport, 'ccaID' | 'name' | 'ihgTicked' | 'ihgCap'>[] = [],
 ): EntryCounts {
-  const reviewEdits = review.edits.filter((e) => e.status === 'applied').length
-  if (!results) return { ...NO_ENTRIES, reviewEdits }
-  return { finalOverrides: appliedCount(results.overrides), discretion: appliedCount(results.discretion), reviewEdits }
+  const appliedCounts = {
+    reviewEdits: appliedCount(review.edits),
+    tickEdits: appliedCount(review.tickEdits),
+    flatEdits: appliedCount(review.flatEdits),
+    auxEdits: appliedCount(review.auxEdits),
+    ihgOverCap: perCca.filter((c) => c.ihgCap !== null && c.ihgTicked > c.ihgCap).map((c) => `${c.name} (${c.ccaID})`),
+  }
+  if (!results) return { ...NO_ENTRIES, ...appliedCounts }
+  return { ...appliedCounts, finalOverrides: appliedCount(results.overrides), discretion: appliedCount(results.discretion) }
 }
 
 /** First comment line of every export: which CCAs are outside their allowed mean/SD range. */
@@ -69,6 +82,10 @@ export function meanSdOutOfRangeLine(names: readonly string[]): string {
 export const finalOverridesLine = (count: number): string => `# final-points overrides: ${count}`
 export const discretionLine = (count: number): string => `# discretion adjustments: ${count}`
 export const reviewEditsLine = (count: number): string => `# review edits: ${count}`
+export const tickEditsLine = (count: number): string => `# IHG tick edits: ${count}`
+export const flatEditsLine = (count: number): string => `# flat value edits: ${count}`
+export const auxEditsLine = (count: number): string => `# AUX edits: ${count}`
+export const ihgOverCapLine = (names: readonly string[]): string => `# IHG over cap: ${names.length > 0 ? names.join(', ') : 'none'}`
 
 const NOT_SET = 'not set'
 
@@ -132,6 +149,10 @@ export function headerLines(
     finalOverridesLine(counts.finalOverrides),
     discretionLine(counts.discretion),
     reviewEditsLine(counts.reviewEdits),
+    tickEditsLine(counts.tickEdits),
+    flatEditsLine(counts.flatEdits),
+    auxEditsLine(counts.auxEdits),
+    ihgOverCapLine(counts.ihgOverCap),
     levelsLine(levelData.perCca, levelData.levels),
     tweaksLine(levelData.perCca, levelData.levels),
     ...(finalisedPenalties === null ? [] : [finalisedLine(finalisedPenalties)]),

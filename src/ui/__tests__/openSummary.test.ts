@@ -30,6 +30,25 @@ describe('Open workspace summary: tick, flat and AUX edits', () => {
     expect(html).toContain('AUX edit for A0000003Z no longer matches the residents list')
   })
 
+  it('lists each changed or stale role and semester edit with its field', () => {
+    const restored: RestoredWorkspace = {
+      ...base,
+      unchecked: { review: false, computed: false, aux: false },
+      stale: {
+        ...base.stale,
+        membershipEdits: [
+          { entry: { matric: 'A0000001Z', ccaID: 'C5', field: 'outgoingRole', from: 'none', to: 'head', ...edit }, status: 'changed', current: 'vice_head' },
+          { entry: { matric: 'A0000002Z', ccaID: 'C7', field: 'incomingRole', from: 'none', to: 'head', ...edit }, status: 'stale', current: null },
+          { entry: { matric: 'A0000003Z', ccaID: 'C8', field: 'semesterOnly', from: false, to: true, ...edit }, status: 'stale', current: null },
+        ] as never,
+      },
+    }
+    const html = render(restored)
+    expect(html).toContain('Outgoing role for A0000001Z in C5 no longer matches the file')
+    expect(html).toContain('Incoming role for A0000002Z in C7 no longer matches the file')
+    expect(html).toContain('Full year / 1 sem for A0000003Z in C8 no longer matches the file')
+  })
+
   it('says AUX edits are unchecked while no residents list is loaded', () => {
     const html = render({ ...base, unchecked: { review: false, computed: false, aux: true } })
     expect(html).toContain('AUX edits are unchecked')

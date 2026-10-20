@@ -1,4 +1,15 @@
-# RH Hall Points Spec — v2.4
+# RH Hall Points Spec — v2.5
+
+**Changes in v2.5**
+
+- 6.4: JCRC may change a member's outgoing role, incoming role and full year / 1 sem
+  (`semesterOnly`) on the Review step: a new **membership edit** kind with the same `from` rule,
+  logging and vetted lock. The mean/SD check still uses full scores.
+- 6.6: every list and comparison export adds `# role/semester edits: N` after `# AUX edits: N`.
+- 7.4: new code `BAD_MEMBERSHIP_VALUE` and `MEMBERSHIP_FLAT_CCA`; `REVIEW_UNKNOWN_MEMBERSHIP`,
+  `MISSING_REASON` and `REVIEW_NO_CHANGE` also apply to membership edits.
+- 8b: workspace **version 4** adds `review.membershipEdits` and `membershipLog`. Version 1, 2 and 3
+  files are migrated with empty lists, and Open workspace lists changed or stale membership edits.
 
 **Changes in v2.4**
 
@@ -703,8 +714,8 @@ on edits, log entries or marks).
 - Precedence: an edit changes `basePoints` BEFORE everything else. The mean/SD check (7.1),
   the IHG ticks and the engine (4) all see the same reviewed scores. A final-points override
   (6.2) still wins at compute; the mean/SD uses the reviewed base, never the override.
-- A score edit changes the score only. Semester-only and roles are not editable in the sandbox;
-  a wrong role needs a corrected leader file.
+- A score edit changes the score only. Roles and semester-only have their own edit kind
+  (membership edits, below).
 - Edits are resident data (workspace file only, 8b).
 
 **IHG tick edits.** JCRC may tick or untick a member of a **sport** (the bundle's `sport` = `Y`):
@@ -736,13 +747,38 @@ flatEdit = { matric, ccaID, from, to, reason, at }     from / to are the member'
 Review and on Summary, and the edits are counted on the exports (6.6). The edited value is FINAL
 for that member like the flat value itself (4.1).
 
-**The `from` rule.** Every edit kind (score, tick, flat value, AUX in 6.7) stores the source value
+**Membership edits (roles and full year / 1 sem).** JCRC may change a member's outgoing role,
+incoming role or semester-only flag in a **non-flat** CCA. These are sandbox-side only: the RH app
+is unchanged.
+
+```
+membershipEdit = { matric, ccaID, field, from, to, reason, at }
+field: outgoingRole | incomingRole | semesterOnly
+from / to: a role (none, head, vice_head) for the role fields, true / false for semesterOnly
+```
+
+`from` is the leader file's value for that field when the edit was made. The edit is judged like
+the others: **applied** while the file still has `from` (that one field of the member's row becomes
+`to`), **changed** when the file's value moved, **stale** when the membership is gone or a later
+edit for the same key replaces it. At most one per `(matric, ccaID, field)`; a membership log keeps
+every edit and removal. Validation, in order: `MEMBERSHIP_FLAT_CCA` (a flat CCA has no roles or
+semester flag), `REVIEW_UNKNOWN_MEMBERSHIP`, `BAD_MEMBERSHIP_VALUE` (a role outside the three, or a
+non-boolean semesterOnly), `MISSING_REASON` (over 200 characters), `REVIEW_NO_CHANGE`.
+
+Order of application on import: AUX, then score edits, then membership edits, then tick edits, then
+flat edits. The engine input, each CCA's outgoing-leader count, the Summary and the penalty tool
+all see the edited values. **The mean/SD check (7.1) still uses full scores**: a change to 1 sem
+moves the lists (the base is halved after the check, 4.1), not the meter. Edits are refused while
+the lists are finalised, so the penalty tool's frozen cut-offs never see a role change.
+
+**The `from` rule.** Every edit kind (score, tick, flat value, membership, AUX in 6.7) stores the source value
 it started from and applies only while the source still has it. A corrected file never silently
 keeps an old edit: the edit shows as `changed` until removed or set again.
 
 **The vetted lock.** While a CCA's vetted mark counts (6.5), the Review step refuses every change
-to that CCA's level, tweaks, scores, flat values and IHG ticks, and says so ("Vetted · locked.
-Clear vetted to change the level, tweaks, scores, flat values or IHG ticks."). If the vetted
+to that CCA's level, tweaks, scores, roles, full year / 1 sem, flat values and IHG ticks, and says
+so ("Vetted · locked. Clear vetted to change the level, tweaks, scores, roles, full year / 1 sem,
+flat values or IHG ticks."). If the vetted
 CCA's level is no longer in Settings the line adds that vetted must be cleared to pick another
 level. Clearing vetted (or a changed file, 6.5) lifts the lock.
 
@@ -801,7 +837,7 @@ Finalise. No reviewer is recorded on a mark.
 in this order: `# mean/SD out of range: ...`, `# final-points overrides: N`,
 `# discretion adjustments: N`, `# review edits: N` (applied score edits only),
 `# IHG tick edits: N`, `# flat value edits: N`, `# AUX edits: N` (applied edits only),
-`# IHG over cap: ...`, `# levels: ...`, `# level tweaks: ...`, and, only while finalised,
+`# role/semester edits: N` (applied membership edits only, a count), `# IHG over cap: ...`, `# levels: ...`, `# level tweaks: ...`, and, only while finalised,
 `# finalised: yes · penalties: N`.
 
 - `# IHG over cap:` lists each sport with more members ticked than its cap as `Name (ccaID)`,
@@ -972,6 +1008,8 @@ leader files' ticks and the bundle (2c).
 | `REVIEW_FLAT_CCA` | error | (review or tick edit) the CCA is flat |
 | `REVIEW_UNKNOWN_MEMBERSHIP` | error | (review, tick or flat edit) no such member in that CCA's leader file (the flat roster for a flat edit) |
 | `REVIEW_NO_CHANGE` | error | (review, tick, flat or AUX edit) `to` equals `from` |
+| `MEMBERSHIP_FLAT_CCA` | error | (membership edit, 6.4) the CCA is flat: no roles or semester flag |
+| `BAD_MEMBERSHIP_VALUE` | error | (membership edit, 6.4) a role not in none / head / vice_head, or a semesterOnly that is not true / false |
 | `TICK_NOT_SPORT` | error | (tick edit, 6.4) the CCA is not a sport in the bundle |
 | `BAD_FLAT_VALUE` | error | (flat edit, 6.4) `to` is not a finite number of 0 or more |
 | `FLAT_EDIT_NOT_FLAT` | error | (flat edit) the CCA is not a flat CCA |
@@ -1010,7 +1048,8 @@ leader file and so no ticks.
 The five review codes (`BAD_REVIEW_POINTS`, `MISSING_REASON`, `REVIEW_FLAT_CCA`,
 `REVIEW_UNKNOWN_MEMBERSHIP`, `REVIEW_NO_CHANGE`) are returned by `validateReviewEdit` when an
 edit is entered (6.4). `validateTickEdit` (`TICK_NOT_SPORT` first), `validateFlatEdit`
-(`BAD_FLAT_VALUE`, `FLAT_EDIT_NOT_FLAT`) and `validateAuxEdit` (`BAD_AUX_EDIT`,
+(`BAD_FLAT_VALUE`, `FLAT_EDIT_NOT_FLAT`), `validateMembershipEdit` (`MEMBERSHIP_FLAT_CCA` first,
+`BAD_MEMBERSHIP_VALUE`) and `validateAuxEdit` (`BAD_AUX_EDIT`,
 `AUX_UNKNOWN_RESIDENT`) return theirs the same way (6.4, 6.7). None is raised by file import, which
 reports each edit's status (`applied` / `changed` / `stale`) in `report.review` instead. `NO_LEADER_FILE` is not raised for
 a CCA marked "not submitting" on the checklist (6.5).
@@ -1282,9 +1321,9 @@ A **workspace** is everything needed to resume a session, saved only as a file t
 downloads explicitly. It is never written to localStorage, sessionStorage or IndexedDB.
 
 ```
-{ format: "rhps-workspace", version: 3, savedAt, files: [{name, text}], config,
+{ format: "rhps-workspace", version: 4, savedAt, files: [{name, text}], config,
   ccaLevels, review: { edits, log, vetted, notSubmitting, tickEdits, tickLog,
-  flatEdits, flatLog, auxEdits, auxLog }, step,
+  flatEdits, flatLog, auxEdits, auxLog, membershipEdits, membershipLog }, step,
   finalOverrides, discretion, resolutions, finalised, groups }
 ```
 
@@ -1297,7 +1336,10 @@ matric + ccaID, 6.4), `log` (every edit set or removed, oldest first: the edit f
 `compare`); `finalOverrides`, `discretion` and `resolutions` the entries of 6.2, 6.3 and 5.6;
 `finalised` the penalty state or `null`. Version 3 adds `tickEdits` / `tickLog` (6.4), `flatEdits`
 / `flatLog` (6.4), `auxEdits` / `auxLog` (6.7), each log shaped like `log`, and `groups` (6.8:
-`[{id, name, ccaIDs}]`, or `null` when the file records none). No reviewer is recorded anywhere. The workspace contains
+`[{id, name, ccaIDs}]`, or `null` when the file records none). Version 4 adds `membershipEdits` /
+`membershipLog` (6.4): each edit is `{matric, ccaID, field, from, to, reason, at}` with `field` one
+of `outgoingRole`, `incomingRole`, `semesterOnly`; a role value outside none / head / vice_head, or a
+non-boolean semesterOnly value, makes the file `CORRUPT`. No reviewer is recorded anywhere. The workspace contains
 resident data and must be handled like the input files. Moving between steps is not an unsaved
 change; every other change to these fields is.
 
@@ -1315,7 +1357,10 @@ as in section 3. Opening shows up to two notes, each at most once:
 `flatEdits`, `flatLog`, `auxEdits`, `auxLog` and `groups: null`. Nothing is lost, so there is no
 note. A version 1 file is migrated to 2 and then to 3.
 
-Version 1, 2 and 3 are read; version 3 is written; any other version is `UNSUPPORTED_VERSION`.
+**Version 3 files** are read and migrated to version 4 with empty `membershipEdits` and
+`membershipLog`, again with no note. Everything else is kept as it was.
+
+Version 1, 2, 3 and 4 are read; version 4 is written; any other version is `UNSUPPORTED_VERSION`.
 
 **Levels and the level table.** Renaming a level in Settings renames it in every CCA's entry
 (only when exactly one level's name changed and the old name was unique among the levels);
@@ -1339,7 +1384,7 @@ example "2 tweaks on Gold were cleared so those CCAs follow the new value".
 - **Loading** migrates the file and config (above, section 3) and **re-runs the import
   validation on the saved files** with the saved level table, edits and not-submitting marks.
   Final-points overrides, discretion entries and wheel resolutions that no longer match (6.2,
-  6.3, 5.6), score, IHG tick and flat value edits that are `changed` or `stale` (6.4), AUX edits
+  6.3, 5.6), score, IHG tick, flat value and role / semester edits that are `changed` or `stale` (6.4), AUX edits
   that are `changed` or `stale` (6.7), vetted marks that no longer count (6.5) and level entries
   for CCAs not in the bundle are reported, with the migration notes, and
   never applied silently.

@@ -117,7 +117,7 @@ const CASES: Case[] = [
   { name: 'BAD_GENDER', files: scenario({ residents: patchRow(baseResidents(), -1, { gender: 'X' }) }), codes: ['BAD_GENDER'], blocks: true },
   { name: 'BAD_AUX', files: scenario({ residents: patchRow(baseResidents(), -1, { aux: '-1' }) }), codes: ['BAD_AUX'], blocks: true },
   { name: 'UNKNOWN_CCA', files: scenario({ leaders: { C1: c1, C2: leaderRows('C2'), C9: leaderRows('C9') } }), codes: ['UNKNOWN_CCA'], blocks: true },
-  { name: 'IHG_OVER_CAP', files: scenario({ ccas: sportC1({ ihgCap: '1' }), leaders: { C1: ticked('C1', [0, 1]), C2: leaderRows('C2') } }), codes: ['IHG_OVER_CAP'], blocks: true },
+  { name: 'IHG_OVER_CAP', files: scenario({ ccas: sportC1({ ihgCap: '1' }), leaders: { C1: ticked('C1', [0, 1]), C2: leaderRows('C2') } }), codes: ['IHG_OVER_CAP'], blocks: false },
   { name: 'IHG_NOT_SET (warning)', files: scenario({ ccas: sportC1({ ihgResult: '' }), leaders: { C1: ticked('C1', [0]), C2: leaderRows('C2') } }), codes: ['IHG_NOT_SET'], blocks: false },
   { name: 'IHG_TICK_IGNORED (warning)', files: scenario({ leaders: { C1: ticked('C1', [0]), C2: leaderRows('C2') } }), codes: ['IHG_TICK_IGNORED'], blocks: false },
   { name: 'IHG_NO_TICKS (warning)', files: scenario({ ccas: sportC1() }), codes: ['IHG_NO_TICKS'], blocks: false },
@@ -201,10 +201,15 @@ describe("IHG from the leader files' ticks", () => {
     expect(report.perCca.map((c) => [c.ccaID, c.ihgTicked])).toEqual([['C1', 2], ['C2', 0]])
   })
 
-  it('IHG_OVER_CAP blocks compute; the three warnings compute with no IHG for that CCA', () => {
-    const over = run(scenario({ ccas: sportC1({ ihgCap: '1' }), leaders: { C1: ticked('C1', [0, 1]), C2: leaderRows('C2') } }))
-    expect(over.issues[0]).toMatchObject({ severity: 'error', code: 'IHG_OVER_CAP', fileName: leaderFileName('C1'), ccaID: 'C1' })
-    expect(over.input).toBeUndefined()
+  it('6 ticked, cap 5 -> warning, 6 IHG entries, canCompute true', () => {
+    const over = run(scenario({ ccas: sportC1({ ihgCap: '5' }), leaders: { C1: ticked('C1', [0, 1, 2, 3, 4, 5]), C2: leaderRows('C2') } }))
+    expect(over.issues[0]).toMatchObject({ severity: 'warning', code: 'IHG_OVER_CAP', fileName: leaderFileName('C1'), ccaID: 'C1' })
+    expect(over.canCompute).toBe(true)
+    expect(over.input?.ihg).toHaveLength(6)
+    expect(over.input?.ihg.every((e) => e.ccaID === 'C1' && e.placement === '1st')).toBe(true)
+  })
+
+  it('the three other warnings compute with no IHG for that CCA', () => {
     const notSet = run(scenario({ ccas: sportC1({ ihgCap: '' }), leaders: { C1: ticked('C1', [0]), C2: leaderRows('C2') } }))
     const ignored = run(scenario({ leaders: { C1: ticked('C1', [0]), C2: leaderRows('C2') } }))
     const noTicks = run(scenario({ ccas: sportC1() }))

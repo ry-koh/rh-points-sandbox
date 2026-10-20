@@ -158,6 +158,12 @@ describe('samples/broken', () => {
     const codes = [...new Set(report.issues.map((issue) => issue.code))].sort()
     expect(codes).toEqual(expectedCodes(dir))
   })
+
+  it('ihg-over-cap is only a warning: it still computes', () => {
+    const report = validateImport(loadCsvFiles(`${BROKEN_DIR}/ihg-over-cap`), DEFAULT_CONFIG, { ccaLevels: DEMO_LEVELS })
+    expect(report.issues.find((i) => i.code === 'IHG_OVER_CAP')?.severity).toBe('warning')
+    expect(report.canCompute).toBe(true)
+  })
 })
 
 describe('samples/', () => {

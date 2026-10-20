@@ -134,8 +134,8 @@ The RH app writes version 2; a file's `formatVersion` must match its columns.
 ### (c) ihg.csv — retired
 
 ihg.csv (spec ≤ v2.2) is retired: `IHG_FILE_RETIRED`. IHG rows are built from the leader files'
-`ihg` ticks and the bundle's `ihgResult` for that sport; more ticks than `ihgCap` is
-`IHG_OVER_CAP`; a sport with a leader file and no result or cap is `IHG_NOT_SET`.
+`ihg` ticks and the bundle's `ihgResult` for that sport; more ticks than `ihgCap` is the warning
+`IHG_OVER_CAP` (allowed: every ticked member still gets the points); a sport with a leader file and no result or cap is `IHG_NOT_SET`.
 
 ### (d) RH-app bundle — produced by the RH app (JCRC)
 
@@ -768,7 +768,6 @@ Block results until each is fixed by re-importing a corrected file.
 - duplicate matric in residents.csv, or more than one residents.csv
 - bad `gender`, `sem2` or `aux` value
 - an ihg.csv (retired, `IHG_FILE_RETIRED`)
-- more leader-file `ihg` ticks than the sport's `ihgCap`
 - no RH-app bundle, more than one bundle, a value in a column its section does not use, an IHG
   column on a `sport` = `N` row, an unknown `section`, no `cca` rows, an `ihgCap` that is not
   a whole number ≥ 1, or the same `ccaID` on two `cca` rows
@@ -800,6 +799,7 @@ Shown, do not block.
 - a sport with a leader file and no IHG result or cap (its ticks get no IHG points yet)
 - `ihg` ticks in a leader file of a CCA that is not a sport in the bundle (ignored)
 - a sport with an IHG result and no member ticked
+- more leader-file `ihg` ticks than the sport's `ihgCap` (allowed: every ticked member gets the points; untick on the Review step if it is a mistake)
 - more than 10 `0.5x` memberships for one resident
 - an IHG row for a flat or overridden membership (the row is always ignored)
 - a waiver for a `ccaID` that is not in the bundle (the row is ignored)
@@ -854,7 +854,7 @@ leader files' ticks and the bundle (2c).
 | `REVIEW_FLAT_CCA` | error | (review edit) the CCA is flat |
 | `REVIEW_UNKNOWN_MEMBERSHIP` | error | (review edit) no such member in that CCA's leader file |
 | `REVIEW_NO_CHANGE` | error | (review edit) `to` equals `from` |
-| `IHG_OVER_CAP` | error | a sport's leader file has more `ihg` ticks than its `ihgCap`; that CCA gets no IHG entries |
+| `IHG_OVER_CAP` | warning | a sport's leader file has more `ihg` ticks than its `ihgCap`; allowed, every ticked member still gets an IHG entry |
 | `UNKNOWN_LEVEL` | error | (level entry, 3b) `level` not one of the `levels` |
 | `BAD_LEVEL_TWEAK` | error | (level entry, 3b) `bonusOverride` not a number ≥ 0, or `multiplierOverride` not a number > 0 |
 | `DUPLICATE_LEVEL_NAME` | error | two `levels` in Settings have the same name |

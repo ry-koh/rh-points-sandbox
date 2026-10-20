@@ -32,8 +32,8 @@ function tickIssue(leader: CheckedLeader, cca: BundleCca, ticked: number): Issue
   }
   if (ticked > cca.ihgCap) {
     const text =
-      `${who} has ${ticked} members ticked for IHG but the cap is ${cca.ihgCap}. ` +
-      'Raise the cap on /admin/points and download the bundle again, or reopen points entry and ask the head for a corrected file.'
+      `${who} has ${ticked} members ticked for IHG; the cap is ${cca.ihgCap}. ` +
+      `All ${ticked} get the points (allowed). Untick on the Review step if this is a mistake.`
     return makeIssue('IHG_OVER_CAP', leader.fileName, text, at)
   }
   if (ticked === 0) {
@@ -59,7 +59,8 @@ export function buildIhgFromTicks(leaders: readonly CheckedLeader[], bundle: rea
     if (!cca || cca.flatPoints !== null) continue
     const issue = tickIssue(leader, cca, ticked.length)
     if (issue) issues.push(issue)
-    else if (cca.isSport && cca.ihgResult !== null) {
+    // Over the cap is only a warning: the ticked members still get the points.
+    if ((!issue || issue.code === 'IHG_OVER_CAP') && cca.isSport && cca.ihgResult !== null) {
       const placement = cca.ihgResult
       ihg.push(...ticked.map((r): IhgEntry => ({ matric: r.matric, ccaID: cca.ccaID, placement })))
     }

@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, MAX_EXHAUSTIVE_HALVES, computeAll, type ScenarioConfig } from '../../engine'
 import { RETIRED_CCAS_COLUMNS, RETIRED_IHG_COLUMNS } from '../detect'
 import { fnv1a32 } from '../hash'
+import type { AuxEdit } from '../auxEdits'
+import type { FlatEdit } from '../flatEdits'
 import type { ReviewEdit } from '../review'
+import type { IhgTickEdit } from '../tickEdits'
 import { validateImport } from '../validate'
 import type { CcaLevelEntry, ImportReport, IssueCode, SandboxInput, SourceFile } from '../types'
 import { deepFreeze } from '../../engine/__tests__/helpers'
@@ -511,7 +514,7 @@ describe('review edits and not-submitting marks', () => {
     const report = run(files)
     const c1Text = files.find((f) => f.name === leaderFileName('C1'))?.text ?? ''
     expect(report.perCca.map((c) => [c.ccaID, c.fileHash])).toEqual([['C1', fnv1a32(c1Text)], ['C2', null], ['C3', null]])
-    expect(report.review).toEqual({ edits: [], flatIds: ['C3'] })
+    expect(report.review).toMatchObject({ edits: [], flatIds: ['C3'], tickEdits: [], flatEdits: [], auxEdits: [], auxUnchecked: false })
   })
 
   it('a changed leader file changes the hash; a re-downloaded bundle does not', () => {
@@ -525,6 +528,104 @@ describe('review edits and not-submitting marks', () => {
     const sandbox = deepFreeze({ ccaLevels: DEMO_LEVELS, edits: [reviewEdit(), reviewEdit({ ccaID: 'C9' })], notSubmitting: ['C2'] })
     expect(() => run(deepFreeze(scenario({ leaders: { C1: c1 } })), DEFAULT_CONFIG, sandbox)).not.toThrow()
     expect(sandbox.edits[0]).toEqual(reviewEdit())
+  })
+})
+
+describe('tick, flat and AUX edits', () => {
+  const AT = '2027-04-02T10:00:00.000Z'
+  const tickEdit = (n: number, to = true): IhgTickEdit => ({ matric: matricOf(n), ccaID: 'C1', from: !to, to, reason: '', at: AT })
+  const flatEdit = (n: number, to: number, from = 12): FlatEdit => ({ matric: matricOf(n), ccaID: 'C3', from, to, reason: '', at: AT })
+  const auxEdit = (n: number, to: number, from = 5): AuxEdit => ({ matric: matricOf(n), from, to, reason: '', at: AT })
+  const flatScenario = (flat = flatRows('C3'), value = '12') =>
+    scenario({ ccas: [...baseCcas(), flatCca('C3', value)], flat, leaders: { C1: c1 } })
+
+  it('a tick edit pushing a sport over its cap -> IHG_OVER_CAP warning AND an entry for every tick', () => {
+    const files = scenario({ ccas: sportC1({ ihgCap: '2' }), leaders: { C1: ticked('C1', [0, 1]), C2: leaderRows('C2') } })
+    const report = run(files, DEFAULT_CONFIG, { ccaLevels: DEMO_LEVELS, tickEdits: [tickEdit(3)] })
+    expect(report.issues.filter((i) => i.code === 'IHG_OVER_CAP')).toHaveLength(1)
+    expect(report.canCompute).toBe(true)
+    expect(report.input?.ihg.map((e) => e.matric)).toEqual([matricOf(1), matricOf(2), matricOf(3)])
+    expect(report.perCca[0]?.ihgTicked).toBe(3)
+    expect(report.review.tickEdits).toEqual([{ entry: tickEdit(3), status: 'applied', current: false }])
+  })
+
+  it('a tick edit whose file tick moved is changed and not applied', () => {
+    const files = scenario({ ccas: sportC1(), leaders: { C1: ticked('C1', [2]), C2: leaderRows('C2') } })
+    const report = run(files, DEFAULT_CONFIG, { ccaLevels: DEMO_LEVELS, tickEdits: [tickEdit(3)] })
+    expect(report.review.tickEdits.map((e) => e.status)).toEqual(['changed'])
+    expect(report.input?.ihg.map((e) => e.matric)).toEqual([matricOf(3)])
+  })
+
+  it('a flat edit changes ONE engine membership and the flat table', () => {
+    const report = run(flatScenario(), DEFAULT_CONFIG, { ccaLevels: DEMO_LEVELS, flatEdits: [flatEdit(2, 10)] })
+    const flatOf = (n: number) => report.input?.memberships.find((m) => m.ccaID === 'C3' && m.matric === matricOf(n))?.flatPoints
+    expect(flatOf(2)).toBe(10)
+    expect([1, 3, 4, 5, 6].map(flatOf)).toEqual([12, 12, 12, 12, 12])
+    expect(report.perCca.find((c) => c.ccaID === 'C3')?.flatPoints).toBe(12)
+    expect(report.review.flatEdits).toEqual([{ entry: flatEdit(2, 10), status: 'applied', current: 12 }])
+    const table = report.review.flats.find((f) => f.ccaID === 'C3')
+    expect(table?.flatPoints).toBe(12)
+    expect(table?.rows[1]).toEqual({ matric: matricOf(2), name: 'Test Resident 002', fileValue: 12, value: 10 })
+    expect(table?.rows[0]).toMatchObject({ fileValue: 12, value: 12 })
+  })
+
+  it('a flat edit is changed when the bundle value moves, stale when the member is gone', () => {
+    const moved = run(flatScenario(flatRows('C3', '11'), '11'), DEFAULT_CONFIG, { ccaLevels: DEMO_LEVELS, flatEdits: [flatEdit(2, 10)] })
+    expect(moved.review.flatEdits.map((e) => e.status)).toEqual(['changed'])
+    expect(moved.input?.memberships.find((m) => m.ccaID === 'C3' && m.matric === matricOf(2))?.flatPoints).toBe(11)
+    const gone = run(flatScenario(flatRows('C3', '12', 1)), DEFAULT_CONFIG, { ccaLevels: DEMO_LEVELS, flatEdits: [flatEdit(2, 10)] })
+    expect(gone.review.flatEdits.map((e) => e.status)).toEqual(['stale'])
+  })
+
+  it('an AUX edit above the cap -> AUX_ABOVE_CAP naming the edited value, and the engine sees it', () => {
+    const report = run(scenario(), DEFAULT_CONFIG, { ccaLevels: DEMO_LEVELS, auxEdits: [auxEdit(4, 14)] })
+    const above = report.issues.filter((i) => i.code === 'AUX_ABOVE_CAP')
+    expect(above).toHaveLength(1)
+    expect(above[0]).toMatchObject({ severity: 'warning', matric: matricOf(4) })
+    expect(above[0]?.message).toContain(`has 14 AUX; only ${DEFAULT_CONFIG.auxCap} count`)
+    expect(report.input?.residents.find((r) => r.matric === matricOf(4))?.aux).toBe(14)
+    expect(report.review.auxEdits).toEqual([{ entry: auxEdit(4, 14), status: 'applied', current: 5 }])
+    expect(report.review.auxUnchecked).toBe(false)
+  })
+
+  it('an AUX edit on a resident missing from a re-dropped residents.csv is stale', () => {
+    const report = run(scenario({ residents: baseResidents(3) }), DEFAULT_CONFIG, { ccaLevels: DEMO_LEVELS, auxEdits: [auxEdit(4, 7)] })
+    expect(report.review.auxEdits.map((e) => e.status)).toEqual(['stale'])
+  })
+
+  it('no residents file -> AUX edits unchecked, never stale', () => {
+    const report = run(scenario({ residents: null }), DEFAULT_CONFIG, { ccaLevels: DEMO_LEVELS, auxEdits: [auxEdit(4, 7)] })
+    expect(report.review.auxUnchecked).toBe(true)
+    expect(report.review.auxEdits).toEqual([])
+  })
+
+  it('vetHash: leader hash for a leader CCA, a content hash for a flat CCA, null otherwise', () => {
+    const report = run(flatScenario())
+    const c1Text = flatScenario().find((f) => f.name === leaderFileName('C1'))?.text ?? ''
+    const sorted = [1, 2, 3, 4, 5, 6].map(matricOf).sort().join(',')
+    expect(report.perCca.map((c) => [c.ccaID, c.vetHash])).toEqual([
+      ['C1', fnv1a32(c1Text)],
+      ['C2', null],
+      ['C3', fnv1a32(`flat|12|${sorted}`)],
+    ])
+    expect(report.perCca.find((c) => c.ccaID === 'C3')?.fileHash).toBeNull()
+  })
+
+  it('a flat vetHash survives a re-exported bundle but not a new member or a new value', () => {
+    const hashOf = (files: readonly SourceFile[]) => run(files).perCca.find((c) => c.ccaID === 'C3')?.vetHash
+    const base = flatScenario()
+    const reExported = withText(base, 'points_bundle_20270401.csv', (t) => t.replaceAll('2027-04-01T09:30', '2027-04-05T09:30'))
+    expect(reExported).not.toEqual(base)
+    expect(hashOf(reExported)).toBe(hashOf(base))
+    const renamed = flatScenario(patchRow(flatRows('C3'), 0, { name: 'Another Name' }))
+    expect(hashOf(renamed)).toBe(hashOf(base))
+    expect(hashOf(flatScenario(flatRows('C3', '12', 7)))).not.toBe(hashOf(base))
+    expect(hashOf(flatScenario(flatRows('C3', '10'), '10'))).not.toBe(hashOf(base))
+  })
+
+  it('a flat edit does not change the flat vetHash', () => {
+    const hashOf = (report: ImportReport) => report.perCca.find((c) => c.ccaID === 'C3')?.vetHash
+    expect(hashOf(run(flatScenario(), DEFAULT_CONFIG, { ccaLevels: DEMO_LEVELS, flatEdits: [flatEdit(2, 10)] }))).toBe(hashOf(run(flatScenario())))
   })
 })
 

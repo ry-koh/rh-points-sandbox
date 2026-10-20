@@ -11,6 +11,7 @@ import {
   migrateWorkspace,
   parseWorkspaceFile,
   restoreWorkspace,
+  sandboxInputOf,
   serializeWorkspace,
   workspaceFilename,
   type Workspace,
@@ -358,5 +359,26 @@ describe('restoreWorkspace re-validates the saved files', () => {
     const before = JSON.stringify(workspace)
     restoreWorkspace(workspace)
     expect(JSON.stringify(workspace)).toBe(before)
+  })
+})
+
+describe('sandboxInputOf', () => {
+  it('maps the review lists, and reads absent tick, flat and AUX lists as empty', () => {
+    expect(sandboxInputOf(workspace)).toEqual({
+      ccaLevels: workspace.ccaLevels,
+      edits: workspace.review.edits,
+      notSubmitting: ['C9'],
+      tickEdits: [],
+      flatEdits: [],
+      auxEdits: [],
+    })
+  })
+
+  it('passes tick, flat and AUX lists through when the review holds them (what Compare and the store use)', () => {
+    const tickEdits = [{ matric: matricOf(1), ccaID: 'C1', from: false, to: true, reason: '', at: AT }]
+    const flatEdits = [{ matric: matricOf(2), ccaID: 'C3', from: 12, to: 10, reason: '', at: AT }]
+    const auxEdits = [{ matric: matricOf(3), from: 5, to: 7, reason: '', at: AT }]
+    const review = { ...workspace.review, tickEdits, flatEdits, auxEdits }
+    expect(sandboxInputOf({ ccaLevels: [], review })).toMatchObject({ tickEdits, flatEdits, auxEdits })
   })
 })

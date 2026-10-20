@@ -23,7 +23,7 @@ export interface ReviewLogEntry extends ReviewEdit {
   readonly kind: 'edit' | 'remove'
 }
 
-/** A CCA marked vetted, against the hash of the leader file it was vetted on (spec 6.5). */
+/** A CCA marked vetted, against its content hash when vetted (spec 6.5): `vetHash`, kept in the field `fileHash` for workspace compatibility (R2). */
 export interface VettedMark {
   readonly ccaID: string
   readonly fileHash: string
@@ -126,11 +126,12 @@ export function reviewOrder<T extends { readonly ccaID: string; readonly name: s
 export type VettedStatus = 'vetted' | 'file_changed' | 'gone'
 
 /**
- * A vetted mark counts while the CCA's leader file hashes to the vetted value. `gone` when the
- * CCA is no longer in the report or has no leader file: only a CCA with a file can be vetted (D25).
+ * A vetted mark counts while the CCA's content hash (`vetHash`: its leader file, or a flat CCA's
+ * value and members) is the vetted value; the mark's `fileHash` field holds that content hash (R2).
+ * `gone` when the CCA is no longer in the report or has neither a leader file nor flat members.
  */
-export function vettedStatus(mark: VettedMark, perCca: readonly Pick<PerCcaReport, 'ccaID' | 'fileHash'>[]): VettedStatus {
-  const fileHash = perCca.find((c) => c.ccaID === mark.ccaID)?.fileHash ?? null
-  if (fileHash === null) return 'gone'
-  return fileHash === mark.fileHash ? 'vetted' : 'file_changed'
+export function vettedStatus(mark: VettedMark, perCca: readonly Pick<PerCcaReport, 'ccaID' | 'vetHash'>[]): VettedStatus {
+  const vetHash = perCca.find((c) => c.ccaID === mark.ccaID)?.vetHash ?? null
+  if (vetHash === null) return 'gone'
+  return vetHash === mark.fileHash ? 'vetted' : 'file_changed'
 }

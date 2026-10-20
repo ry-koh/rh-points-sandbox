@@ -177,18 +177,18 @@ describe('reviewOrder', () => {
 })
 
 describe('vettedStatus', () => {
-  const report = (ccaID: string, fileHash: string | null) => ({ ccaID, fileHash }) as Pick<PerCcaReport, 'ccaID' | 'fileHash'>
+  const report = (ccaID: string, vetHash: string | null) => ({ ccaID, vetHash }) as Pick<PerCcaReport, 'ccaID' | 'vetHash'>
   const mark = (fileHash: string): VettedMark => ({ ccaID: 'C1', fileHash, at: '2027-04-02T10:00:00.000Z' })
 
-  it("'vetted' while the leader file's hash is the one vetted", () => {
+  it("'vetted' while the CCA's content hash is the one vetted (a leader file or a flat CCA's)", () => {
     expect(vettedStatus(mark('0a1b2c3d'), [report('C1', '0a1b2c3d')])).toBe('vetted')
   })
 
-  it("'file_changed' when the leader file changed", () => {
+  it("'file_changed' when the leader file or the flat content changed", () => {
     expect(vettedStatus(mark('0a1b2c3d'), [report('C1', 'ffffffff')])).toBe('file_changed')
   })
 
-  it("'gone' when the CCA has no leader file (D25), whatever the mark says", () => {
+  it("'gone' when the CCA has neither a leader file nor flat content, whatever the mark says", () => {
     expect(vettedStatus(mark('0a1b2c3d'), [report('C1', null)])).toBe('gone')
     expect(vettedStatus(mark(''), [report('C1', null)])).toBe('gone')
   })

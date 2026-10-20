@@ -158,10 +158,15 @@ export async function parseWorkspaceFile(text: string, password?: string): Promi
 
 /** The values entered in the sandbox, as the import validation takes them. */
 export function sandboxInputOf(workspace: Pick<Workspace, 'ccaLevels' | 'review'>): SandboxInput {
+  // The tick, flat and AUX lists join WorkspaceReview in workspace version 3; until then they may be absent.
+  const review: Workspace['review'] & Partial<Pick<SandboxInput, 'tickEdits' | 'flatEdits' | 'auxEdits'>> = workspace.review
   return {
     ccaLevels: workspace.ccaLevels,
-    edits: workspace.review.edits,
-    notSubmitting: workspace.review.notSubmitting.map((mark) => mark.ccaID),
+    edits: review.edits,
+    notSubmitting: review.notSubmitting.map((mark) => mark.ccaID),
+    tickEdits: review.tickEdits ?? [],
+    flatEdits: review.flatEdits ?? [],
+    auxEdits: review.auxEdits ?? [],
   }
 }
 

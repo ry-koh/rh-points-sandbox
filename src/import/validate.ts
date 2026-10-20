@@ -1,4 +1,5 @@
 import type { IhgEntry, MeanSdRange, Membership, PipelineInput, Resident, ScenarioConfig } from '../engine'
+import { applyAuxEdits, type CheckedAuxEdit } from './auxEdits'
 import { ccaLevelFor, isBonusTweak, isMultiplierTweak, levelProblems, validateCcaLevelEntry } from './ccaLevels'
 import {
   checkFlatFile,
@@ -16,6 +17,7 @@ import {
 } from './checks'
 import { parseCsv } from './csv'
 import { fnv1a32 } from './hash'
+import { applyFlatEdits, type CheckedFlatEdit } from './flatEdits'
 import { FILE_COLUMNS, RETIRED_CCAS_COLUMNS, RETIRED_IHG_COLUMNS, detectFileKind, headerMatches } from './detect'
 import { buildIhgFromTicks } from './ihgTicks'
 import { parseBundle } from './parseBundle'
@@ -24,7 +26,8 @@ import { makeIssue } from './parseCommon'
 import { parseLeader } from './parseLeader'
 import { parseResidents } from './parseResidents'
 import { parseSettings } from './parseSettings'
-import { applyReviewEdits } from './review'
+import { applyReviewEdits, reviewKey } from './review'
+import { applyTickEdits } from './tickEdits'
 import type {
   BundleCca,
   BundleCcaRow,
@@ -33,6 +36,7 @@ import type {
   CcaRow,
   FileKind,
   FlatRow,
+  FlatTable,
   ImportReport,
   Issue,
   LoadedBundle,
@@ -311,6 +315,31 @@ function bundleFlatGroups(
   return { issues, flats: [...flats, ...empty] }
 }
 
+/**
+ * A flat CCA's content fingerprint (R2): its flat value and its sorted member matrics, from the
+ * bundle's rows only, so a re-exported bundle (new exportedAt) or a name change keeps it.
+ */
+function flatVetHash(bundle: SplitBundle, ccaID: string): string | null {
+  const flatPoints = bundle.ccas.rows.find((c) => c.ccaID === ccaID)?.flatPoints ?? null
+  if (flatPoints === null) return null
+  const matrics = bundle.flat.result.rows.filter((r) => r.ccaID === ccaID).map((r) => r.matric).sort()
+  return fnv1a32(`flat|${flatPoints}|${matrics.join(',')}`)
+}
+
+/** The flat CCAs' members with the bundle's value and the value in use, for the Review flat table. */
+function flatTables(fileFlats: readonly CheckedFlat[], edits: readonly CheckedFlatEdit[]): FlatTable[] {
+  const applied = new Map(edits.filter((e) => e.status === 'applied').map((e) => [reviewKey(e.entry), e.entry.to]))
+  return fileFlats.map((flat) => {
+    const rows = flat.rows.map((row) => ({
+      matric: row.matric,
+      name: row.name,
+      fileValue: row.flatPoints,
+      value: applied.get(reviewKey({ matric: row.matric, ccaID: flat.ccaID })) ?? row.flatPoints,
+    }))
+    return { ccaID: flat.ccaID, flatPoints: flat.flatPoints, rows }
+  })
+}
+
 const ccaIdFromFileName = (name: string): string => /^points_(.+)_\d{8}\.csv$/i.exec(name)?.[1] ?? ''
 
 /** The leader files (one per CCA) and the hash of each one's text, by ccaID. */
@@ -368,7 +397,7 @@ function toEngineInput(
         outgoingRole: 'none',
         incomingRole: 'none',
         roleDropped: false,
-        flatPoints: flat.flatPoints,
+        flatPoints: row.flatPoints,
       }),
     ),
   )
@@ -399,6 +428,7 @@ function perCcaReport(
 ): PerCcaReport {
   const row = bundle.ccas.rows.find((c) => c.ccaID === cca.ccaID)
   const leader = leaders.find((l) => l.ccaID === cca.ccaID)
+  const fileHash = leader ? (hashes.get(cca.ccaID) ?? null) : null
   return {
     ...stats.report,
     type: row?.type ?? null,
@@ -410,14 +440,18 @@ function perCcaReport(
     multiplierOverride: cca.multiplierOverride,
     outgoingLeaders: leader?.rows.filter((r) => r.outgoingRole !== 'none').length ?? 0,
     ihgTicked: tickedByCca[cca.ccaID] ?? 0,
-    fileHash: leader ? (hashes.get(cca.ccaID) ?? null) : null,
+    fileHash,
+    vetHash: fileHash ?? flatVetHash(bundle, cca.ccaID),
   }
 }
 
 /**
  * Parses and checks the dropped files with the values entered in the sandbox (the level table,
- * the review edits and the not-submitting marks). Edits are applied once, to the checked leader
- * rows, so the mean/SD, the IHG ticks and the engine input all see the same scores.
+ * the review, tick, flat and AUX edits and the not-submitting marks). Each kind of edit is applied
+ * once, in this order: AUX counts to the resident rows (before their checks), scores and then
+ * ticks to the checked leader rows (before the IHG is built), flat values to the flat rows (after
+ * the bundle's flat groups). So the checks, the mean/SD, the IHG and the engine input all see the
+ * same edited data.
  * Pure: the same files, config and sandbox values always give the same report. A mean or SD
  * outside the range is a warning, never an error.
  */
@@ -429,11 +463,18 @@ export function validateImport(
   const ccaLevels = sandbox.ccaLevels ?? []
   const edits = sandbox.edits ?? []
   const notSubmitting = new Set(sandbox.notSubmitting ?? [])
+  const tickEdits = sandbox.tickEdits ?? []
+  const flatEdits = sandbox.flatEdits ?? []
   const issues: Issue[] = []
   const classified = files.map((file) => classify(file, issues))
   issues.push(...fileLevelIssues(classified))
   issues.push(...levelProblems(config))
-  const residents = loadFirst(classified, 'residents', parseResidents, issues)
+  const fileResidents = loadFirst(classified, 'residents', parseResidents, issues)
+  // AUX edits first, so AUX_ABOVE_CAP and the engine see the edited counts (R11).
+  const aux = fileResidents ? applyAuxEdits(fileResidents.result.rows, sandbox.auxEdits ?? []) : null
+  const residents: Loaded<ResidentRow> | null =
+    fileResidents && aux ? { ...fileResidents, result: { ...fileResidents.result, rows: aux.rows } } : null
+  const auxEdits: CheckedAuxEdit[] = aux?.edits ?? []
   const bundle = splitBundle(classified, issues)
   // A standalone settings or flat file is only read when there is no bundle (it is a duplicate beside one).
   const settingsSource = bundle ? bundle.settings : loadFirst(classified, 'settings', parseSettings, issues)
@@ -456,14 +497,17 @@ export function validateImport(
     if (outcome.checked) fileRows.push(outcome.checked)
   }
   const reviewed = applyReviewEdits(fileRows, edits)
-  const checked = reviewed.checked
+  const tickReviewed = applyTickEdits(reviewed.checked, tickEdits)
+  const checked = tickReviewed.checked
   const flatOutcome = flatFile
     ? checkFlatFile(flatFile, residents, ccas, new Set(leaderFiles.map((f) => f.ccaID)))
     : null
   if (flatOutcome) issues.push(...flatOutcome.issues)
   const grouped = bundle ? bundleFlatGroups(bundle, flatOutcome?.checked ?? [], leaderFiles) : null
   if (grouped) issues.push(...grouped.issues)
-  const flats = grouped?.flats ?? flatOutcome?.checked ?? []
+  const fileFlats = grouped?.flats ?? flatOutcome?.checked ?? []
+  const flatReviewed = applyFlatEdits(fileFlats, flatEdits)
+  const flats = flatReviewed.flats
   // IHG comes only from the leader files' ticks, judged against the bundle's sport, result and cap.
   const ticks = buildIhgFromTicks(checked, bundle?.ccas.rows ?? [])
   issues.push(...ticks.issues)
@@ -492,7 +536,15 @@ export function validateImport(
     issues,
     perCca: bundle ? stats.map(({ cca, result }) => perCcaReport(result, cca, bundle, checked, ticks.tickedByCca, hashes)) : [],
     outOfRange: stats.flatMap(({ result }) => (result.outOfRange ? [result.outOfRange] : [])),
-    review: { edits: reviewed.edits, flatIds: flats.map((f) => f.ccaID) },
+    review: {
+      edits: reviewed.edits,
+      flatIds: flats.map((f) => f.ccaID),
+      tickEdits: tickReviewed.edits,
+      flatEdits: flatReviewed.edits,
+      auxEdits,
+      auxUnchecked: residents === null,
+      flats: flatTables(fileFlats, flatReviewed.edits),
+    },
     ...(input ? { input } : {}),
   }
 }

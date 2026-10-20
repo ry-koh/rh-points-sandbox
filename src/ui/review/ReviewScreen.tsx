@@ -10,6 +10,7 @@ import {
   validateReviewEdit,
   vettedStatus,
   type CcaLevelEntry,
+  type FlatMemberRow,
   type LeaderRow,
   type ReviewEditCode,
   type SourceFile,
@@ -20,9 +21,10 @@ import { vettedLocked, type Action, type AppState } from '../state/store'
 import { CcaHeader } from './CcaHeader'
 import { CcaList, type CcaListItem } from './CcaList'
 import { EditLog } from './EditLog'
+import { FlatTable, type FlatLineData } from './FlatTable'
 import { MeanSdMeter } from './MeanSdMeter'
 import { ScoreTable, type ScoreRow } from './ScoreTable'
-import { tickAction } from './reviewHelpers'
+import { flatAction, tickAction } from './reviewHelpers'
 
 interface ReviewScreenProps {
   readonly state: AppState
@@ -35,7 +37,7 @@ interface ReviewScreenProps {
 const EDIT_PROBLEMS: Readonly<Record<Exclude<ReviewEditCode, 'REVIEW_NO_CHANGE'>, string>> = {
   BAD_REVIEW_POINTS: 'Use a whole number from 0 to 20.',
   MISSING_REASON: 'The reason is too long.',
-  REVIEW_FLAT_CCA: 'Flat CCAs are set in the RH app and cannot be edited.',
+  REVIEW_FLAT_CCA: "Change a flat member's value in the flat table.",
   REVIEW_UNKNOWN_MEMBERSHIP: 'This member is not in the leader file any more.',
 }
 
@@ -218,6 +220,12 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
     const action = tickAction({ matric: member.matric, ccaID: member.ccaID, fileTick: member.ihg, to: ticked, reason: reason.trim(), hasEdit, at: new Date().toISOString() })
     if (action) dispatch(action)
   }
+  const saveFlat = (ccaID: string, member: FlatMemberRow, value: string, reason: string): string | null => {
+    const hasEdit = report.review.flatEdits.some((e) => e.status !== 'stale' && reviewKey(e.entry) === reviewKey({ matric: member.matric, ccaID }))
+    const { action, problem } = flatAction({ matric: member.matric, ccaID, fileValue: member.fileValue, to: value, reason: reason.trim(), hasEdit, at: new Date().toISOString() })
+    if (action) dispatch(action)
+    return problem
+  }
   const checkEntry = (entry: CcaLevelEntry): string | null =>
     validateCcaLevelEntry(entry, config, ccaIds).find((issue) => issue.code === 'BAD_LEVEL_TWEAK' || issue.code === 'UNKNOWN_LEVEL')?.message ?? null
 
@@ -228,6 +236,13 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
         edit: report.review.edits.find((e) => reviewKey(e.entry) === reviewKey(member) && e.status !== 'stale') ?? null,
         tickEdit: report.review.tickEdits.find((e) => reviewKey(e.entry) === reviewKey(member) && e.status !== 'stale') ?? null,
         hasFinalOverride: state.finalOverrides.some((o) => o.matric === member.matric && o.ccaID === member.ccaID),
+      }))
+    : []
+  const flatRows: FlatLineData[] = cca
+    ? (report.review.flats.find((f) => f.ccaID === cca.ccaID)?.rows ?? []).map((member) => ({
+        member,
+        edit: report.review.flatEdits.find((e) => reviewKey(e.entry) === reviewKey({ matric: member.matric, ccaID: cca.ccaID }) && e.status !== 'stale') ?? null,
+        hasFinalOverride: state.finalOverrides.some((o) => o.matric === member.matric && o.ccaID === cca.ccaID),
       }))
     : []
   const vetLocked = cca ? vettedLocked(state, cca.ccaID) : false
@@ -264,11 +279,29 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
               onEditLevels={editLevels}
             />
             <StalePanel state={state} dispatch={dispatch} locked={locked} ccaName={ccaName} />
-            {cca.status === 'flat' || cca.fileName === null ? (
+            {cca.status === 'flat' ? (
+              <>
+                <VetBar
+                  item={item}
+                  locked={locked || cca.vetHash === null}
+                  onVet={() => dispatch({ type: 'setVetted', ccaID: cca.ccaID, at: new Date().toISOString() })}
+                  onClear={() => dispatch({ type: 'clearVetted', ccaID: cca.ccaID })}
+                />
+                <section aria-labelledby="flat-title" className="mt-6">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-ink pb-2">
+                    <h2 id="flat-title" className="text-title font-semibold">
+                      Flat values
+                    </h2>
+                    <span className="text-cap text-muted">
+                      {cca.n} members get {cca.flatPoints ?? 0} pts each (set in RH-app) · change one member's value here · Enter saves · Esc cancels
+                    </span>
+                  </div>
+                  <FlatTable rows={flatRows} locked={locked || vetLocked} onSave={(member, value, reason) => saveFlat(cca.ccaID, member, value, reason)} />
+                </section>
+              </>
+            ) : cca.fileName === null ? (
               <p className="mt-6 rounded-[4px] border border-dashed border-ink/20 px-4 py-6 text-center text-body text-muted">
-                {cca.status === 'flat'
-                  ? `${cca.n} members get ${cca.flatPoints ?? 0} pts each. Read-only: flat CCAs are set in the RH app.`
-                  : 'No leader file: marked not submitting on the checklist. Nothing to review.'}
+                No leader file: marked not submitting on the checklist. Nothing to review.
               </p>
             ) : (
               <>

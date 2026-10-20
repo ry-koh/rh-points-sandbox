@@ -18,7 +18,7 @@ import { CcaHeader } from '../review/CcaHeader'
 import { EditLog } from '../review/EditLog'
 import { ReviewScreen } from '../review/ReviewScreen'
 import { ScoreTable, type ScoreRow } from '../review/ScoreTable'
-import { mergeEditLogs, tickAction } from '../review/reviewHelpers'
+import { FLAT_PROBLEMS, flatAction, mergeEditLogs, tickAction } from '../review/reviewHelpers'
 import { initialState, reducer, vettableCcas, type AppState } from '../state/store'
 
 const AT = '2027-04-02T10:00:00.000Z'
@@ -277,5 +277,75 @@ describe('ReviewScreen not-applied panel', () => {
     const html = render(moved)
     expect(html).toContain('flat value')
     expect(html).toMatch(/flat value[\s\S]*Remove/)
+  })
+})
+
+describe('flatAction', () => {
+  const base = { matric: matricOf(1), ccaID: 'C3', fileValue: 12, reason: '', hasEdit: false, at: AT }
+
+  it("records the RH-app value as `from` when a member moves 12 → 10", () => {
+    expect(flatAction({ ...base, to: '10' })).toEqual({
+      action: { type: 'setFlatEdit', entry: { matric: matricOf(1), ccaID: 'C3', from: 12, to: 10, reason: '', at: AT } },
+      problem: null,
+    })
+  })
+
+  it('going back to the RH-app value removes the edit, or does nothing when there is none', () => {
+    expect(flatAction({ ...base, to: '12', hasEdit: true })).toEqual({
+      action: { type: 'removeFlatEdit', matric: matricOf(1), ccaID: 'C3', at: AT },
+      problem: null,
+    })
+    expect(flatAction({ ...base, to: '12' })).toEqual({ action: null, problem: null })
+  })
+
+  it('refuses an empty, negative or non-numeric value with a plain message and dispatches nothing', () => {
+    for (const to of ['', '-1', 'abc']) {
+      const result = flatAction({ ...base, to })
+      expect(result.action).toBeNull()
+      expect(result.problem).toBe(FLAT_PROBLEMS.BAD_FLAT_VALUE)
+    }
+  })
+})
+
+describe('ReviewScreen flat CCA', () => {
+  const flatOnly = (): AppState =>
+    reducer(initialState(), { type: 'addFiles', files: scenario({ ccas: [flatCca('C3')], flat: flatRows('C3') }) })
+  const edit = (to: number): FlatEdit => ({ matric: matricOf(1), ccaID: 'C3', from: 12, to, reason: 'moved halls', at: AT })
+
+  it('lists every member with the RH-app value and an input, and offers Mark vetted', () => {
+    const html = render(flatOnly())
+    expect(html).toContain('RH-app value')
+    expect(tags(html, 'input').filter((t) => t.includes('Flat value for'))).toHaveLength(6)
+    expect(html).toContain('Mark vetted')
+    expect(html).not.toContain('Read-only: flat CCAs')
+  })
+
+  it('tints an edited member gold, shows the edited value and its reason', () => {
+    const html = render(reducer(flatOnly(), { type: 'setFlatEdit', entry: edit(10) }))
+    expect(html).toContain('bg-gold-soft')
+    expect(html).toContain('value="10"')
+    expect(html).toContain('moved halls')
+  })
+
+  it('disables every input and dispatches nothing once the flat CCA is vetted', () => {
+    const dispatch = vi.fn()
+    const vetted = reducer(flatOnly(), { type: 'setVetted', ccaID: 'C3', at: AT })
+    const html = render(vetted, dispatch)
+    expect(html).toContain('Vetted · locked')
+    const inputs = tags(html, 'input').filter((t) => t.includes('Flat value for') || t.includes('Reason for'))
+    expect(inputs).toHaveLength(12)
+    expect(inputs.filter((t) => !isDisabled(t))).toEqual([])
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  it('shows the gold override chip for a member with a final-points override (R9)', () => {
+    const state: AppState = { ...flatOnly(), finalOverrides: [{ matric: matricOf(2), ccaID: 'C3', finalPoints: 5, reason: 'r' }] }
+    const html = render(state)
+    expect(html.match(/final points set on Results — wins over this value/g)).toHaveLength(1)
+    expect(render(flatOnly())).not.toContain('wins over this value')
+  })
+
+  it('does not show the flat table for a leader-file CCA', () => {
+    expect(render(load())).not.toContain('Change a flat member')
   })
 })

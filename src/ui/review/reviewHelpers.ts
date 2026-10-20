@@ -1,4 +1,5 @@
-import type { FlatLogEntry, ReviewLogEntry, TickLogEntry } from '../../import'
+import { MAX_REASON_LENGTH } from '../../engine'
+import type { FlatEditCode, FlatLogEntry, ReviewLogEntry, TickLogEntry } from '../../import'
 import type { Action } from '../state/store'
 
 export type EditKind = 'score' | 'IHG tick' | 'flat value'
@@ -56,4 +57,36 @@ interface TickChange {
 export function tickAction({ matric, ccaID, fileTick, to, reason, hasEdit, at }: TickChange): Action | null {
   if (to === fileTick) return hasEdit ? { type: 'removeTickEdit', matric, ccaID, at } : null
   return { type: 'setTickEdit', entry: { matric, ccaID, from: fileTick, to, reason, at } }
+}
+
+/** Plain words for the flat-edit problems shown under a member's value. */
+export const FLAT_PROBLEMS: Readonly<Record<Exclude<FlatEditCode, 'REVIEW_NO_CHANGE'>, string>> = {
+  BAD_FLAT_VALUE: 'Use a number that is 0 or more.',
+  FLAT_EDIT_NOT_FLAT: 'This CCA is not a flat-points CCA any more.',
+  REVIEW_UNKNOWN_MEMBERSHIP: 'This member is not in the RH-app bundle any more.',
+  MISSING_REASON: 'The reason is too long.',
+}
+
+interface FlatChange {
+  readonly matric: string
+  readonly ccaID: string
+  /** The RH-APP (bundle) value, never the one on screen. */
+  readonly fileValue: number
+  /** The value as typed. */
+  readonly to: string
+  readonly reason: string
+  readonly hasEdit: boolean
+  readonly at: string
+}
+
+/**
+ * What to dispatch when a flat member's value or reason is saved: an edit from the RH-app value,
+ * the edit's removal when the value is back at the RH-app value, or a problem in words.
+ */
+export function flatAction({ matric, ccaID, fileValue, to, reason, hasEdit, at }: FlatChange): { readonly action: Action | null; readonly problem: string | null } {
+  const value = to.trim() === '' ? Number.NaN : Number(to)
+  if (!Number.isFinite(value) || value < 0) return { action: null, problem: FLAT_PROBLEMS.BAD_FLAT_VALUE }
+  if (reason.trim().length > MAX_REASON_LENGTH) return { action: null, problem: FLAT_PROBLEMS.MISSING_REASON }
+  if (value === fileValue) return { action: hasEdit ? { type: 'removeFlatEdit', matric, ccaID, at } : null, problem: null }
+  return { action: { type: 'setFlatEdit', entry: { matric, ccaID, from: fileValue, to: value, reason, at } }, problem: null }
 }

@@ -1,5 +1,5 @@
 import type { Discretion, Gender, IhgPlacement, JcrcStatus, Role } from '../../engine'
-import { reviewKey, type CcaLevelEntry, type ImportReport } from '../../import'
+import { membershipKey, reviewKey, type CcaLevelEntry, type ImportReport, type MembershipField } from '../../import'
 import type { WorkspaceReview } from '../../workspace'
 
 /** What the Summary reads: the import's inputs only, never a computed result. */
@@ -16,6 +16,10 @@ export interface SummaryMembership {
   readonly semesterOnly: boolean
   readonly outgoingRole: Role
   readonly incomingRole: Role
+  /** The leader file's value where a role / semester edit is in use on Review; null otherwise. */
+  readonly outgoingWas: Role | null
+  readonly incomingWas: Role | null
+  readonly semesterWas: boolean | null
   /** Ticked for the sport's IHG points (the tick, not an amount). */
   readonly ihg: boolean
   readonly levelName: string | null
@@ -80,6 +84,11 @@ export function summaryRows(
   const flatApplied = new Map(
     report.review.flatEdits.filter((e) => e.status === 'applied').map((e) => [reviewKey(e.entry), e.entry.from]),
   )
+  const membershipFrom = new Map(
+    report.review.membershipEdits.filter((e) => e.status === 'applied').map((e) => [membershipKey(e.entry), e.entry.from]),
+  )
+  const wasOf = <T extends Role | boolean>(m: { matric: string; ccaID: string }, field: MembershipField): T | null =>
+    (membershipFrom.get(membershipKey({ ...m, field })) as T | undefined) ?? null
   const ticked = new Set(input.ihg.map((e) => reviewKey(e)))
   const rows = input.residents.map((resident): SummaryRow => ({
     matric: resident.matric,
@@ -102,6 +111,9 @@ export function summaryRows(
         semesterOnly: m.semesterOnly,
         outgoingRole: m.outgoingRole,
         incomingRole: m.incomingRole,
+        outgoingWas: wasOf<Role>(m, 'outgoingRole'),
+        incomingWas: wasOf<Role>(m, 'incomingRole'),
+        semesterWas: wasOf<boolean>(m, 'semesterOnly'),
         ihg: ticked.has(reviewKey(m)),
         levelName: perCca.get(m.ccaID)?.level ?? null,
         tweaked: tweakedIds.has(m.ccaID),

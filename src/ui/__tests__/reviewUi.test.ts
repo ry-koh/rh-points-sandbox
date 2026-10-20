@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { FlatEdit, IhgTickEdit, LeaderRow } from '../../import'
+import type { CheckedMembershipEdit, FlatEdit, IhgTickEdit, LeaderRow, MembershipEdit } from '../../import'
 import {
   BUNDLE_FILE_NAME,
   LEADER_COLS,
@@ -18,7 +18,7 @@ import { CcaHeader } from '../review/CcaHeader'
 import { EditLog } from '../review/EditLog'
 import { ReviewScreen } from '../review/ReviewScreen'
 import { ScoreTable, type ScoreRow } from '../review/ScoreTable'
-import { FLAT_PROBLEMS, flatAction, mergeEditLogs, tickAction } from '../review/reviewHelpers'
+import { FLAT_PROBLEMS, flatAction, membershipAction, mergeEditLogs, tickAction } from '../review/reviewHelpers'
 import { initialState, reducer, vettableCcas, type AppState } from '../state/store'
 
 const AT = '2027-04-02T10:00:00.000Z'
@@ -58,10 +58,23 @@ const member = (n: number, ihg: boolean): LeaderRow => ({
   ihg,
 })
 const tickEdit = (n: number, to: boolean, at = AT, reason = ''): IhgTickEdit => ({ matric: matricOf(n), ccaID: 'C4', from: !to, to, reason, at })
-const row = (n: number, ihg: boolean, edit: ScoreRow['tickEdit'] = null): ScoreRow => ({ member: member(n, ihg), edit: null, tickEdit: edit, hasFinalOverride: false })
+const row = (n: number, ihg: boolean, edit: ScoreRow['tickEdit'] = null, membershipEdits: readonly CheckedMembershipEdit[] = []): ScoreRow => ({
+  member: member(n, ihg),
+  edit: null,
+  tickEdit: edit,
+  membershipEdits,
+  hasFinalOverride: false,
+})
 const table = (rows: readonly ScoreRow[], over: { isSport?: boolean; locked?: boolean } = {}): string =>
   renderToStaticMarkup(
-    createElement(ScoreTable, { rows, isSport: over.isSport ?? true, locked: over.locked ?? false, onSave: () => null, onTick: () => undefined }),
+    createElement(ScoreTable, {
+      rows,
+      isSport: over.isSport ?? true,
+      locked: over.locked ?? false,
+      onSave: () => null,
+      onTick: () => undefined,
+      onMembership: () => undefined,
+    }),
   )
 
 describe('tickAction', () => {
@@ -139,7 +152,7 @@ describe('ScoreTable IHG ticks', () => {
   it('shows a real checkbox per member for a sport, with the EDITED tick', () => {
     const judged = { entry: tickEdit(1, false), status: 'applied' as const, current: true }
     const html = table([row(1, true, judged), row(2, true)])
-    const boxes = tags(html, 'input').filter((t) => t.includes('type="checkbox"'))
+    const boxes = tags(html, 'input').filter((t) => t.includes('type="checkbox"') && t.includes('IHG tick for'))
     expect(boxes).toHaveLength(2)
     expect(boxes[0]).not.toContain('checked')
     expect(boxes[1]).toContain('checked')
@@ -156,13 +169,13 @@ describe('ScoreTable IHG ticks', () => {
     const moved = table([row(1, false, changed)])
     expect(moved).toContain('the file changed')
     // A tick edit the file has overtaken is not shown as an edit.
-    expect(tags(moved, 'input').filter((t) => t.includes('type="checkbox"'))[0]).not.toContain('checked')
+    expect(tags(moved, 'input').filter((t) => t.includes('type="checkbox"') && t.includes('IHG tick for'))[0]).not.toContain('checked')
     expect(moved).not.toContain('Reason for Test Resident 001&#x27;s IHG tick')
   })
 
   it('has no checkbox for a CCA that is not a sport', () => {
     const html = table([row(1, true)], { isSport: false })
-    expect(tags(html, 'input').filter((t) => t.includes('type="checkbox"'))).toHaveLength(0)
+    expect(tags(html, 'input').filter((t) => t.includes('type="checkbox"') && t.includes('IHG tick for'))).toHaveLength(0)
   })
 
   it('disables every input, including the tick boxes, when locked', () => {

@@ -1,7 +1,9 @@
 import { Lock, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { useMemo, useState, type Dispatch } from 'react'
+import type { Role } from '../../engine'
 import {
   ccaLevelFor,
+  membershipKey,
   parseCsv,
   parseLeader,
   reviewKey,
@@ -12,6 +14,7 @@ import {
   type CcaLevelEntry,
   type FlatMemberRow,
   type LeaderRow,
+  type MembershipField,
   type ReviewEditCode,
   type SourceFile,
 } from '../../import'
@@ -26,7 +29,7 @@ import { FlatTable, type FlatLineData } from './FlatTable'
 import { GroupManager } from './GroupManager'
 import { MeanSdMeter } from './MeanSdMeter'
 import { ScoreTable, type ScoreRow } from './ScoreTable'
-import { flatAction, groupAction, tickAction } from './reviewHelpers'
+import { MEMBERSHIP_FIELD_WORDS, flatAction, groupAction, membershipAction, membershipWords, tickAction } from './reviewHelpers'
 
 interface ReviewScreenProps {
   readonly state: AppState
@@ -62,13 +65,14 @@ function StalePanel({ state, dispatch, locked, ccaName }: {
   readonly locked: boolean
   readonly ccaName: (ccaID: string) => string
 }) {
-  const { edits: scoreEdits, tickEdits, flatEdits } = state.report.review
+  const { edits: scoreEdits, tickEdits, flatEdits, membershipEdits } = state.report.review
   const edits = scoreEdits.filter((e) => e.status !== 'applied')
   const ticks = tickEdits.filter((e) => e.status !== 'applied')
   const flats = flatEdits.filter((e) => e.status !== 'applied')
+  const memberships = membershipEdits.filter((e) => e.status !== 'applied')
   const bundleIds = new Set(state.report.bundle?.ccas.map((c) => c.ccaID) ?? [])
   const levels = state.ccaLevels.filter((e) => !bundleIds.has(e.ccaID))
-  if (edits.length === 0 && ticks.length === 0 && flats.length === 0 && levels.length === 0) return null
+  if (edits.length === 0 && ticks.length === 0 && flats.length === 0 && memberships.length === 0 && levels.length === 0) return null
   const now = (): string => new Date().toISOString()
   return (
     <section role="alert" className="mt-6 border-l-4 border-warning bg-warning-bg px-4 py-3">
@@ -111,6 +115,25 @@ function StalePanel({ state, dispatch, locked, ccaName }: {
                 : 'this member is no longer in the bundle.'}
             </span>
             <Button small variant="ghost" disabled={locked} onClick={() => dispatch({ type: 'removeFlatEdit', matric: entry.matric, ccaID: entry.ccaID, at: now() })}>
+              Remove
+            </Button>
+          </li>
+        ))}
+        {memberships.map(({ entry, status, current }) => (
+          <li key={`membership-${membershipKey(entry)}`} className="flex flex-wrap items-center gap-3 py-1.5">
+            <span className="min-w-0 flex-1">
+              {ccaName(entry.ccaID)} · <span className="font-mono text-cap">{entry.matric}</span> · {MEMBERSHIP_FIELD_WORDS[entry.field]}{' '}
+              {membershipWords(entry.from)} → {membershipWords(entry.to)}:{' '}
+              {status === 'changed' && current !== null
+                ? `the leader file now says ${membershipWords(current)}, so the edit is not applied.`
+                : 'this member is no longer in the leader file.'}
+            </span>
+            <Button
+              small
+              variant="ghost"
+              disabled={locked}
+              onClick={() => dispatch({ type: 'removeMembershipEdit', matric: entry.matric, ccaID: entry.ccaID, field: entry.field, at: now() })}
+            >
               Remove
             </Button>
           </li>
@@ -231,6 +254,11 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
     const action = tickAction({ matric: member.matric, ccaID: member.ccaID, fileTick: member.ihg, to: ticked, reason: reason.trim(), hasEdit, at: new Date().toISOString() })
     if (action) dispatch(action)
   }
+  const saveMembership = (member: LeaderRow, field: MembershipField, to: Role | boolean, reason: string): void => {
+    const hasEdit = report.review.membershipEdits.some((e) => e.status !== 'stale' && membershipKey(e.entry) === membershipKey({ matric: member.matric, ccaID: member.ccaID, field }))
+    const action = membershipAction({ matric: member.matric, ccaID: member.ccaID, field, fileValue: member[field], to, reason: reason.trim(), hasEdit, at: new Date().toISOString() })
+    if (action) dispatch(action)
+  }
   const saveFlat = (ccaID: string, member: FlatMemberRow, value: string, reason: string): string | null => {
     const hasEdit = report.review.flatEdits.some((e) => e.status !== 'stale' && reviewKey(e.entry) === reviewKey({ matric: member.matric, ccaID }))
     const { action, problem } = flatAction({ matric: member.matric, ccaID, fileValue: member.fileValue, to: value, reason: reason.trim(), hasEdit, at: new Date().toISOString() })
@@ -246,6 +274,7 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
         member,
         edit: report.review.edits.find((e) => reviewKey(e.entry) === reviewKey(member) && e.status !== 'stale') ?? null,
         tickEdit: report.review.tickEdits.find((e) => reviewKey(e.entry) === reviewKey(member) && e.status !== 'stale') ?? null,
+        membershipEdits: report.review.membershipEdits.filter((e) => e.status !== 'stale' && reviewKey(e.entry) === reviewKey(member)),
         hasFinalOverride: state.finalOverrides.some((o) => o.matric === member.matric && o.ccaID === member.ccaID),
       }))
     : []
@@ -337,14 +366,15 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
                       Scores
                     </h2>
                     <span className="text-cap text-muted">
-                      Whole numbers 0–20 · Enter saves and moves down · Esc cancels · roles and semester-only come from the leader file
+                      Whole numbers 0–20 · Enter saves and moves down · Esc cancels · roles and full year / 1 sem start from the leader file.{' '}
+                      The mean/SD check uses full scores, so changing someone to 1 sem moves the lists, not this meter.
                     </span>
                   </div>
-                  <ScoreTable rows={rows} isSport={cca.isSport} locked={locked || vetLocked} onSave={saveScore} onTick={saveTick} />
+                  <ScoreTable rows={rows} isSport={cca.isSport} locked={locked || vetLocked} onSave={saveScore} onTick={saveTick} onMembership={saveMembership} />
                 </section>
               </>
             )}
-            <EditLog log={review.log} tickLog={review.tickLog} flatLog={review.flatLog} selected={cca.ccaID} ccaName={ccaName} memberName={(m) => names.get(m) ?? m} />
+            <EditLog log={review.log} tickLog={review.tickLog} flatLog={review.flatLog} membershipLog={review.membershipLog} selected={cca.ccaID} ccaName={ccaName} memberName={(m) => names.get(m) ?? m} />
           </>
         ) : (
           <p className="text-body text-muted">No CCAs in the bundle.</p>

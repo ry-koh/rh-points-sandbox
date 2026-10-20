@@ -5,6 +5,8 @@ import type { SummaryMembership, SummaryRow } from './summaryData'
 
 const ROLE_LABELS: Readonly<Record<Role, string>> = { none: '—', head: 'Head', vice_head: 'Vice head' }
 
+const ROLE_WAS: Readonly<Record<Role, string>> = { none: 'none', head: 'Head', vice_head: 'Vice head' }
+
 function MembershipLine({ m }: { readonly m: SummaryMembership }) {
   return (
     <tr className="border-b border-rule/70">
@@ -13,9 +15,17 @@ function MembershipLine({ m }: { readonly m: SummaryMembership }) {
         {m.flatPoints !== null ? <>flat {m.flatPoints}{m.flatEdited && <> (was {m.flatFile})</>}</> : m.basePoints}
         {m.edited && <span className="ml-1.5 align-middle"><Chip tone="warning">edited</Chip></span>}
       </td>
-      <td className="py-1.5 pr-4">{m.semesterOnly ? 'yes' : '—'}</td>
-      <td className="py-1.5 pr-4">{ROLE_LABELS[m.outgoingRole]}</td>
-      <td className="py-1.5 pr-4">{ROLE_LABELS[m.incomingRole]}</td>
+      <td className="py-1.5 pr-4">
+        {m.semesterWas !== null ? <>{m.semesterOnly ? '1 sem' : 'full year'} (was {m.semesterWas ? '1 sem' : 'full year'})</> : m.semesterOnly ? 'yes' : '—'}
+      </td>
+      <td className="py-1.5 pr-4">
+        {ROLE_LABELS[m.outgoingRole]}
+        {m.outgoingWas !== null && <> (was {ROLE_WAS[m.outgoingWas]})</>}
+      </td>
+      <td className="py-1.5 pr-4">
+        {ROLE_LABELS[m.incomingRole]}
+        {m.incomingWas !== null && <> (was {ROLE_WAS[m.incomingWas]})</>}
+      </td>
       <td className="py-1.5 pr-4">{m.ihg ? 'ticked' : '—'}</td>
       <td className="py-1.5">
         {m.levelName ?? <span className="text-muted">none</span>}

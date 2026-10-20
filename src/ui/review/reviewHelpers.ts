@@ -1,9 +1,32 @@
 import { MAX_REASON_LENGTH } from '../../engine'
-import type { FlatEditCode, FlatLogEntry, PerCcaReport, ReviewLogEntry, TickLogEntry } from '../../import'
+import type { Role } from '../../engine'
+import type {
+  FlatEditCode,
+  FlatLogEntry,
+  MembershipEdit,
+  MembershipField,
+  MembershipLogEntry,
+  PerCcaReport,
+  ReviewLogEntry,
+  TickLogEntry,
+} from '../../import'
 import { addGroup, assignCca, moveGroup, removeGroup, renameGroup, type CcaGroup, type GroupError, type GroupResult } from '../../import/groups'
 import type { Action } from '../state/store'
 
-export type EditKind = 'score' | 'IHG tick' | 'flat value'
+export type EditKind = 'score' | 'IHG tick' | 'flat value' | 'outgoing role' | 'incoming role' | 'full year / 1 sem'
+
+/** What each membership field is called in the log and the not-applied panel. */
+export const MEMBERSHIP_FIELD_WORDS: Readonly<Record<MembershipField, EditKind>> = {
+  outgoingRole: 'outgoing role',
+  incomingRole: 'incoming role',
+  semesterOnly: 'full year / 1 sem',
+}
+
+const ROLE_WORDS: Readonly<Record<Role, string>> = { none: 'none', head: 'head', vice_head: 'vice head' }
+
+/** A membership value as words: "head", "vice head", "full year" or "1 sem". */
+export const membershipWords = (value: Role | boolean): string =>
+  typeof value === 'boolean' ? (value ? '1 sem' : 'full year') : ROLE_WORDS[value]
 
 /** One line of the merged Review log: values are already written as words or numbers. */
 export interface MergedLogLine {
@@ -24,16 +47,18 @@ interface Tagged {
   readonly order: number
 }
 
-/** Score, tick and flat log lines in one list, newest first (R21). Lines with the same time keep the latest-made first. */
+/** Score, tick, flat and role / semester log lines in one list, newest first (R21). Lines with the same time keep the latest-made first. */
 export function mergeEditLogs(
   scores: readonly ReviewLogEntry[],
   ticks: readonly TickLogEntry[],
   flats: readonly FlatLogEntry[],
+  memberships: readonly MembershipLogEntry[] = [],
 ): MergedLogLine[] {
   const lines: MergedLogLine[] = [
     ...scores.map((e): MergedLogLine => ({ ...e, what: 'score', from: String(e.from), to: String(e.to) })),
     ...ticks.map((e): MergedLogLine => ({ ...e, what: 'IHG tick', from: tickWords(e.from), to: tickWords(e.to) })),
     ...flats.map((e): MergedLogLine => ({ ...e, what: 'flat value', from: String(e.from), to: String(e.to) })),
+    ...memberships.map((e): MergedLogLine => ({ ...e, what: MEMBERSHIP_FIELD_WORDS[e.field], from: membershipWords(e.from), to: membershipWords(e.to) })),
   ]
   const tagged: Tagged[] = lines.map((line, order) => ({ line, order }))
   tagged.sort((a, b) => b.line.at.localeCompare(a.line.at) || b.order - a.order)
@@ -58,6 +83,27 @@ interface TickChange {
 export function tickAction({ matric, ccaID, fileTick, to, reason, hasEdit, at }: TickChange): Action | null {
   if (to === fileTick) return hasEdit ? { type: 'removeTickEdit', matric, ccaID, at } : null
   return { type: 'setTickEdit', entry: { matric, ccaID, from: fileTick, to, reason, at } }
+}
+
+interface MembershipChange {
+  readonly matric: string
+  readonly ccaID: string
+  readonly field: MembershipField
+  /** The LEADER FILE's value, never the one on screen (R1). */
+  readonly fileValue: Role | boolean
+  readonly to: Role | boolean
+  readonly reason: string
+  readonly hasEdit: boolean
+  readonly at: string
+}
+
+/**
+ * What to dispatch when a role select, the semester toggle or a reason changes: an edit from the
+ * file's value, the edit's removal when the cell is back at the file's value, or null.
+ */
+export function membershipAction({ matric, ccaID, field, fileValue, to, reason, hasEdit, at }: MembershipChange): Action | null {
+  if (to === fileValue) return hasEdit ? { type: 'removeMembershipEdit', matric, ccaID, field, at } : null
+  return { type: 'setMembershipEdit', entry: { matric, ccaID, field, from: fileValue, to, reason, at } as MembershipEdit }
 }
 
 /** Plain words for the flat-edit problems shown under a member's value. */

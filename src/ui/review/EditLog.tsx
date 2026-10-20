@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { FlatLogEntry, ReviewLogEntry, TickLogEntry } from '../../import'
+import type { FlatLogEntry, MembershipLogEntry, ReviewLogEntry, TickLogEntry } from '../../import'
 import { Eyebrow } from '../common/controls'
 import { localTime } from '../checklist/ChecklistScreen'
 import { mergeEditLogs } from './reviewHelpers'
@@ -8,15 +8,16 @@ interface EditLogProps {
   readonly log: readonly ReviewLogEntry[]
   readonly tickLog: readonly TickLogEntry[]
   readonly flatLog: readonly FlatLogEntry[]
+  readonly membershipLog?: readonly MembershipLogEntry[]
   readonly selected: string | null
   readonly ccaName: (ccaID: string) => string
   readonly memberName: (matric: string) => string
 }
 
-/** Every score, IHG tick and flat value edit and removal, newest first; no reviewer is recorded (D5 = B). */
-export function EditLog({ log, tickLog, flatLog, selected, ccaName, memberName }: EditLogProps) {
+/** Every score, IHG tick, flat value and role / semester edit and removal, newest first; no reviewer is recorded (D5 = B). */
+export function EditLog({ log, tickLog, flatLog, membershipLog = [], selected, ccaName, memberName }: EditLogProps) {
   const [onlySelected, setOnlySelected] = useState(true)
-  const all = mergeEditLogs(log, tickLog, flatLog)
+  const all = mergeEditLogs(log, tickLog, flatLog, membershipLog)
   const lines = all.filter((line) => !onlySelected || line.ccaID === selected)
   return (
     <section aria-labelledby="edit-log-title" className="mt-10">

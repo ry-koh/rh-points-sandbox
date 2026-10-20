@@ -32,6 +32,7 @@ import {
   type SourceFile,
   type VettedMark,
 } from '../../import'
+import { groupsOnLoad, normaliseGroups, type CcaGroup } from '../../import/groups'
 import { sandboxInputOf, type WorkflowStep, type WorkspaceReview } from '../../workspace'
 
 /** Why Finalise is refused until the RH-app bundle (with its settings) is loaded (spec 2d). */
@@ -77,6 +78,10 @@ export interface AppState {
   readonly ccaLevels: readonly CcaLevelEntry[]
   /** Score edits and their log, vetted and not-submitting marks: in memory and the workspace file only. */
   readonly review: WorkspaceReview
+  /** CCA groups (ids and names only): kept in browser storage and the workspace file. */
+  readonly groups: readonly CcaGroup[]
+  /** Whether the last workspace load replaced this computer's groups with the file's (D3 = A). */
+  readonly groupsReplaced: boolean
   /** The open step of the guided workflow. Changing it is navigation, not a change to save. */
   readonly step: WorkflowStep
   /** Set by the settings change that cleared tweaks; null after any other change. */
@@ -101,6 +106,8 @@ export interface LoadedWorkspace {
   readonly config: ScenarioConfig
   readonly ccaLevels: readonly CcaLevelEntry[]
   readonly review: WorkspaceReview
+  /** The file's groups; null or empty leaves this computer's groups alone. */
+  readonly groups: readonly CcaGroup[] | null
   readonly step: WorkflowStep
   readonly finalOverrides: readonly FinalOverride[]
   readonly discretion: readonly Discretion[]
@@ -139,6 +146,8 @@ export type Action =
   /** Replaces the whole level table. Used by the demo loader only. */
   | { readonly type: 'setCcaLevelsAll'; readonly list: readonly CcaLevelEntry[] }
   | { readonly type: 'setStep'; readonly step: WorkflowStep }
+  /** Groups do not affect points, so this is allowed while finalised. */
+  | { readonly type: 'setGroups'; readonly groups: readonly CcaGroup[] }
   | { readonly type: 'loadWorkspace'; readonly workspace: LoadedWorkspace }
   | { readonly type: 'markSaved'; readonly at: string }
 
@@ -154,6 +163,8 @@ function revalidate(state: Inputs): AppState {
     config: state.config,
     ccaLevels,
     review,
+    groups: state.groups ?? [],
+    groupsReplaced: state.groupsReplaced ?? false,
     step: state.step ?? 'import',
     lastLevelChange: state.lastLevelChange ?? null,
     finalOverrides: state.finalOverrides ?? [],
@@ -244,8 +255,8 @@ export function entryOptions(state: Pick<AppState, 'finalOverrides' | 'discretio
   return { overrides: state.finalOverrides, discretion: state.discretion, resolutions: state.resolutions }
 }
 
-export function initialState(config: ScenarioConfig = DEFAULT_CONFIG): AppState {
-  return revalidate({ files: [], config })
+export function initialState(config: ScenarioConfig = DEFAULT_CONFIG, groups: readonly CcaGroup[] = []): AppState {
+  return revalidate({ files: [], config, groups })
 }
 
 /** A dropped file with the same name replaces the earlier one. */
@@ -556,8 +567,17 @@ function penaltyChange(state: AppState, action: Action): AppState {
   }
 }
 
+/** Allowed while finalised: groups only order the CCA list. A no-op keeps the same state. */
+function groupsChange(state: AppState, action: Action): AppState {
+  if (action.type !== 'setGroups') return state
+  const groups = normaliseGroups(action.groups)
+  return JSON.stringify(groups) === JSON.stringify(state.groups) ? state : { ...state, groups }
+}
+
 function change(state: AppState, action: Action): AppState {
   switch (action.type) {
+    case 'setGroups':
+      return groupsChange(state, action)
     case 'addFiles':
     case 'removeFile':
     case 'setConfig':
@@ -595,8 +615,11 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, results: action.results, computeError: action.error }
     case 'markSaved':
       return { ...state, dirty: false, savedAt: action.at }
-    case 'loadWorkspace':
-      return revalidate({ ...action.workspace, dirty: false, savedAt: null })
+    case 'loadWorkspace': {
+      const { groups: fromFile, ...rest } = action.workspace
+      const { groups, replaced } = groupsOnLoad(state.groups, fromFile)
+      return revalidate({ ...rest, groups, groupsReplaced: replaced, dirty: false, savedAt: null })
+    }
     case 'setStep':
       // Navigation is never an unsaved change.
       return state.step === action.step ? state : { ...state, step: action.step, lastLevelChange: null }

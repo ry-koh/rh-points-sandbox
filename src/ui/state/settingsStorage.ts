@@ -1,11 +1,13 @@
 import { DEFAULT_CONFIG, type ScenarioConfig } from '../../engine'
+import { normaliseGroups, type CcaGroup } from '../../import/groups'
 import { readStoredConfig } from './configShape'
 import { readScenarioList, type Scenario } from './scenarios'
 
-// The ONLY module allowed to touch browser storage. It keeps the current settings and
-// saved scenarios (settings only), never resident data.
+// The ONLY module allowed to touch browser storage. It keeps the current settings, saved
+// scenarios (settings only) and CCA groups (ids and names only), never resident data.
 export const SETTINGS_KEY = 'rhps.settings.v1'
 export const SCENARIOS_KEY = 'rhps.scenarios.v1'
+export const GROUPS_KEY = 'rhps.groups.v1'
 
 /** The subset of the Storage API this module needs (injectable for tests). */
 export interface SettingsStore {
@@ -55,4 +57,14 @@ export function loadScenarios(store: SettingsStore | null = browserStore()): Sce
 export function saveScenarios(scenarios: readonly Scenario[], store: SettingsStore | null = browserStore()): boolean {
   const settingsOnly = scenarios.map(({ id, name, note, savedAt, config }) => ({ id, name, note, savedAt, config }))
   return writeJson(store, SCENARIOS_KEY, settingsOnly)
+}
+
+export function loadGroups(store: SettingsStore | null = browserStore()): CcaGroup[] {
+  return normaliseGroups(readJson(store, GROUPS_KEY))
+}
+
+/** Stores only id, name and ccaIDs of each group (R13): no CCA names, no resident data. */
+export function saveGroups(groups: readonly CcaGroup[], store: SettingsStore | null = browserStore()): boolean {
+  const idsAndNames = groups.map(({ id, name, ccaIDs }) => ({ id, name, ccaIDs }))
+  return writeJson(store, GROUPS_KEY, idsAndNames)
 }

@@ -1,6 +1,7 @@
 import { computeAll, type ComputeOptions } from '../engine'
 import { validateImport, vettedStatus, type SandboxInput } from '../import'
 import { isGroupList } from '../import/groups'
+import { ROLES } from '../import/parseCommon'
 import { readConfig } from '../ui/state/configShape'
 import { KDF_ITERATIONS, decryptEnvelope, fromBase64, isBase64 } from './crypto'
 import { migrateWorkspace } from './migrate'
@@ -48,6 +49,13 @@ const isTickEdit = (v: unknown): v is Rec =>
   isRec(v) && isStr(v.matric) && isStr(v.ccaID) && isBool(v.from) && isBool(v.to) && isStr(v.reason) && isStr(v.at)
 const isAuxEdit = (v: unknown): v is Rec =>
   isRec(v) && isStr(v.matric) && isNum(v.from) && isNum(v.to) && isStr(v.reason) && isStr(v.at)
+const isRole = (v: unknown): boolean => (ROLES as readonly unknown[]).includes(v)
+/** A role edit has role values; a semesterOnly edit has booleans. Any other field is refused. */
+const isMembershipEdit = (v: unknown): v is Rec => {
+  if (!isRec(v) || !isStr(v.matric) || !isStr(v.ccaID) || !isStr(v.reason) || !isStr(v.at)) return false
+  if (v.field === 'semesterOnly') return isBool(v.from) && isBool(v.to)
+  return (v.field === 'outgoingRole' || v.field === 'incomingRole') && isRole(v.from) && isRole(v.to)
+}
 /** A log entry check from an edit check: the edit's shape plus a kind. */
 const logOf =
   (isEntry: (v: unknown) => v is Rec) =>
@@ -66,7 +74,9 @@ const isReview = (v: unknown): v is Workspace['review'] =>
   listOf(v.flatEdits, isEdit) &&
   listOf(v.flatLog, logOf(isEdit)) &&
   listOf(v.auxEdits, isAuxEdit) &&
-  listOf(v.auxLog, logOf(isAuxEdit))
+  listOf(v.auxLog, logOf(isAuxEdit)) &&
+  listOf(v.membershipEdits, isMembershipEdit) &&
+  listOf(v.membershipLog, logOf(isMembershipEdit))
 const isLevelEntry = (v: unknown): v is Workspace['ccaLevels'][number] =>
   isRec(v) &&
   isStr(v.ccaID) &&
@@ -88,7 +98,7 @@ export function workspaceFilename(at: Date): string {
 }
 
 /**
- * Checks the shape of a plain workspace object. A version-1 or version-2 object is migrated to
+ * Checks the shape of a plain workspace object. A version-1, 2 or 3 object is migrated to
  * the current version first (spec 8b, R4); the config is migrated and filled on the way.
  */
 function readWorkspace(original: Rec): WorkspaceParse {
@@ -185,13 +195,13 @@ export function sandboxInputOf(workspace: Pick<Workspace, 'ccaLevels' | 'review'
     tickEdits: review.tickEdits,
     flatEdits: review.flatEdits,
     auxEdits: review.auxEdits,
-    membershipEdits: (review as { readonly membershipEdits?: SandboxInput['membershipEdits'] }).membershipEdits ?? [],
+    membershipEdits: review.membershipEdits,
   }
 }
 
 /**
  * Loads a workspace: re-runs the import validation on the saved files, then reports every
- * override, discretion entry, wheel resolution, score, tick, flat and AUX edit, vetted mark and
+ * override, discretion entry, wheel resolution, score, tick, flat, AUX and role / semester edit, vetted mark and
  * level entry that no longer matches. Stale entries are never applied silently. What cannot be
  * checked yet is not called stale: with no bundle the review items are `unchecked.review`, while
  * the import cannot compute the computed entries are `unchecked.computed`, and with no residents
@@ -207,13 +217,14 @@ export function restoreWorkspace(workspace: Workspace, notes: readonly string[] 
     checked.filter((c) => c.status !== 'applied')
   const review = {
     ...(reviewUnchecked
-      ? { edits: [], vetted: [], ccaLevels: [], tickEdits: [], flatEdits: [] }
+      ? { edits: [], vetted: [], ccaLevels: [], tickEdits: [], flatEdits: [], membershipEdits: [] }
       : {
           edits: notApplied(report.review.edits),
           vetted: workspace.review.vetted.filter((mark) => vettedStatus(mark, report.perCca) !== 'vetted'),
           ccaLevels: workspace.ccaLevels.filter((entry) => !bundleIds.has(entry.ccaID)),
           tickEdits: notApplied(report.review.tickEdits),
           flatEdits: notApplied(report.review.flatEdits),
+          membershipEdits: notApplied(report.review.membershipEdits),
         }),
     auxEdits: auxUnchecked ? [] : notApplied(report.review.auxEdits),
   }

@@ -16,6 +16,7 @@ import {
 import {
   checklistComplete,
   checklistRows,
+  membershipKey,
   renameLevelInEntries,
   reviewKey,
   upsertCcaLevel,
@@ -26,6 +27,8 @@ import {
   type FlatEdit,
   type IhgTickEdit,
   type ImportReport,
+  type MembershipEdit,
+  type MembershipField,
   type NotSubmittingMark,
   type PerCcaReport,
   type ReviewEdit,
@@ -69,6 +72,8 @@ export const EMPTY_REVIEW: WorkspaceReview = {
   flatLog: [],
   auxEdits: [],
   auxLog: [],
+  membershipEdits: [],
+  membershipLog: [],
 }
 
 export interface AppState {
@@ -138,6 +143,14 @@ export type Action =
   | { readonly type: 'removeFlatEdit'; readonly matric: string; readonly ccaID: string; readonly at: string }
   | { readonly type: 'setAuxEdit'; readonly entry: AuxEdit }
   | { readonly type: 'removeAuxEdit'; readonly matric: string; readonly at: string }
+  | { readonly type: 'setMembershipEdit'; readonly entry: MembershipEdit }
+  | {
+      readonly type: 'removeMembershipEdit'
+      readonly matric: string
+      readonly ccaID: string
+      readonly field: MembershipField
+      readonly at: string
+    }
   | { readonly type: 'setVetted'; readonly ccaID: string; readonly at: string }
   | { readonly type: 'clearVetted'; readonly ccaID: string }
   | { readonly type: 'setNotSubmitting'; readonly mark: NotSubmittingMark }
@@ -420,16 +433,19 @@ type Judged<E, V = unknown> = readonly { readonly entry: E; readonly status: str
 const currentIn = <E, V>(judged: Judged<E, V>, keyOf: (entry: E) => string) => (edit: E): V | null =>
   judged.find((j) => keyOf(j.entry) === keyOf(edit))?.current ?? null
 
-/** Tick, flat and AUX edits, kept and logged by the same rules as score edits. */
+/** Tick, flat, AUX and role / semester edits, kept and logged by the same rules as score edits. */
 function otherEditChange(state: AppState, action: Action): AppState {
   const { review } = state
   const judged = state.report.review
   const ticks = (list: EditList<IhgTickEdit> | null) => list && { ...review, tickEdits: list.edits, tickLog: list.log }
   const flats = (list: EditList<FlatEdit> | null) => list && { ...review, flatEdits: list.edits, flatLog: list.log }
   const aux = (list: EditList<AuxEdit> | null) => list && { ...review, auxEdits: list.edits, auxLog: list.log }
+  const membership = (list: EditList<MembershipEdit> | null) =>
+    list && { ...review, membershipEdits: list.edits, membershipLog: list.log }
   const tickList = { edits: review.tickEdits, log: review.tickLog }
   const flatList = { edits: review.flatEdits, log: review.flatLog }
   const auxList = { edits: review.auxEdits, log: review.auxLog }
+  const membershipList = { edits: review.membershipEdits, log: review.membershipLog }
   const next = ((): WorkspaceReview | null => {
     switch (action.type) {
       case 'setTickEdit':
@@ -444,6 +460,12 @@ function otherEditChange(state: AppState, action: Action): AppState {
         return aux(upsertEdit(auxList, auxKey, action.entry))
       case 'removeAuxEdit':
         return aux(dropEdit(auxList, auxKey, auxKey(action), action.at, currentIn(judged.auxEdits, auxKey)))
+      case 'setMembershipEdit':
+        return membership(upsertEdit(membershipList, membershipKey, action.entry))
+      case 'removeMembershipEdit':
+        return membership(
+          dropEdit(membershipList, membershipKey, membershipKey(action), action.at, currentIn(judged.membershipEdits, membershipKey)),
+        )
       default:
         return null
     }
@@ -451,13 +473,13 @@ function otherEditChange(state: AppState, action: Action): AppState {
   return next ? revalidate({ ...state, review: next }) : state
 }
 
-/** Whether the membership's edit is in use, as the last validation judged it. */
-const isApplied = (judged: Judged<Pick<ReviewEdit, 'matric' | 'ccaID'>>, key: string): boolean =>
-  judged.some((j) => reviewKey(j.entry) === key && j.status === 'applied')
+/** Whether the key's edit is in use, as the last validation judged it. */
+const isApplied = <E>(judged: Judged<E>, keyOf: (entry: E) => string, key: string): boolean =>
+  judged.some((j) => keyOf(j.entry) === key && j.status === 'applied')
 
 /**
- * The reducer-level vetted lock (R1): on a vetted CCA, refuses new score, tick and flat edits, a
- * level change, and removing an APPLIED edit. Removing a changed or stale edit changes nothing in
+ * The reducer-level vetted lock (R1): on a vetted CCA, refuses new score, tick, flat and role /
+ * semester edits, a level change, and removing an APPLIED edit. Removing a changed or stale edit changes nothing in
  * use, so it stays allowed. `setCcaLevelsAll` (demo loader only) is exempt; AUX is not per CCA.
  */
 function lockRefuses(state: AppState, action: Action): boolean {
@@ -467,14 +489,17 @@ function lockRefuses(state: AppState, action: Action): boolean {
     case 'setReviewEdit':
     case 'setTickEdit':
     case 'setFlatEdit':
+    case 'setMembershipEdit':
     case 'setCcaLevel':
       return vettedLocked(state, action.entry.ccaID)
     case 'removeReviewEdit':
-      return vettedLocked(state, action.ccaID) && isApplied(edits, reviewKey(action))
+      return vettedLocked(state, action.ccaID) && isApplied(edits, reviewKey, reviewKey(action))
     case 'removeTickEdit':
-      return vettedLocked(state, action.ccaID) && isApplied(judged.tickEdits, reviewKey(action))
+      return vettedLocked(state, action.ccaID) && isApplied(judged.tickEdits, reviewKey, reviewKey(action))
     case 'removeFlatEdit':
-      return vettedLocked(state, action.ccaID) && isApplied(judged.flatEdits, reviewKey(action))
+      return vettedLocked(state, action.ccaID) && isApplied(judged.flatEdits, reviewKey, reviewKey(action))
+    case 'removeMembershipEdit':
+      return vettedLocked(state, action.ccaID) && isApplied(judged.membershipEdits, membershipKey, membershipKey(action))
     default:
       return false
   }
@@ -523,6 +548,8 @@ function reviewChange(state: AppState, action: Action): AppState {
     case 'removeFlatEdit':
     case 'setAuxEdit':
     case 'removeAuxEdit':
+    case 'setMembershipEdit':
+    case 'removeMembershipEdit':
       return otherEditChange(state, action)
     case 'setCcaLevel':
       return revalidate({ ...state, ccaLevels: upsertCcaLevel(state.ccaLevels, action.entry) })
@@ -597,6 +624,8 @@ function change(state: AppState, action: Action): AppState {
     case 'removeFlatEdit':
     case 'setAuxEdit':
     case 'removeAuxEdit':
+    case 'setMembershipEdit':
+    case 'removeMembershipEdit':
     case 'setVetted':
     case 'clearVetted':
     case 'setNotSubmitting':

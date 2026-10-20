@@ -61,13 +61,23 @@ function v2ToV3(raw: Rec): Rec {
   return { ...raw, version: 3, review, groups: null }
 }
 
+/** The review lists added in version 4, both empty. */
+const EMPTY_V4_LISTS = { membershipEdits: [], membershipLog: [] }
+
+/** Version 3 to 4: empty role / semester lists. Nothing is lost, so no note. */
+function v3ToV4(raw: Rec): Rec {
+  const review = isRec(raw.review) ? { ...raw.review, ...EMPTY_V4_LISTS } : raw.review
+  return { ...raw, version: 4, review }
+}
+
 /**
- * Brings an older workspace object up to the current version, v1 → v2 → v3, with a plain note
- * for each thing the user must redo. A v3 object is returned unchanged. Never mutates; the
+ * Brings an older workspace object up to the current version, v1 → v2 → v3 → v4, with a plain
+ * note for each thing the user must redo. A v4 object is returned unchanged. Never mutates; the
  * result is still checked by the reader.
  */
 export function migrateWorkspace(raw: Rec): { readonly raw: Rec; readonly notes: string[] } {
-  if (raw.version !== 1 && raw.version !== 2) return { raw, notes: [] }
+  if (raw.version !== 1 && raw.version !== 2 && raw.version !== 3) return { raw, notes: [] }
   const v2 = raw.version === 1 ? v1ToV2(raw) : { raw, notes: [] }
-  return { raw: v2ToV3(v2.raw), notes: v2.notes }
+  const v3 = raw.version === 3 ? v2.raw : v2ToV3(v2.raw)
+  return { raw: v3ToV4(v3), notes: v2.notes }
 }

@@ -21,6 +21,8 @@ const notSubmitting = { ccaID: 'C2', note: 'disbanded', at: AT }
 const tickEdit = { matric: matricOf(1), ccaID: 'C1', from: false, to: true, reason: '', at: AT }
 const flatEdit = { matric: matricOf(1), ccaID: 'C3', from: 12, to: 10, reason: '', at: AT }
 const auxEdit = { matric: matricOf(1), from: 5, to: 7, reason: '', at: AT }
+const membershipEdit = { matric: matricOf(1), ccaID: 'C1', field: 'incomingRole' as const, from: 'none' as const, to: 'vice_head' as const, reason: '', at: AT }
+const removeMembership = { type: 'removeMembershipEdit' as const, matric: membershipEdit.matric, ccaID: membershipEdit.ccaID, field: membershipEdit.field, at: AT }
 
 /** Fills in what Finalise needs: a level on every CCA with a file and a vetted mark on each. */
 function prepared(state: AppState): AppState {
@@ -52,6 +54,7 @@ describe('lock rules while finalised', () => {
         { type: 'setNotSubmitting', mark: notSubmitting },
         { type: 'setCcaLevel', entry: level },
         { type: 'setAuxEdit', entry: auxEdit },
+        { type: 'setMembershipEdit', entry: membershipEdit },
       ),
     )
     for (const action of [
@@ -69,6 +72,8 @@ describe('lock rules while finalised', () => {
       { type: 'removeFlatEdit', matric: flatEdit.matric, ccaID: flatEdit.ccaID, at: AT },
       { type: 'setAuxEdit', entry: { ...auxEdit, to: 9 } },
       { type: 'removeAuxEdit', matric: auxEdit.matric, at: AT },
+      { type: 'setMembershipEdit', entry: { ...membershipEdit, to: 'head' } },
+      removeMembership,
       { type: 'setConfig', config: DEFAULT_CONFIG },
       { type: 'addFiles', files: scenario() },
       { type: 'setFinalOverride', entry: { ...override, finalPoints: 9 } },
@@ -122,6 +127,8 @@ describe('unsaved-changes flag', () => {
     ['removing a flat edit', (s) => reducer(run(s, { type: 'setFlatEdit', entry: flatEdit }, { type: 'markSaved', at: AT }), { type: 'removeFlatEdit', matric: flatEdit.matric, ccaID: flatEdit.ccaID, at: AT })],
     ['AUX edits', (s) => reducer(s, { type: 'setAuxEdit', entry: auxEdit })],
     ['removing an AUX edit', (s) => reducer(run(s, { type: 'setAuxEdit', entry: auxEdit }, { type: 'markSaved', at: AT }), { type: 'removeAuxEdit', matric: auxEdit.matric, at: AT })],
+    ['role and semester edits', (s) => reducer(s, { type: 'setMembershipEdit', entry: membershipEdit })],
+    ['removing a role or semester edit', (s) => reducer(run(s, { type: 'setMembershipEdit', entry: membershipEdit }, { type: 'markSaved', at: AT }), removeMembership)],
     ['unlock', (s) => reducer(finalised(s), { type: 'unlock' })],
   ])('is set by a change to %s', (_, change) => {
     const clean = reducer(loaded(), { type: 'markSaved', at: '2027-04-01T06:32:00.000Z' })
@@ -164,6 +171,7 @@ describe('unsaved-changes flag', () => {
       { type: 'setFinalOverride', entry: override },
       { type: 'setDiscretion', entry: discretion },
       { type: 'setReviewEdit', entry: reviewEdit },
+      { type: 'setMembershipEdit', entry: membershipEdit },
       { type: 'setCcaLevel', entry: level },
       { type: 'setVetted', ccaID: 'C1', at: AT },
       { type: 'setNotSubmitting', mark: notSubmitting },
@@ -171,7 +179,9 @@ describe('unsaved-changes flag', () => {
     )
     const done = finalised(before)
     const workspace = toWorkspace(done, new Date(2027, 3, 1))
-    expect(workspace.version).toBe(3)
+    expect(workspace.version).toBe(4)
+    expect(workspace.review.membershipEdits).toEqual([membershipEdit])
+    expect(workspace.review.membershipLog).toEqual([{ ...membershipEdit, kind: 'edit' }])
     expect('meanSdOverrides' in workspace).toBe(false)
     const opened = reducer(run(initialState(), { type: 'setConfig', config: DEFAULT_CONFIG }), { type: 'loadWorkspace', workspace: fromRestored(restoreWorkspace(workspace)) })
     expect(opened.dirty).toBe(false)
@@ -181,6 +191,7 @@ describe('unsaved-changes flag', () => {
     expect(opened.config).toEqual(config)
     expect(opened.review).toEqual(done.review)
     expect(opened.review.edits).toEqual([reviewEdit])
+    expect(opened.review.membershipEdits).toEqual([membershipEdit])
     expect(opened.ccaLevels).toEqual(done.ccaLevels)
     expect(opened.ccaLevels).toContainEqual(level)
     expect(opened.step).toBe('results')

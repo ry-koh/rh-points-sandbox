@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, computeAll, createPenaltyState, outgoingMult, type Membership, type ScenarioConfig } from '../../engine'
-import type { AuxEdit, CcaLevelEntry, FlatEdit, IhgTickEdit, ReviewEdit } from '../../import'
+import type { AuxEdit, CcaLevelEntry, FlatEdit, IhgTickEdit, MembershipEdit, ReviewEdit } from '../../import'
 import {
   BUNDLE_FILE_NAME,
   DEMO_LEVELS,
@@ -161,6 +161,8 @@ describe('review state', () => {
       flatLog: [],
       auxEdits: [],
       auxLog: [],
+      membershipEdits: [],
+      membershipLog: [],
     })
     expect(state.ccaLevels).toEqual([])
     expect(state.step).toBe('import')
@@ -331,6 +333,38 @@ describe('tick, flat and AUX edits', () => {
   const tick: IhgTickEdit = { matric: matricOf(1), ccaID: 'C4', from: true, to: false, reason: '', at: AT }
   const flat: FlatEdit = { matric: matricOf(1), ccaID: 'C3', from: 12, to: 10, reason: 'left early', at: AT }
   const aux: AuxEdit = { matric: matricOf(1), from: 5, to: 7, reason: '', at: AT }
+  const role: MembershipEdit = { matric: matricOf(1), ccaID: 'C1', field: 'outgoingRole', from: 'none', to: 'head', reason: '', at: AT }
+  const sem: MembershipEdit = { matric: matricOf(1), ccaID: 'C1', field: 'semesterOnly', from: false, to: true, reason: 'moved out', at: AT }
+  const removeRole: Action = { type: 'removeMembershipEdit', matric: matricOf(1), ccaID: 'C1', field: 'outgoingRole', at: LATER }
+
+  it('a role edit is set once per member, CCA and field, logged, and removed back to the file value', () => {
+    const set = run(loaded(), { type: 'setMembershipEdit', entry: { ...role, reason: 'first' } }, { type: 'setMembershipEdit', entry: role })
+    expect(set.dirty).toBe(true)
+    expect(set.review.membershipEdits).toEqual([role])
+    expect(set.review.membershipLog).toEqual([{ ...role, reason: 'first', kind: 'edit' }, { ...role, kind: 'edit' }])
+    expect(set.report.review.membershipEdits.map((e) => e.status)).toEqual(['applied'])
+    const removed = reducer(set, removeRole)
+    expect(removed.review.membershipEdits).toEqual([])
+    expect(removed.review.membershipLog.at(-1)).toEqual({ ...role, from: 'head', to: 'none', reason: '', at: LATER, kind: 'remove' })
+    expect(removed.report.review.membershipEdits).toEqual([])
+    expect(reducer(removed, removeRole)).toBe(removed)
+  })
+
+  it('the three fields are separate edits for one member in one CCA', () => {
+    const both = run(loaded(), { type: 'setMembershipEdit', entry: role }, { type: 'setMembershipEdit', entry: sem })
+    expect(both.review.membershipEdits).toEqual([role, sem])
+    expect(both.report.review.membershipEdits.map((e) => e.status)).toEqual(['applied', 'applied'])
+    const removed = reducer(both, { type: 'removeMembershipEdit', matric: matricOf(1), ccaID: 'C1', field: 'semesterOnly', at: LATER })
+    expect(removed.review.membershipEdits).toEqual([role])
+    expect(removed.review.membershipLog.at(-1)).toEqual({ ...sem, from: true, to: false, reason: '', at: LATER, kind: 'remove' })
+  })
+
+  it('a removed edit whose membership is gone logs back to its own `from`', () => {
+    const gone = { ...role, matric: matricOf(9) }
+    const set = reducer(loaded(), { type: 'setMembershipEdit', entry: gone })
+    const removed = reducer(set, { ...removeRole, matric: matricOf(9) } as Action)
+    expect(removed.review.membershipLog.at(-1)).toMatchObject({ from: 'head', to: 'none', kind: 'remove' })
+  })
 
   it('a tick edit is set once per membership, logged, and removed back to the file tick', () => {
     const set = run(loaded(), { type: 'setTickEdit', entry: { ...tick, reason: 'first' } }, { type: 'setTickEdit', entry: tick })
@@ -406,6 +440,8 @@ describe('tick, flat and AUX edits', () => {
       ['a score edit', { type: 'setReviewEdit', entry: score }, 'C1'],
       ['a tick edit', { type: 'setTickEdit', entry: tick }, 'C4'],
       ['a flat edit', { type: 'setFlatEdit', entry: flat }, 'C3'],
+      ['a role edit', { type: 'setMembershipEdit', entry: role }, 'C1'],
+      ['a semester edit', { type: 'setMembershipEdit', entry: sem }, 'C1'],
       ['a level pick', { type: 'setCcaLevel', entry: levelEntry('C1', 'Pass') }, 'C1'],
     ])('refuses %s on a vetted CCA without marking dirty, and allows it once vetted is cleared', (_, action, ccaID) => {
       const locked = clean(vetAll(loaded()))
@@ -422,6 +458,8 @@ describe('tick, flat and AUX edits', () => {
       ['score', { type: 'setReviewEdit', entry: score }, { type: 'removeReviewEdit', matric: matricOf(1), ccaID: 'C1', at: AT }, 'C1'],
       ['tick', { type: 'setTickEdit', entry: tick }, { type: 'removeTickEdit', matric: matricOf(1), ccaID: 'C4', at: AT }, 'C4'],
       ['flat', { type: 'setFlatEdit', entry: flat }, { type: 'removeFlatEdit', matric: matricOf(1), ccaID: 'C3', at: AT }, 'C3'],
+      ['role', { type: 'setMembershipEdit', entry: role }, { type: 'removeMembershipEdit', matric: matricOf(1), ccaID: 'C1', field: 'outgoingRole', at: AT }, 'C1'],
+      ['semester', { type: 'setMembershipEdit', entry: sem }, { type: 'removeMembershipEdit', matric: matricOf(1), ccaID: 'C1', field: 'semesterOnly', at: AT }, 'C1'],
     ])('keeps an applied %s edit made before vetting, and refuses its removal while vetted', (_, set, remove, ccaID) => {
       const locked = clean(vetAll(reducer(loaded(), set)))
       expect(vettedLocked(locked, ccaID)).toBe(true)
@@ -436,6 +474,14 @@ describe('tick, flat and AUX edits', () => {
       expect(locked.report.review.edits.map((e) => e.status)).toEqual(['changed'])
       const removed = reducer(locked, { type: 'removeReviewEdit', matric: matricOf(1), ccaID: 'C1', at: AT })
       expect(removed.review.edits).toEqual([])
+      expect(removed.dirty).toBe(true)
+    })
+
+    it('allows removing a membership edit that no longer applies on a vetted CCA', () => {
+      const locked = clean(vetAll(reducer(loaded(), { type: 'setMembershipEdit', entry: { ...role, from: 'vice_head' } })))
+      expect(locked.report.review.membershipEdits.map((e) => e.status)).toEqual(['changed'])
+      const removed = reducer(locked, removeRole)
+      expect(removed.review.membershipEdits).toEqual([])
       expect(removed.dirty).toBe(true)
     })
 

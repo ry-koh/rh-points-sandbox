@@ -5,6 +5,8 @@ import {
   BUNDLE_FILE_NAME,
   DEMO_LEVELS,
   baseCcas,
+  flatCca,
+  flatRows,
   leaderFileName,
   leaderRows,
   matricOf,
@@ -20,17 +22,19 @@ import {
   finaliseBlock,
   initialState,
   reducer,
+  vettableCcas,
+  type Action,
   type AppState,
 } from '../state/store'
 import { fromRestored, toWorkspace } from '../state/workspaceState'
 
 const AT = '2027-04-02T10:00:00.000Z'
+const run = (state: AppState, ...actions: Action[]): AppState => actions.reduce(reducer, state)
 const load = (files = scenario()): AppState => reducer(initialState(), { type: 'addFiles', files })
-/** Levels picked and every CCA that has a leader file vetted: nothing left to block Finalise. */
+/** Levels picked and every vettable CCA (leader file or flat, D1) vetted: nothing left to block Finalise. */
 const ready = (files: SourceFile[] = scenario(), levels = DEMO_LEVELS): AppState => {
   const base = reducer(load(files), { type: 'setCcaLevelsAll', list: levels })
-  return base.report.perCca
-    .filter((c) => c.fileHash !== null)
+  return vettableCcas(base.report)
     .reduce((state, c) => reducer(state, { type: 'setVetted', ccaID: c.ccaID, at: AT }), base)
 }
 const SPORT = { ccaID: 'C4', ccaName: 'Touch Rugby (W)', type: '1x', sport: 'Y', ihgResult: '1st', ihgCap: '3' }
@@ -112,12 +116,20 @@ describe('Finalise needs a complete, vetted, fully set workflow', () => {
     expect(finaliseBlock(marked)).toBeNull()
   })
 
-  it('never counts a flat CCA', () => {
+  it('never counts a flat CCA as "not set"', () => {
     const files = scenario({
       ccas: [...baseCcas(), { ccaID: 'C3', ccaName: 'Flat One', flatPoints: '12' }],
       flat: [],
     })
     expect(finaliseBlock(ready(files))).toBeNull()
+  })
+
+  it('counts a flat CCA toward vetting (D1 = A)', () => {
+    const files = scenario({ ccas: [...baseCcas(), flatCca('C3')], flat: flatRows('C3') })
+    const base = reducer(load(files), { type: 'setCcaLevelsAll', list: DEMO_LEVELS })
+    const leadersVetted = run(base, { type: 'setVetted', ccaID: 'C1', at: AT }, { type: 'setVetted', ccaID: 'C2', at: AT })
+    expect(finaliseBlock(leadersVetted)).toBe('Vet every CCA before finalising (2 of 3 vetted).')
+    expect(finaliseBlock(reducer(leadersVetted, { type: 'setVetted', ccaID: 'C3', at: AT }))).toBeNull()
   })
 
   it('refuses an incomplete checklist before vetting', () => {

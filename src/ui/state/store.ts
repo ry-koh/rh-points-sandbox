@@ -21,9 +21,13 @@ import {
   upsertCcaLevel,
   validateImport,
   vettedStatus,
+  type AuxEdit,
   type CcaLevelEntry,
+  type FlatEdit,
+  type IhgTickEdit,
   type ImportReport,
   type NotSubmittingMark,
+  type PerCcaReport,
   type ReviewEdit,
   type SourceFile,
   type VettedMark,
@@ -121,6 +125,12 @@ export type Action =
   | { readonly type: 'unlock' }
   | { readonly type: 'setReviewEdit'; readonly entry: ReviewEdit }
   | { readonly type: 'removeReviewEdit'; readonly matric: string; readonly ccaID: string; readonly at: string }
+  | { readonly type: 'setTickEdit'; readonly entry: IhgTickEdit }
+  | { readonly type: 'removeTickEdit'; readonly matric: string; readonly ccaID: string; readonly at: string }
+  | { readonly type: 'setFlatEdit'; readonly entry: FlatEdit }
+  | { readonly type: 'removeFlatEdit'; readonly matric: string; readonly ccaID: string; readonly at: string }
+  | { readonly type: 'setAuxEdit'; readonly entry: AuxEdit }
+  | { readonly type: 'removeAuxEdit'; readonly matric: string; readonly at: string }
   | { readonly type: 'setVetted'; readonly ccaID: string; readonly at: string }
   | { readonly type: 'clearVetted'; readonly ccaID: string }
   | { readonly type: 'setNotSubmitting'; readonly mark: NotSubmittingMark }
@@ -181,14 +191,27 @@ function notSetReason(report: AppState['report'], review: AppState['review']): s
   return parts.length > 0 ? parts.join(' ') : null
 }
 
-/** Only a CCA with a leader file can be vetted (D25); a mark on a changed file does not count. */
-function vettedCounts(report: AppState['report'], review: AppState['review']): { readonly vetted: number; readonly total: number } {
-  const withFile = report.perCca.filter((c) => c.fileHash !== null && c.status !== 'flat')
-  const vetted = withFile.filter((c) => {
-    const mark = review.vetted.find((m) => m.ccaID === c.ccaID)
-    return mark !== undefined && vettedStatus(mark, report.perCca) === 'vetted'
-  })
-  return { vetted: vetted.length, total: withFile.length }
+/**
+ * The CCAs that can be vetted and that Finalise needs vetted: every bundle CCA with a leader file,
+ * and every flat CCA (D1 = A), i.e. those with a `vetHash`. Not-submitting and missing CCAs have none.
+ */
+export function vettableCcas(report: Pick<ImportReport, 'perCca'>): PerCcaReport[] {
+  return report.perCca.filter((c) => c.vetHash !== null)
+}
+
+/**
+ * The vetted lock (R1): true while the CCA's vetted mark still matches its content, so a changed
+ * leader file or flat roster lifts it (R17), as does clearing the mark.
+ */
+export function vettedLocked(state: Pick<AppState, 'report' | 'review'>, ccaID: string): boolean {
+  const mark = state.review.vetted.find((m) => m.ccaID === ccaID)
+  return mark !== undefined && vettedStatus(mark, state.report.perCca) === 'vetted'
+}
+
+/** A mark on a changed file or flat roster does not count. */
+function vettedCounts(state: Pick<AppState, 'report' | 'review'>): { readonly vetted: number; readonly total: number } {
+  const vettable = vettableCcas(state.report)
+  return { vetted: vettable.filter((c) => vettedLocked(state, c.ccaID)).length, total: vettable.length }
 }
 
 /**
@@ -201,7 +224,7 @@ export function finaliseBlock(state: Pick<AppState, 'report' | 'review'>): strin
   const notSet = notSetReason(report, review)
   if (notSet) return notSet
   if (!checklistComplete(checklistRows(report, review.notSubmitting))) return 'Complete the checklist before finalising.'
-  const { vetted, total } = vettedCounts(report, review)
+  const { vetted, total } = vettedCounts(state)
   if (vetted < total) return `Vet every CCA before finalising (${vetted} of ${total} vetted).`
   if (!report.canCompute) return 'Fix the import errors before finalising.'
   return null
@@ -296,6 +319,8 @@ function editedLevelNumber(before: readonly Level[], after: readonly Level[]): {
  * How a settings change carries the CCAs' level entries: a rename moves them to the new name
  * (R44); editing a level's bonus or multiplier clears that tweak on its CCAs, so they follow
  * the level (D21). Removing or reordering levels, or a reset, touches nothing.
+ * Vetted CCAs' tweaks are cleared too and their marks are kept (D2 = B): the level table is
+ * hall-wide config, not a per-CCA action, so this is the one deliberate exception to the vetted lock.
  */
 function levelsAfter(
   before: readonly Level[],
@@ -343,15 +368,116 @@ function editChange(state: AppState, action: Action): AppState {
   return state
 }
 
+type LogLine<E> = E & { readonly kind: 'edit' | 'remove' }
+
+interface EditList<E> {
+  readonly edits: readonly E[]
+  readonly log: readonly LogLine<E>[]
+}
+
+/** One active edit per key, and a log line for every set (spec 6.4). */
+function upsertEdit<E>(list: EditList<E>, keyOf: (entry: E) => string, entry: E): EditList<E> {
+  const key = keyOf(entry)
+  const edits = list.edits.some((e) => keyOf(e) === key)
+    ? list.edits.map((e) => (keyOf(e) === key ? entry : e))
+    : [...list.edits, entry]
+  return { edits, log: [...list.log, { ...entry, kind: 'edit' }] }
+}
+
 /**
- * Vetted and not-submitting marks. A vetted mark stores the leader file's hash from the report
- * (R2); a CCA without a leader file cannot be vetted (D25).
+ * Removes the key's edit and logs "edited value -> current file value" (back to `from` when the
+ * target is gone), like removeReviewEdit; null when there is no edit to remove.
+ */
+function dropEdit<V, E extends { readonly from: V; readonly to: V }>(
+  list: EditList<E>,
+  keyOf: (entry: E) => string,
+  key: string,
+  at: string,
+  currentOf: (edit: E) => V | null,
+): EditList<E> | null {
+  const edit = list.edits.find((e) => keyOf(e) === key)
+  if (!edit) return null
+  const line = { ...edit, from: edit.to, to: currentOf(edit) ?? edit.from, reason: '', at, kind: 'remove' } as LogLine<E>
+  return { edits: list.edits.filter((e) => keyOf(e) !== key), log: [...list.log, line] }
+}
+
+const auxKey = (entry: Pick<AuxEdit, 'matric'>): string => entry.matric
+
+type Judged<E, V = unknown> = readonly { readonly entry: E; readonly status: string; readonly current: V | null }[]
+
+/** The source's current value for an edit, as the last validation judged it. */
+const currentIn = <E, V>(judged: Judged<E, V>, keyOf: (entry: E) => string) => (edit: E): V | null =>
+  judged.find((j) => keyOf(j.entry) === keyOf(edit))?.current ?? null
+
+/** Tick, flat and AUX edits, kept and logged by the same rules as score edits. */
+function otherEditChange(state: AppState, action: Action): AppState {
+  const { review } = state
+  const judged = state.report.review
+  const ticks = (list: EditList<IhgTickEdit> | null) => list && { ...review, tickEdits: list.edits, tickLog: list.log }
+  const flats = (list: EditList<FlatEdit> | null) => list && { ...review, flatEdits: list.edits, flatLog: list.log }
+  const aux = (list: EditList<AuxEdit> | null) => list && { ...review, auxEdits: list.edits, auxLog: list.log }
+  const tickList = { edits: review.tickEdits, log: review.tickLog }
+  const flatList = { edits: review.flatEdits, log: review.flatLog }
+  const auxList = { edits: review.auxEdits, log: review.auxLog }
+  const next = ((): WorkspaceReview | null => {
+    switch (action.type) {
+      case 'setTickEdit':
+        return ticks(upsertEdit(tickList, reviewKey, action.entry))
+      case 'removeTickEdit':
+        return ticks(dropEdit(tickList, reviewKey, reviewKey(action), action.at, currentIn(judged.tickEdits, reviewKey)))
+      case 'setFlatEdit':
+        return flats(upsertEdit(flatList, reviewKey, action.entry))
+      case 'removeFlatEdit':
+        return flats(dropEdit(flatList, reviewKey, reviewKey(action), action.at, currentIn(judged.flatEdits, reviewKey)))
+      case 'setAuxEdit':
+        return aux(upsertEdit(auxList, auxKey, action.entry))
+      case 'removeAuxEdit':
+        return aux(dropEdit(auxList, auxKey, auxKey(action), action.at, currentIn(judged.auxEdits, auxKey)))
+      default:
+        return null
+    }
+  })()
+  return next ? revalidate({ ...state, review: next }) : state
+}
+
+/** Whether the membership's edit is in use, as the last validation judged it. */
+const isApplied = (judged: Judged<Pick<ReviewEdit, 'matric' | 'ccaID'>>, key: string): boolean =>
+  judged.some((j) => reviewKey(j.entry) === key && j.status === 'applied')
+
+/**
+ * The reducer-level vetted lock (R1): on a vetted CCA, refuses new score, tick and flat edits, a
+ * level change, and removing an APPLIED edit. Removing a changed or stale edit changes nothing in
+ * use, so it stays allowed. `setCcaLevelsAll` (demo loader only) is exempt; AUX is not per CCA.
+ */
+function lockRefuses(state: AppState, action: Action): boolean {
+  const judged = state.report.review
+  const edits = judged.edits.map((e) => ({ entry: e.entry, status: e.status, current: e.fileValue }))
+  switch (action.type) {
+    case 'setReviewEdit':
+    case 'setTickEdit':
+    case 'setFlatEdit':
+    case 'setCcaLevel':
+      return vettedLocked(state, action.entry.ccaID)
+    case 'removeReviewEdit':
+      return vettedLocked(state, action.ccaID) && isApplied(edits, reviewKey(action))
+    case 'removeTickEdit':
+      return vettedLocked(state, action.ccaID) && isApplied(judged.tickEdits, reviewKey(action))
+    case 'removeFlatEdit':
+      return vettedLocked(state, action.ccaID) && isApplied(judged.flatEdits, reviewKey(action))
+    default:
+      return false
+  }
+}
+
+/**
+ * Vetted and not-submitting marks. A vetted mark stores the CCA's `vetHash` from the report (R2);
+ * only a vettable CCA (leader file or flat) can be vetted (D25, D1).
  */
 function markChange(state: AppState, action: Action): AppState {
   const { review } = state
   switch (action.type) {
     case 'setVetted': {
-      const fileHash = state.report.perCca.find((c) => c.ccaID === action.ccaID)?.fileHash ?? null
+      const fileHash = vettableCcas(state.report).find((c) => c.ccaID === action.ccaID)?.vetHash ?? null
       if (fileHash === null) return state
       const mark: VettedMark = { ccaID: action.ccaID, fileHash, at: action.at }
       return { ...state, review: { ...review, vetted: [...review.vetted.filter((m) => m.ccaID !== action.ccaID), mark] } }
@@ -373,13 +499,20 @@ function markChange(state: AppState, action: Action): AppState {
   }
 }
 
-/** Review, checklist and level actions: locked while finalised, like every other input (R11). */
+/** Review, checklist and level actions: locked while finalised, like every other input (R11), and by the vetted lock. */
 function reviewChange(state: AppState, action: Action): AppState {
-  if (state.finalised) return state
+  if (state.finalised || lockRefuses(state, action)) return state
   switch (action.type) {
     case 'setReviewEdit':
     case 'removeReviewEdit':
       return editChange(state, action)
+    case 'setTickEdit':
+    case 'removeTickEdit':
+    case 'setFlatEdit':
+    case 'removeFlatEdit':
+    case 'setAuxEdit':
+    case 'removeAuxEdit':
+      return otherEditChange(state, action)
     case 'setCcaLevel':
       return revalidate({ ...state, ccaLevels: upsertCcaLevel(state.ccaLevels, action.entry) })
     case 'setCcaLevelsAll':
@@ -438,6 +571,12 @@ function change(state: AppState, action: Action): AppState {
       return wheelChange(state, action)
     case 'setReviewEdit':
     case 'removeReviewEdit':
+    case 'setTickEdit':
+    case 'removeTickEdit':
+    case 'setFlatEdit':
+    case 'removeFlatEdit':
+    case 'setAuxEdit':
+    case 'removeAuxEdit':
     case 'setVetted':
     case 'clearVetted':
     case 'setNotSubmitting':

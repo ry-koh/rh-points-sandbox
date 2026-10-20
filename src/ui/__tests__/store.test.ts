@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, computeAll, createPenaltyState, outgoingMult, type Membership, type ScenarioConfig } from '../../engine'
-import type { CcaLevelEntry, ReviewEdit } from '../../import'
-import { BUNDLE_FILE_NAME, DEMO_LEVELS, leaderFileName, leaderRows, matricOf, patchRow, scenario } from '../../import/__tests__/fixtures'
-import { initialState, reducer, type Action, type AppState } from '../state/store'
+import type { AuxEdit, CcaLevelEntry, FlatEdit, IhgTickEdit, ReviewEdit } from '../../import'
+import {
+  BUNDLE_FILE_NAME,
+  DEMO_LEVELS,
+  baseCcas,
+  flatCca,
+  flatRows,
+  leaderFileName,
+  leaderRows,
+  matricOf,
+  patchRow,
+  scenario,
+} from '../../import/__tests__/fixtures'
+import { initialState, reducer, vettableCcas, vettedLocked, type Action, type AppState } from '../state/store'
 
 const failingC1 = scenario({
   leaders: { C1: leaderRows('C1', [20, 20, 20, 20, 20, 20]), C2: leaderRows('C2') },
@@ -292,5 +303,171 @@ describe('settings changes carry the level table (R44, D21)', () => {
 
   it('a number edit on a level no CCA tweaks records nothing', () => {
     expect(reducer(start(), withLevels(renumber('Pass', { bonus: 0.1 }))).lastLevelChange).toBeNull()
+  })
+
+  it('Gold ×1.3, Soccer vetted with tweak ×1.31, Gold → ×1.4 → no tweak, uses ×1.4, and is STILL vetted (D2 = B)', () => {
+    const vetted = run(start(), { type: 'setCcaLevel', entry: levelEntry('C1', 'Gold', { multiplierOverride: 1.31 }) }, { type: 'setVetted', ccaID: 'C1', at: AT })
+    const state = reducer(vetted, withLevels(renumber('Gold', { multiplier: 1.4 })))
+    expect(state.ccaLevels).toEqual(untouched)
+    expect(state.lastLevelChange).toEqual({ level: 'Gold', clearedTweaks: 1 })
+    expect(state.review.vetted).toEqual(vetted.review.vetted)
+    expect(vettedLocked(state, 'C1')).toBe(true)
+    const cca = state.report.input?.ccas.find((c) => c.ccaID === 'C1')
+    if (!cca) throw new Error('expected C1')
+    expect(outgoingMult({ outgoingRole: 'head' } as Membership, cca, state.config)).toBe(1.4)
+  })
+})
+
+describe('tick, flat and AUX edits', () => {
+  const LATER = '2027-04-03T10:00:00.000Z'
+  const SPORT = { ccaID: 'C4', ccaName: 'Touch Rugby (W)', type: '1x', sport: 'Y', ihgResult: '1st', ihgCap: '3' }
+  const files = (flatValue = '12', c1 = leaderRows('C1')) =>
+    scenario({
+      ccas: [...baseCcas(), flatCca('C3', flatValue), SPORT],
+      flat: flatRows('C3', flatValue),
+      leaders: { C1: c1, C2: leaderRows('C2'), C4: leaderRows('C4', undefined, { ihg: [0] }) },
+    })
+  const loaded = (): AppState => reducer(reducer(initialState(), { type: 'addFiles', files: files() }), { type: 'markSaved', at: AT })
+  const tick: IhgTickEdit = { matric: matricOf(1), ccaID: 'C4', from: true, to: false, reason: '', at: AT }
+  const flat: FlatEdit = { matric: matricOf(1), ccaID: 'C3', from: 12, to: 10, reason: 'left early', at: AT }
+  const aux: AuxEdit = { matric: matricOf(1), from: 5, to: 7, reason: '', at: AT }
+
+  it('a tick edit is set once per membership, logged, and removed back to the file tick', () => {
+    const set = run(loaded(), { type: 'setTickEdit', entry: { ...tick, reason: 'first' } }, { type: 'setTickEdit', entry: tick })
+    expect(set.dirty).toBe(true)
+    expect(set.review.tickEdits).toEqual([tick])
+    expect(set.review.tickLog).toEqual([{ ...tick, reason: 'first', kind: 'edit' }, { ...tick, kind: 'edit' }])
+    expect(set.report.review.tickEdits.map((e) => e.status)).toEqual(['applied'])
+    const removed = reducer(set, { type: 'removeTickEdit', matric: matricOf(1), ccaID: 'C4', at: LATER })
+    expect(removed.review.tickEdits).toEqual([])
+    expect(removed.review.tickLog.at(-1)).toEqual({ matric: matricOf(1), ccaID: 'C4', from: false, to: true, reason: '', at: LATER, kind: 'remove' })
+    expect(removed.report.review.tickEdits).toEqual([])
+    expect(reducer(removed, { type: 'removeTickEdit', matric: matricOf(1), ccaID: 'C4', at: LATER })).toBe(removed)
+  })
+
+  it('a flat edit is set, logged, and removed from the edited value back to the flat value', () => {
+    const set = reducer(loaded(), { type: 'setFlatEdit', entry: flat })
+    expect(set.dirty).toBe(true)
+    expect(set.review.flatEdits).toEqual([flat])
+    expect(set.review.flatLog).toEqual([{ ...flat, kind: 'edit' }])
+    expect(set.report.review.flatEdits.map((e) => e.status)).toEqual(['applied'])
+    const removed = reducer(set, { type: 'removeFlatEdit', matric: matricOf(1), ccaID: 'C3', at: LATER })
+    expect(removed.review.flatEdits).toEqual([])
+    expect(removed.review.flatLog.at(-1)).toEqual({ matric: matricOf(1), ccaID: 'C3', from: 10, to: 12, reason: '', at: LATER, kind: 'remove' })
+    expect(reducer(removed, { type: 'removeFlatEdit', matric: matricOf(1), ccaID: 'C3', at: LATER })).toBe(removed)
+  })
+
+  it('an AUX edit is set, logged, and removed back to the residents file count', () => {
+    const set = reducer(loaded(), { type: 'setAuxEdit', entry: aux })
+    expect(set.dirty).toBe(true)
+    expect(set.review.auxEdits).toEqual([aux])
+    expect(set.review.auxLog).toEqual([{ ...aux, kind: 'edit' }])
+    expect(set.report.review.auxEdits.map((e) => e.status)).toEqual(['applied'])
+    const removed = reducer(set, { type: 'removeAuxEdit', matric: matricOf(1), at: LATER })
+    expect(removed.review.auxEdits).toEqual([])
+    expect(removed.review.auxLog.at(-1)).toEqual({ matric: matricOf(1), from: 7, to: 5, reason: '', at: LATER, kind: 'remove' })
+    expect(reducer(removed, { type: 'removeAuxEdit', matric: matricOf(1), at: LATER })).toBe(removed)
+  })
+
+  it('a removed edit whose membership is gone logs back to its own `from`', () => {
+    const set = reducer(loaded(), { type: 'setTickEdit', entry: { ...tick, matric: matricOf(9) } })
+    const removed = reducer(set, { type: 'removeTickEdit', matric: matricOf(9), ccaID: 'C4', at: LATER })
+    expect(removed.review.tickLog.at(-1)).toMatchObject({ from: false, to: true, kind: 'remove' })
+  })
+
+  describe('vetting and the vetted lock (R1, R17, D1)', () => {
+    const vetAll = (state: AppState): AppState =>
+      vettableCcas(state.report).reduce((s, c) => reducer(s, { type: 'setVetted', ccaID: c.ccaID, at: AT }), state)
+    const clean = (state: AppState): AppState => reducer(state, { type: 'markSaved', at: AT })
+    const score = edit(11)
+
+    it('vettable CCAs are those with a leader file or flat, not a not-submitting or missing one', () => {
+      const withMore = scenario({
+        ccas: [...baseCcas(), flatCca('C3'), SPORT, { ccaID: 'C5', ccaName: 'Gone', type: '1x' }, { ccaID: 'C6', ccaName: 'Silent', type: '1x' }],
+        flat: flatRows('C3'),
+        leaders: { C1: leaderRows('C1'), C2: leaderRows('C2'), C4: leaderRows('C4') },
+      })
+      const state = run(initialState(), { type: 'addFiles', files: withMore }, { type: 'setNotSubmitting', mark: { ccaID: 'C5', note: '', at: AT } })
+      expect(vettableCcas(state.report).map((c) => c.ccaID).sort()).toEqual(['C1', 'C2', 'C3', 'C4'])
+      expect(reducer(state, { type: 'setVetted', ccaID: 'C5', at: AT })).toBe(state)
+      expect(reducer(state, { type: 'setVetted', ccaID: 'C6', at: AT })).toBe(state)
+    })
+
+    it('a flat CCA is vetted against its vetHash', () => {
+      const state = reducer(loaded(), { type: 'setVetted', ccaID: 'C3', at: AT })
+      const vetHash = state.report.perCca.find((c) => c.ccaID === 'C3')?.vetHash
+      expect(vetHash).toMatch(/^[0-9a-f]{8}$/)
+      expect(state.review.vetted).toEqual([{ ccaID: 'C3', fileHash: vetHash, at: AT }])
+      expect(vettedLocked(state, 'C3')).toBe(true)
+      expect(vettedLocked(state, 'C1')).toBe(false)
+    })
+
+    it.each<[string, Action, string]>([
+      ['a score edit', { type: 'setReviewEdit', entry: score }, 'C1'],
+      ['a tick edit', { type: 'setTickEdit', entry: tick }, 'C4'],
+      ['a flat edit', { type: 'setFlatEdit', entry: flat }, 'C3'],
+      ['a level pick', { type: 'setCcaLevel', entry: levelEntry('C1', 'Pass') }, 'C1'],
+    ])('refuses %s on a vetted CCA without marking dirty, and allows it once vetted is cleared', (_, action, ccaID) => {
+      const locked = clean(vetAll(loaded()))
+      const refused = reducer(locked, action)
+      expect(refused).toBe(locked)
+      expect(refused.dirty).toBe(false)
+      const unlocked = reducer(locked, { type: 'clearVetted', ccaID })
+      const done = reducer(unlocked, action)
+      expect(done).not.toBe(unlocked)
+      expect(done.dirty).toBe(true)
+    })
+
+    it.each<[string, Action, Action, string]>([
+      ['score', { type: 'setReviewEdit', entry: score }, { type: 'removeReviewEdit', matric: matricOf(1), ccaID: 'C1', at: AT }, 'C1'],
+      ['tick', { type: 'setTickEdit', entry: tick }, { type: 'removeTickEdit', matric: matricOf(1), ccaID: 'C4', at: AT }, 'C4'],
+      ['flat', { type: 'setFlatEdit', entry: flat }, { type: 'removeFlatEdit', matric: matricOf(1), ccaID: 'C3', at: AT }, 'C3'],
+    ])('keeps an applied %s edit made before vetting, and refuses its removal while vetted', (_, set, remove, ccaID) => {
+      const locked = clean(vetAll(reducer(loaded(), set)))
+      expect(vettedLocked(locked, ccaID)).toBe(true)
+      const refused = reducer(locked, remove)
+      expect(refused).toBe(locked)
+      expect(refused.dirty).toBe(false)
+      expect(reducer(reducer(locked, { type: 'clearVetted', ccaID }), remove).dirty).toBe(true)
+    })
+
+    it('allows removing an edit that no longer applies on a vetted CCA', () => {
+      const locked = clean(vetAll(reducer(loaded(), { type: 'setReviewEdit', entry: edit(11, { from: 9 }) })))
+      expect(locked.report.review.edits.map((e) => e.status)).toEqual(['changed'])
+      const removed = reducer(locked, { type: 'removeReviewEdit', matric: matricOf(1), ccaID: 'C1', at: AT })
+      expect(removed.review.edits).toEqual([])
+      expect(removed.dirty).toBe(true)
+    })
+
+    it('never locks AUX edits (AUX is not per CCA)', () => {
+      const set = reducer(clean(vetAll(loaded())), { type: 'setAuxEdit', entry: aux })
+      expect(set.review.auxEdits).toEqual([aux])
+      expect(reducer(set, { type: 'removeAuxEdit', matric: matricOf(1), at: AT }).review.auxEdits).toEqual([])
+    })
+
+    it('an identical leader file dropped again keeps the lock; a changed one lifts it (R17)', () => {
+      const locked = vetAll(loaded())
+      const c1 = files().find((f) => f.name === leaderFileName('C1'))
+      const c1Changed = files('12', leaderRows('C1', [9, 10, 12, 14, 16, 18])).find((f) => f.name === leaderFileName('C1'))
+      if (!c1 || !c1Changed) throw new Error('fixture missing')
+      const same = reducer(locked, { type: 'addFiles', files: [c1] })
+      expect(vettedLocked(same, 'C1')).toBe(true)
+      expect(reducer(same, { type: 'setReviewEdit', entry: score })).toBe(same)
+      const changed = reducer(locked, { type: 'addFiles', files: [c1Changed] })
+      expect(vettedLocked(changed, 'C1')).toBe(false)
+      expect(reducer(changed, { type: 'setReviewEdit', entry: edit(11, { from: 9 }) }).review.edits).toHaveLength(1)
+    })
+
+    it('the same for a flat CCA: an identical bundle keeps the lock, a changed flat value lifts it', () => {
+      const locked = vetAll(loaded())
+      const bundle = (value: string) => files(value).find((f) => f.name === BUNDLE_FILE_NAME)
+      const same = bundle('12')
+      const changedBundle = bundle('10')
+      if (!same || !changedBundle) throw new Error('fixture missing')
+      expect(vettedLocked(reducer(locked, { type: 'addFiles', files: [same] }), 'C3')).toBe(true)
+      const changed = reducer(locked, { type: 'addFiles', files: [changedBundle] })
+      expect(vettedLocked(changed, 'C3')).toBe(false)
+      expect(reducer(changed, { type: 'setFlatEdit', entry: { ...flat, from: 10, to: 8 } }).review.flatEdits).toHaveLength(1)
+    })
   })
 })

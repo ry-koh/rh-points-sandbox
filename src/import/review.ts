@@ -1,6 +1,7 @@
-import { BASE_POINTS_MAX, BASE_POINTS_MIN, MAX_REASON_LENGTH } from '../engine'
+import { BASE_POINTS_MAX, BASE_POINTS_MIN } from '../engine'
 import type { Validation } from '../engine/entries'
 import type { CheckedLeader } from './checks'
+import { judgeEdits, reasonFits, type EditStatus } from './editJudge'
 import type { PerCcaReport } from './types'
 
 /**
@@ -37,7 +38,7 @@ export interface NotSubmittingMark {
 }
 
 /** applied: in use; changed: the file's value moved since the edit; stale: the membership is gone (or a later edit replaces it). */
-export type ReviewEditStatus = 'applied' | 'changed' | 'stale'
+export type ReviewEditStatus = EditStatus
 
 export interface CheckedReviewEdit {
   readonly entry: ReviewEdit
@@ -57,9 +58,6 @@ export const reviewKey = (entry: Pick<ReviewEdit, 'matric' | 'ccaID'>): string =
 
 const isReviewScore = (value: unknown): boolean =>
   typeof value === 'number' && Number.isInteger(value) && value >= BASE_POINTS_MIN && value <= BASE_POINTS_MAX
-
-/** The reason may be empty; it only has to fit. */
-const reasonFits = (reason: unknown): boolean => typeof reason === 'string' && reason.trim().length <= MAX_REASON_LENGTH
 
 /** The leader file's value for the edit's membership, or null when there is none. */
 function fileValueOf(checked: readonly CheckedLeader[], entry: Pick<ReviewEdit, 'matric' | 'ccaID'>): number | null {
@@ -88,12 +86,11 @@ export function validateReviewEdit(
  * which cannot express `changed`.
  */
 export function checkEditEntries(checked: readonly CheckedLeader[], edits: readonly ReviewEdit[]): CheckedReviewEdit[] {
-  const lastAt = new Map(edits.map((entry, i) => [reviewKey(entry), i]))
-  return edits.map((entry, i): CheckedReviewEdit => {
-    const fileValue = fileValueOf(checked, entry)
-    if (fileValue === null || lastAt.get(reviewKey(entry)) !== i) return { entry, status: 'stale', fileValue }
-    return { entry, status: fileValue === entry.from ? 'applied' : 'changed', fileValue }
-  })
+  return judgeEdits(edits, reviewKey, (entry) => fileValueOf(checked, entry)).map(({ entry, status, current }) => ({
+    entry,
+    status,
+    fileValue: current,
+  }))
 }
 
 /**

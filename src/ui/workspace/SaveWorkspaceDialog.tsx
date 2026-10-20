@@ -66,7 +66,7 @@ export function SaveWorkspaceDialog({ open, state, dispatch, onClose }: SaveWork
     >
       <p>
         Saves the imported files, settings, overrides, discretion, wheel results and penalties, plus the
-        checklist, score edits and log, vetted marks, CCA levels and tweaks, and the current step, into one
+        checklist, score edits, IHG tick edits, flat-value edits and AUX edits with their logs, vetted marks, CCA levels and tweaks, CCA groups, and the current step, into one
         file on this computer, so you can carry on later with Open workspace.
       </p>
       <label className="mt-3 flex items-center gap-2 text-body font-medium">

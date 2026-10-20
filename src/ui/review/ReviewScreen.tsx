@@ -15,6 +15,7 @@ import {
   type ReviewEditCode,
   type SourceFile,
 } from '../../import'
+import { groupedOrder, type GroupSection } from '../../import/groups'
 import { Button, Chip } from '../common/controls'
 import { SettingsPanel } from '../settings/SettingsPanel'
 import { vettedLocked, type Action, type AppState } from '../state/store'
@@ -22,9 +23,10 @@ import { CcaHeader } from './CcaHeader'
 import { CcaList, type CcaListItem } from './CcaList'
 import { EditLog } from './EditLog'
 import { FlatTable, type FlatLineData } from './FlatTable'
+import { GroupManager } from './GroupManager'
 import { MeanSdMeter } from './MeanSdMeter'
 import { ScoreTable, type ScoreRow } from './ScoreTable'
-import { flatAction, tickAction } from './reviewHelpers'
+import { flatAction, groupAction, tickAction } from './reviewHelpers'
 
 interface ReviewScreenProps {
   readonly state: AppState
@@ -173,6 +175,7 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
   const { report, review, config } = state
   const locked = state.finalised !== null
   const [showSettings, setShowSettings] = useState(false)
+  const [showGroups, setShowGroups] = useState(false)
   const items = useMemo((): CcaListItem[] =>
     reviewOrder(report.perCca).map((cca) => {
       const mark = review.vetted.find((m) => m.ccaID === cca.ccaID)
@@ -183,8 +186,16 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
         edits: review.edits.filter((e) => e.ccaID === cca.ccaID).length,
       }
     }), [report.perCca, review])
+  const sections = useMemo((): GroupSection<CcaListItem>[] => {
+    const byId = new Map(items.map((i) => [i.cca.ccaID, i]))
+    return groupedOrder(report.perCca, state.groups).map((section) => ({
+      ...section,
+      ccas: section.ccas.flatMap((cca) => byId.get(cca.ccaID) ?? []),
+    }))
+  }, [items, report.perCca, state.groups])
   const [picked, setPicked] = useState<string | null>(null)
-  const item = items.find((i) => i.cca.ccaID === picked) ?? items[0] ?? null
+  const shown = useMemo(() => sections.flatMap((section) => section.ccas), [sections])
+  const item = shown.find((i) => i.cca.ccaID === picked) ?? shown[0] ?? null
   const fileNames = useMemo(
     () => new Map(report.perCca.flatMap((c) => (c.fileName !== null && c.status !== 'flat' ? [[c.ccaID, c.fileName] as const] : []))),
     [report.perCca],
@@ -252,7 +263,8 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
 
   return (
     <div className={`grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] ${showSettings ? 'grid-cols-[260px_minmax(0,1fr)_320px] xl:grid-cols-[300px_minmax(0,1fr)_340px]' : 'grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)]'}`}>
-      <CcaList items={items} selected={cca?.ccaID ?? null} onSelect={setPicked} />
+      <CcaList sections={sections} grouped={state.groups.length > 0} selected={cca?.ccaID ?? null} onSelect={setPicked} onOpenGroups={() => setShowGroups(true)} />
+      <GroupManager open={showGroups} groups={state.groups} dispatch={dispatch} onClose={() => setShowGroups(false)} />
       <main className="min-h-0 min-w-0 overflow-y-auto px-8 pt-6 pb-16">
         {locked && (
           <p role="status" className="mb-5 flex items-center gap-2 border-l-4 border-gold bg-gold-soft px-4 py-3 text-body font-medium">
@@ -274,9 +286,14 @@ export function ReviewScreen({ state, dispatch, openSections, onOpenSectionsChan
               locked={locked || vetLocked}
               levelNotSet={levelNotSet}
               levelChange={state.lastLevelChange}
+              groups={state.groups}
               checkEntry={checkEntry}
               onSetEntry={(entry) => dispatch({ type: 'setCcaLevel', entry })}
               onEditLevels={editLevels}
+              onAssignGroup={(groupId) => {
+                const { action } = groupAction(state.groups, { type: 'assign', ccaID: cca.ccaID, groupId })
+                if (action) dispatch(action)
+              }}
             />
             <StalePanel state={state} dispatch={dispatch} locked={locked} ccaName={ccaName} />
             {cca.status === 'flat' ? (

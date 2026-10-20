@@ -184,9 +184,11 @@ describe('CcaHeader IHG count', () => {
         locked: false,
         levelNotSet: null,
         levelChange: null,
+        groups: [],
         checkEntry: () => null,
         onSetEntry: () => undefined,
         onEditLevels: () => undefined,
+        onAssignGroup: () => undefined,
       }),
     )
   }

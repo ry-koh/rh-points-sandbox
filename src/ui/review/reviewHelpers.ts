@@ -1,5 +1,6 @@
 import { MAX_REASON_LENGTH } from '../../engine'
-import type { FlatEditCode, FlatLogEntry, ReviewLogEntry, TickLogEntry } from '../../import'
+import type { FlatEditCode, FlatLogEntry, PerCcaReport, ReviewLogEntry, TickLogEntry } from '../../import'
+import { addGroup, assignCca, moveGroup, removeGroup, renameGroup, type CcaGroup, type GroupError, type GroupResult } from '../../import/groups'
 import type { Action } from '../state/store'
 
 export type EditKind = 'score' | 'IHG tick' | 'flat value'
@@ -89,4 +90,53 @@ export function flatAction({ matric, ccaID, fileValue, to, reason, hasEdit, at }
   if (reason.trim().length > MAX_REASON_LENGTH) return { action: null, problem: FLAT_PROBLEMS.MISSING_REASON }
   if (value === fileValue) return { action: hasEdit ? { type: 'removeFlatEdit', matric, ccaID, at } : null, problem: null }
   return { action: { type: 'setFlatEdit', entry: { matric, ccaID, from: fileValue, to: value, reason, at } }, problem: null }
+}
+
+/** Plain words for the group problems shown in the Groups dialog. */
+export const GROUP_PROBLEMS: Readonly<Record<GroupError, string>> = {
+  BLANK_NAME: 'Type a group name.',
+  DUPLICATE_NAME: 'A group with this name already exists.',
+  DUPLICATE_ID: 'That group could not be changed. Close the dialog and try again.',
+  UNKNOWN_GROUP: 'That group could not be changed. Close the dialog and try again.',
+}
+
+/** One change to the CCA groups. The caller supplies a new group's id, so this stays pure. */
+export type GroupOp =
+  | { readonly type: 'add'; readonly name: string; readonly id: string }
+  | { readonly type: 'rename'; readonly id: string; readonly name: string }
+  | { readonly type: 'remove'; readonly id: string }
+  | { readonly type: 'move'; readonly id: string; readonly step: -1 | 1 }
+  | { readonly type: 'assign'; readonly ccaID: string; readonly groupId: string | null }
+
+function applyGroupOp(groups: readonly CcaGroup[], op: GroupOp): GroupResult {
+  switch (op.type) {
+    case 'add':
+      return addGroup(groups, op.name, op.id)
+    case 'rename':
+      return renameGroup(groups, op.id, op.name)
+    case 'remove':
+      return { ok: true, groups: removeGroup(groups, op.id) }
+    case 'move':
+      return { ok: true, groups: moveGroup(groups, op.id, op.step) }
+    case 'assign':
+      return { ok: true, groups: assignCca(groups, op.ccaID, op.groupId) }
+  }
+}
+
+/**
+ * What to dispatch for a group change: `setGroups` with the new groups, a problem in words, or
+ * neither when nothing would change (a move at an end, a CCA put where it already is).
+ */
+export function groupAction(groups: readonly CcaGroup[], op: GroupOp): { readonly action: Action | null; readonly problem: string | null } {
+  const result = applyGroupOp(groups, op)
+  if (!result.ok) return { action: null, problem: GROUP_PROBLEMS[result.error] }
+  if (result.groups === groups || JSON.stringify(result.groups) === JSON.stringify(groups)) return { action: null, problem: null }
+  return { action: { type: 'setGroups', groups: result.groups }, problem: null }
+}
+
+/** The second line of a vetted list row: "Flat · 9 pts", or the level, with "· tweaked" for the CCA's own numbers. */
+export function vettedLevelLine(cca: Pick<PerCcaReport, 'status' | 'flatPoints' | 'level' | 'bonusOverride' | 'multiplierOverride'>): string {
+  if (cca.status === 'flat') return `Flat · ${cca.flatPoints ?? 0} pts`
+  if (cca.level === null) return 'Level not set'
+  return cca.bonusOverride !== null || cca.multiplierOverride !== null ? `${cca.level} · tweaked` : cca.level
 }

@@ -26,7 +26,8 @@ const WAITING_FOR_BUNDLE =
   'Score edits, IHG tick edits, flat value edits, role and semester edits, vetted marks, CCA levels, discretion points, final-points overrides and wheel results will be checked once the RH-app bundle is loaded.'
 const WAITING_FOR_IMPORT = 'Discretion points, final-points overrides and wheel results will be checked once the import has no errors.'
 
-const WAITING_FOR_RESIDENTS = 'AUX edits are unchecked: load the residents list and they will be checked then.'
+const WAITING_FOR_RESIDENTS =
+  'AUX edits are unchecked: load the residents list and the RH-app bundle and they will be checked then.'
 
 const waitingNote = (unchecked: RestoredWorkspace['unchecked']): string =>
   unchecked.review ? WAITING_FOR_BUNDLE : WAITING_FOR_IMPORT

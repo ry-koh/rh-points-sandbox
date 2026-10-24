@@ -336,7 +336,10 @@ export interface ReviewReport {
   /** Empty while `auxUnchecked`. */
   readonly auxEdits: readonly CheckedAuxEdit[]
   readonly membershipEdits: readonly CheckedMembershipEdit[]
-  /** No residents file is loaded, so the AUX edits cannot be judged (never called stale). */
+  /**
+   * No residents file or no bundle is loaded, so the AUX edits cannot be judged (never called
+   * stale): a version-2 bundle carries the counts, so without one their source is unknown.
+   */
   readonly auxUnchecked: boolean
   readonly flats: readonly FlatTable[]
 }

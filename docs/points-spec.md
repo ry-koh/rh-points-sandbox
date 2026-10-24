@@ -8,7 +8,8 @@
 - 2(b): with a version-2 bundle the residents' AUX counts come from the bundle and residents.csv's
   `aux` column is ignored (a resident with no `aux` row has 0). With a version-1 bundle the column
   is used as before.
-- 6.7: AUX edits are judged against the count in use (the bundle's under version 2).
+- 6.7: AUX edits are judged against the count in use (the bundle's under version 2), and stay
+  unchecked (8b) until both the residents list and the bundle are loaded.
 - 7.4: new warnings `AUX_NOT_A_RESIDENT` and `AUX_FROM_BUNDLE`.
 
 **Changes in v2.5**
@@ -889,8 +890,9 @@ engine), **changed** when it moved, **stale** when the resident is gone or a lat
 it; one per matric; the reason is optional (over 200 characters is `MISSING_REASON`); an AUX log
 keeps every edit and removal. Validation, in order: `BAD_AUX_EDIT` (`to` not a whole number of 0 or
 more), `AUX_UNKNOWN_RESIDENT`, `MISSING_REASON`, `REVIEW_NO_CHANGE`. residents.csv itself is never
-changed. With no residents list loaded the edits cannot be judged: they are kept, `auxUnchecked`,
-and never called stale. AUX edits are resident data (workspace file only, 8b).
+changed. With no residents list or no bundle loaded the edits cannot be judged (a version-2 bundle
+carries the counts, so without one their source is unknown): they are kept, `auxUnchecked`, and
+never called stale. AUX edits are resident data (workspace file only, 8b).
 
 ### 6.8 CCA groups
 
@@ -1417,9 +1419,9 @@ example "2 tweaks on Gold were cleared so those CCAs follow the new value".
   What cannot be checked yet is **not** reported as stale: with no usable bundle the score edits,
   vetted marks, tick and flat edits and level entries are `unchecked.review`; while the import
   cannot compute the overrides, discretion entries and wheel resolutions are `unchecked.computed`;
-  with no residents list the AUX edits are `unchecked.aux`. The open summary then shows one line
+  with no residents list or no bundle the AUX edits are `unchecked.aux`. The open summary then shows one line
   saying they will be checked once the bundle is loaded (or once the import has no errors), and
-  for AUX edits a line saying they are unchecked until the residents list is loaded. When the
+  for AUX edits a line saying they are unchecked until the residents list and the bundle are loaded. When the
   file's groups replaced this computer's groups (6.8) it says "Groups from the file replaced this
   computer's groups". Nothing is deleted or applied by this.
 

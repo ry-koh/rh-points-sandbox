@@ -156,3 +156,23 @@ describe('validateImport with a version-1 bundle', () => {
     expect(report.issues.some((i) => i.code === 'AUX_FROM_BUNDLE')).toBe(false)
   })
 })
+
+describe('validateImport without a usable bundle', () => {
+  it('leaves the AUX edits unchecked: the counts may come from the missing bundle', () => {
+    const at = '2027-04-02T00:00:00Z'
+    const report = validateImport(scenario({ bundle: null }), DEFAULT_CONFIG, {
+      ccaLevels: DEMO_LEVELS,
+      auxEdits: [{ matric: matricOf(1), from: 3, to: 4, reason: '', at }],
+    })
+    expect(report.review.auxUnchecked).toBe(true)
+    expect(report.review.auxEdits).toEqual([])
+  })
+
+  it('names the version-1 columns when a version-1 header is misspelt', () => {
+    const v1 = bundleFile(bundleRows(baseCcas()))
+    const text = v1.text.replace(',note,', ',notes,')
+    const report = validateImport(scenario({ bundle: null, extra: [{ ...v1, text }] }), DEFAULT_CONFIG, { ccaLevels: DEMO_LEVELS })
+    const header = report.issues.find((i) => i.code === 'BAD_HEADER')
+    expect(header?.message).toContain('missing note; unexpected notes')
+  })
+})

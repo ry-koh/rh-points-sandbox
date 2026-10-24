@@ -19,7 +19,15 @@ import {
 import { parseCsv } from './csv'
 import { fnv1a32 } from './hash'
 import { applyFlatEdits, type CheckedFlatEdit } from './flatEdits'
-import { FILE_COLUMNS, RETIRED_CCAS_COLUMNS, RETIRED_IHG_COLUMNS, detectFileKind, headerMatches } from './detect'
+import {
+  BUNDLE_AUX_COLUMN,
+  BUNDLE_V1_COLUMNS,
+  FILE_COLUMNS,
+  RETIRED_CCAS_COLUMNS,
+  RETIRED_IHG_COLUMNS,
+  detectFileKind,
+  headerMatches,
+} from './detect'
 import { buildIhgFromTicks } from './ihgTicks'
 import { applyMembershipEdits } from './membershipEdits'
 import { bundleVersionOf, parseBundle } from './parseBundle'
@@ -79,7 +87,9 @@ function guessKindFromName(name: string): FileKind | null {
 }
 
 function headerProblem(claimed: FileKind, header: readonly string[]): string {
-  const expected = FILE_COLUMNS[claimed]
+  // A bundle without the aux column is judged as version 1, so the message never asks for `aux`.
+  const v1Bundle = claimed === 'bundle' && !header.includes(BUNDLE_AUX_COLUMN)
+  const expected = v1Bundle ? BUNDLE_V1_COLUMNS : FILE_COLUMNS[claimed]
   const missing = expected.filter((col) => !header.includes(col))
   const extra = header.filter((col) => !expected.includes(col))
   const parts = [
@@ -491,11 +501,13 @@ export function validateImport(
   const fromBundle =
     fileResidents && bundle?.aux ? withBundleAux(fileResidents.result.rows, fileResidents.fileName, bundle.aux) : null
   if (fromBundle) issues.push(...fromBundle.issues)
-  // AUX edits next, so AUX_ABOVE_CAP and the engine see the edited counts (R11).
+  // AUX edits next, so AUX_ABOVE_CAP and the engine see the edited counts (R11). Without a bundle
+  // the counts' source (bundle or residents.csv) is unknown, so the edits stay unchecked.
   const counted = fromBundle?.rows ?? fileResidents?.result.rows
-  const aux = counted ? applyAuxEdits(counted, sandbox.auxEdits ?? []) : null
-  const residents: Loaded<ResidentRow> | null =
-    fileResidents && aux ? { ...fileResidents, result: { ...fileResidents.result, rows: aux.rows } } : null
+  const aux = counted && bundle ? applyAuxEdits(counted, sandbox.auxEdits ?? []) : null
+  const residents: Loaded<ResidentRow> | null = fileResidents
+    ? { ...fileResidents, result: { ...fileResidents.result, rows: aux?.rows ?? fileResidents.result.rows } }
+    : null
   const auxEdits: CheckedAuxEdit[] = aux?.edits ?? []
   // A standalone settings or flat file is only read when there is no bundle (it is a duplicate beside one).
   const settingsSource = bundle ? bundle.settings : loadFirst(classified, 'settings', parseSettings, issues)
@@ -565,7 +577,7 @@ export function validateImport(
       flatEdits: flatReviewed.edits,
       auxEdits,
       membershipEdits: membershipReviewed.edits,
-      auxUnchecked: residents === null,
+      auxUnchecked: aux === null,
       flats: flatTables(fileFlats, flatReviewed.edits),
     },
     ...(input ? { input } : {}),

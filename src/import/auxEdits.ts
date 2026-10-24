@@ -4,7 +4,7 @@ import type { ResidentRow } from './types'
 
 /**
  * A resident's AUX COUNT set on the Summary step (e.g. 6 -> 7); the AUX table still turns it into
- * points with its cap. `from` is residents.csv's count when the edit was made; the edit applies
+ * points with its cap. `from` is the imported count (the bundle's with a version-2 bundle, else residents.csv's) when the edit was made; the edit applies
  * only while the file still says `from` (R11). No reviewer is recorded.
  */
 export interface AuxEdit {

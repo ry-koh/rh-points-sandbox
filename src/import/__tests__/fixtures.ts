@@ -15,6 +15,8 @@ export const BUNDLE_COLS = [
   'formatVersion', 'section', 'scope', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints', 'type', 'sport',
   'ihgResult', 'ihgCap', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note', 'exportedAt',
 ]
+/** The formatVersion-2 bundle header the RH app writes (`aux` before `exportedAt`). */
+export const BUNDLE_V2_COLS = [...BUNDLE_COLS.slice(0, -1), 'aux', 'exportedAt']
 export const BUNDLE_FILE_NAME = 'points_bundle_20270401.csv'
 
 /** Mean 13, population SD 3.42: inside the default 10-14 / 2-5 ranges. */
@@ -158,6 +160,17 @@ export function bundleRows(
 export const bundleFile = (rows: readonly Row[], name = BUNDLE_FILE_NAME): SourceFile => ({
   name,
   text: toCsv(BUNDLE_COLS, rows),
+})
+
+/** An aux row of a version-2 bundle: one resident's AUX count for the year. */
+export const bundleAuxRow = (matric: string, aux: string, patch: Row = {}): Row => ({
+  formatVersion: '2', section: 'aux', scope: 'AY2026/27', matric, name: `Test Resident ${matric}`, aux, exportedAt: SETTINGS_EXPORTED_AT, ...patch,
+})
+
+/** A version-2 bundle: the given (version-1 shaped) rows stamped version 2, then the aux rows. */
+export const bundleV2File = (rows: readonly Row[], aux: readonly Row[] = [], name = BUNDLE_FILE_NAME): SourceFile => ({
+  name,
+  text: toCsv(BUNDLE_V2_COLS, [...rows.map((row) => ({ ...row, formatVersion: '2' })), ...aux]),
 })
 
 export interface Scenario {

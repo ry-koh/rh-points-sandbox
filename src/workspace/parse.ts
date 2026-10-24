@@ -205,7 +205,7 @@ export function sandboxInputOf(workspace: Pick<Workspace, 'ccaLevels' | 'review'
  * level entry that no longer matches. Stale entries are never applied silently. What cannot be
  * checked yet is not called stale: with no bundle the review items are `unchecked.review`, while
  * the import cannot compute the computed entries are `unchecked.computed`, and with no residents
- * list the AUX edits are `unchecked.aux`. Nothing is dropped. `notes` are the migration notes
+ * list or no bundle (which may carry the counts) the AUX edits are `unchecked.aux`. Nothing is dropped. `notes` are the migration notes
  * from reading the file.
  */
 export function restoreWorkspace(workspace: Workspace, notes: readonly string[] = []): RestoredWorkspace {

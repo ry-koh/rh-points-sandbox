@@ -375,7 +375,7 @@ describe('version 1 files (spec 8b migration)', () => {
     if (!parsed.ok) throw new Error('expected ok')
     const restored = restoreWorkspace(parsed.workspace, parsed.notes)
     expect(restored.notes).toHaveLength(2)
-    expect(restored.unchecked).toEqual({ review: true, computed: true, aux: false })
+    expect(restored.unchecked).toEqual({ review: true, computed: true, aux: true })
     expect(restored.stale).toEqual({
       overrides: [],
       discretion: [],
@@ -673,12 +673,12 @@ describe('restoreWorkspace re-validates the saved files', () => {
     expect(noBundle.stale.membershipEdits).toEqual([])
   })
 
-  it('leaves AUX edits unchecked with no residents list, and tick and flat edits unchecked with no bundle', () => {
+  it('leaves AUX edits unchecked with no residents list or no bundle, and tick and flat edits with no bundle', () => {
     const noResidents = withTick({ auxEdits: [auxEdit] }, scenario({ ccas: sportC1, residents: null }))
     expect(noResidents.unchecked.aux).toBe(true)
     expect(noResidents.stale.auxEdits).toEqual([])
     const noBundle = withTick({ tickEdits: [tickEdit], flatEdits: [flatEdit], auxEdits: [auxEdit] }, scenario({ bundle: null }))
-    expect(noBundle.unchecked).toEqual({ review: true, computed: true, aux: false })
+    expect(noBundle.unchecked).toEqual({ review: true, computed: true, aux: true })
     expect(noBundle.stale.tickEdits).toEqual([])
     expect(noBundle.stale.flatEdits).toEqual([])
     expect(noBundle.stale.auxEdits).toEqual([])

@@ -138,7 +138,7 @@ export interface RestoredWorkspace {
   /**
    * Groups that could not be checked yet, so nothing in them is listed as stale: `review` while
    * no RH-app bundle is loaded, `computed` while the import cannot compute, `aux` while no
-   * residents list is loaded.
+   * residents list or no bundle is loaded.
    */
   readonly unchecked: { readonly review: boolean; readonly computed: boolean; readonly aux: boolean }
   /** The migration notes, passed through from reading the file. */

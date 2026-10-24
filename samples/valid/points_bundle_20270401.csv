@@ -1,25 +1,98 @@
-formatVersion,section,scope,ccaID,ccaName,matric,name,flatPoints,type,sport,ihgResult,ihgCap,meanMin,meanMax,sdMin,sdMax,note,exportedAt
-1,settings,default,,,,,,,,,,10,14,2,5,,2027-04-01T00:00:00Z
-1,settings,waiver,C03,Test CCA 03,,,,,,,,14,17,1,3,Small CCA,2027-04-01T00:00:00Z
-1,settings,waiver,C07,Test CCA 07,,,,,,,,7,10,2,6,Small CCA,2027-04-01T00:00:00Z
-1,cca,,C01,Test CCA 01,,,,1x,Y,1st,3,,,,,,2027-04-01T00:00:00Z
-1,cca,,C02,Test CCA 02,,,,1x,Y,2nd,3,,,,,,2027-04-01T00:00:00Z
-1,cca,,C03,Test CCA 03,,,,1x,N,,,,,,,,2027-04-01T00:00:00Z
-1,cca,,C04,Test CCA 04,,,,1x,Y,3rd,3,,,,,,2027-04-01T00:00:00Z
-1,cca,,C05,Test CCA 05,,,,1x,Y,3rd4th_no_match,3,,,,,,2027-04-01T00:00:00Z
-1,cca,,C06,Test CCA 06,,,,1x,Y,2nd,3,,,,,,2027-04-01T00:00:00Z
-1,cca,,C07,Test CCA 07,,,,1x,N,,,,,,,,2027-04-01T00:00:00Z
-1,cca,,C08,Test CCA 08,,,,1x,Y,1st,3,,,,,,2027-04-01T00:00:00Z
-1,cca,,C09,Test CCA 09,,,,1x,N,,,,,,,,2027-04-01T00:00:00Z
-1,cca,,C10,Test CCA 10,,,,0.5x,N,,,,,,,,2027-04-01T00:00:00Z
-1,cca,,C11,Test CCA 11,,,,0.5x,N,,,,,,,,2027-04-01T00:00:00Z
-1,cca,,C12,Test CCA 12,,,,0.5x,N,,,,,,,,2027-04-01T00:00:00Z
-1,cca,,C13,Test Flat CCA 13,,,9,1x,N,,,,,,,,2027-04-01T00:00:00Z
-1,flat,,C13,Test Flat CCA 13,A9900010Z,Test Resident 010,9,,,,,,,,,,2027-04-01T00:00:00Z
-1,flat,,C13,Test Flat CCA 13,A9900011Z,Test Resident 011,9,,,,,,,,,,2027-04-01T00:00:00Z
-1,flat,,C13,Test Flat CCA 13,A9900012Z,Test Resident 012,9,,,,,,,,,,2027-04-01T00:00:00Z
-1,flat,,C13,Test Flat CCA 13,A9900013Z,Test Resident 013,9,,,,,,,,,,2027-04-01T00:00:00Z
-1,flat,,C13,Test Flat CCA 13,A9900014Z,Test Resident 014,9,,,,,,,,,,2027-04-01T00:00:00Z
-1,flat,,C13,Test Flat CCA 13,A9900015Z,Test Resident 015,9,,,,,,,,,,2027-04-01T00:00:00Z
-1,flat,,C13,Test Flat CCA 13,A9900016Z,Test Resident 016,9,,,,,,,,,,2027-04-01T00:00:00Z
-1,flat,,C13,Test Flat CCA 13,A9900017Z,Test Resident 017,9,,,,,,,,,,2027-04-01T00:00:00Z
+formatVersion,section,scope,ccaID,ccaName,matric,name,flatPoints,type,sport,ihgResult,ihgCap,meanMin,meanMax,sdMin,sdMax,note,aux,exportedAt
+2,settings,default,,,,,,,,,,10,14,2,5,,,2027-04-01T00:00:00Z
+2,settings,waiver,C03,Test CCA 03,,,,,,,,14,17,1,3,Small CCA,,2027-04-01T00:00:00Z
+2,settings,waiver,C07,Test CCA 07,,,,,,,,7,10,2,6,Small CCA,,2027-04-01T00:00:00Z
+2,cca,,C01,Test CCA 01,,,,1x,Y,1st,3,,,,,,,2027-04-01T00:00:00Z
+2,cca,,C02,Test CCA 02,,,,1x,Y,2nd,3,,,,,,,2027-04-01T00:00:00Z
+2,cca,,C03,Test CCA 03,,,,1x,N,,,,,,,,,2027-04-01T00:00:00Z
+2,cca,,C04,Test CCA 04,,,,1x,Y,3rd,3,,,,,,,2027-04-01T00:00:00Z
+2,cca,,C05,Test CCA 05,,,,1x,Y,3rd4th_no_match,3,,,,,,,2027-04-01T00:00:00Z
+2,cca,,C06,Test CCA 06,,,,1x,Y,2nd,3,,,,,,,2027-04-01T00:00:00Z
+2,cca,,C07,Test CCA 07,,,,1x,N,,,,,,,,,2027-04-01T00:00:00Z
+2,cca,,C08,Test CCA 08,,,,1x,Y,1st,3,,,,,,,2027-04-01T00:00:00Z
+2,cca,,C09,Test CCA 09,,,,1x,N,,,,,,,,,2027-04-01T00:00:00Z
+2,cca,,C10,Test CCA 10,,,,0.5x,N,,,,,,,,,2027-04-01T00:00:00Z
+2,cca,,C11,Test CCA 11,,,,0.5x,N,,,,,,,,,2027-04-01T00:00:00Z
+2,cca,,C12,Test CCA 12,,,,0.5x,N,,,,,,,,,2027-04-01T00:00:00Z
+2,cca,,C13,Test Flat CCA 13,,,9,1x,N,,,,,,,,,2027-04-01T00:00:00Z
+2,flat,,C13,Test Flat CCA 13,A9900010Z,Test Resident 010,9,,,,,,,,,,,2027-04-01T00:00:00Z
+2,flat,,C13,Test Flat CCA 13,A9900011Z,Test Resident 011,9,,,,,,,,,,,2027-04-01T00:00:00Z
+2,flat,,C13,Test Flat CCA 13,A9900012Z,Test Resident 012,9,,,,,,,,,,,2027-04-01T00:00:00Z
+2,flat,,C13,Test Flat CCA 13,A9900013Z,Test Resident 013,9,,,,,,,,,,,2027-04-01T00:00:00Z
+2,flat,,C13,Test Flat CCA 13,A9900014Z,Test Resident 014,9,,,,,,,,,,,2027-04-01T00:00:00Z
+2,flat,,C13,Test Flat CCA 13,A9900015Z,Test Resident 015,9,,,,,,,,,,,2027-04-01T00:00:00Z
+2,flat,,C13,Test Flat CCA 13,A9900016Z,Test Resident 016,9,,,,,,,,,,,2027-04-01T00:00:00Z
+2,flat,,C13,Test Flat CCA 13,A9900017Z,Test Resident 017,9,,,,,,,,,,,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900001Z,Test Resident 001,,,,,,,,,,,5,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900002Z,Test Resident 002,,,,,,,,,,,5,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900003Z,Test Resident 003,,,,,,,,,,,5,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900004Z,Test Resident 004,,,,,,,,,,,5,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900005Z,Test Resident 005,,,,,,,,,,,11,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900006Z,Test Resident 006,,,,,,,,,,,10,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900008Z,Test Resident 008,,,,,,,,,,,8,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900009Z,Test Resident 009,,,,,,,,,,,9,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900010Z,Test Resident 010,,,,,,,,,,,2,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900011Z,Test Resident 011,,,,,,,,,,,10,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900012Z,Test Resident 012,,,,,,,,,,,7,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900013Z,Test Resident 013,,,,,,,,,,,6,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900014Z,Test Resident 014,,,,,,,,,,,3,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900015Z,Test Resident 015,,,,,,,,,,,1,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900016Z,Test Resident 016,,,,,,,,,,,4,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900017Z,Test Resident 017,,,,,,,,,,,3,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900020Z,Test Resident 020,,,,,,,,,,,12,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900021Z,Test Resident 021,,,,,,,,,,,1,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900022Z,Test Resident 022,,,,,,,,,,,4,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900023Z,Test Resident 023,,,,,,,,,,,3,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900024Z,Test Resident 024,,,,,,,,,,,4,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900025Z,Test Resident 025,,,,,,,,,,,5,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900026Z,Test Resident 026,,,,,,,,,,,10,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900027Z,Test Resident 027,,,,,,,,,,,4,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900029Z,Test Resident 029,,,,,,,,,,,4,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900030Z,Test Resident 030,,,,,,,,,,,4,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900031Z,Test Resident 031,,,,,,,,,,,6,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900032Z,Test Resident 032,,,,,,,,,,,3,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900033Z,Test Resident 033,,,,,,,,,,,10,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900034Z,Test Resident 034,,,,,,,,,,,7,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900035Z,Test Resident 035,,,,,,,,,,,6,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900036Z,Test Resident 036,,,,,,,,,,,9,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900037Z,Test Resident 037,,,,,,,,,,,8,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900038Z,Test Resident 038,,,,,,,,,,,8,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900039Z,Test Resident 039,,,,,,,,,,,10,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900040Z,Test Resident 040,,,,,,,,,,,9,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900041Z,Test Resident 041,,,,,,,,,,,6,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900042Z,Test Resident 042,,,,,,,,,,,2,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900043Z,Test Resident 043,,,,,,,,,,,3,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900044Z,Test Resident 044,,,,,,,,,,,4,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900045Z,Test Resident 045,,,,,,,,,,,10,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900046Z,Test Resident 046,,,,,,,,,,,3,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900047Z,Test Resident 047,,,,,,,,,,,2,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900048Z,Test Resident 048,,,,,,,,,,,9,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900049Z,Test Resident 049,,,,,,,,,,,6,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900051Z,Test Resident 051,,,,,,,,,,,4,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900052Z,Test Resident 052,,,,,,,,,,,7,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900053Z,Test Resident 053,,,,,,,,,,,2,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900054Z,Test Resident 054,,,,,,,,,,,5,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900055Z,Test Resident 055,,,,,,,,,,,7,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900056Z,Test Resident 056,,,,,,,,,,,8,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900057Z,Test Resident 057,,,,,,,,,,,1,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900058Z,Test Resident 058,,,,,,,,,,,4,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900059Z,Test Resident 059,,,,,,,,,,,9,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900060Z,Test Resident 060,,,,,,,,,,,1,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900061Z,Test Resident 061,,,,,,,,,,,8,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900063Z,Test Resident 063,,,,,,,,,,,1,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900064Z,Test Resident 064,,,,,,,,,,,2,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900065Z,Test Resident 065,,,,,,,,,,,5,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900066Z,Test Resident 066,,,,,,,,,,,7,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900067Z,Test Resident 067,,,,,,,,,,,4,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900068Z,Test Resident 068,,,,,,,,,,,10,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900069Z,Test Resident 069,,,,,,,,,,,6,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900070Z,Test Resident 070,,,,,,,,,,,6,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900071Z,Test Resident 071,,,,,,,,,,,6,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900072Z,Test Resident 072,,,,,,,,,,,4,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900073Z,Test Resident 073,,,,,,,,,,,5,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900074Z,Test Resident 074,,,,,,,,,,,8,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900075Z,Test Resident 075,,,,,,,,,,,10,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900077Z,Test Resident 077,,,,,,,,,,,9,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900078Z,Test Resident 078,,,,,,,,,,,8,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900079Z,Test Resident 079,,,,,,,,,,,1,2027-04-01T00:00:00Z
+2,aux,AY2026/27,,,A9900080Z,Test Resident 080,,,,,,,,,,,9,2027-04-01T00:00:00Z

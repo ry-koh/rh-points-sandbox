@@ -9,7 +9,7 @@ export const AUX_PROBLEMS = {
 
 interface AuxChange {
   readonly matric: string
-  /** residents.csv's count, never the one on screen. */
+  /** The imported count (bundle or residents.csv), never the one on screen. */
   readonly fileValue: number
   readonly to: string
   readonly reason: string

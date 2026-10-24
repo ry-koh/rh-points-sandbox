@@ -71,6 +71,8 @@ export type IssueCode =
   | 'NO_LEADER_FILE'
   | 'SEMESTER_ONLY_ON_HALF_CCA'
   | 'AUX_ABOVE_CAP'
+  | 'AUX_NOT_A_RESIDENT'
+  | 'AUX_FROM_BUNDLE'
   | 'IHG_NON_MEMBER'
   | 'MANY_HALF_CCAS'
   | 'IHG_ON_FINAL_CCA'
@@ -171,10 +173,21 @@ export interface BundleCcaRow {
   readonly ihgCap: number | null
 }
 
+/** An `aux` row of the RH-app bundle (formatVersion 2, spec 2d): one resident's AUX count for the year. */
+export interface BundleAuxRow {
+  readonly line: number
+  /** The points year, e.g. AY2026/27; the same on every aux row. */
+  readonly scope: string
+  readonly matric: string
+  readonly name: string
+  readonly aux: number
+}
+
 export type BundleRow =
   | { readonly section: 'settings'; readonly row: SettingsRow }
   | { readonly section: 'cca'; readonly row: BundleCcaRow }
   | { readonly section: 'flat'; readonly row: FlatRow }
+  | { readonly section: 'aux'; readonly row: BundleAuxRow }
 
 /** A CCA as the loaded bundle lists it. */
 export type BundleCca = Omit<BundleCcaRow, 'line'>
@@ -183,6 +196,10 @@ export type BundleCca = Omit<BundleCcaRow, 'line'>
 export interface LoadedBundle {
   readonly fileName: string
   readonly exportedAt: string
+  /** 1 or 2; version 2 carries the AUX counts. */
+  readonly formatVersion: number
+  /** The year of the aux rows; null for a version-1 bundle or one with no aux rows. */
+  readonly auxYear: string | null
   /** Every cca row that parsed, in ccaID order. */
   readonly ccas: readonly BundleCca[]
 }
@@ -319,7 +336,10 @@ export interface ReviewReport {
   /** Empty while `auxUnchecked`. */
   readonly auxEdits: readonly CheckedAuxEdit[]
   readonly membershipEdits: readonly CheckedMembershipEdit[]
-  /** No residents file is loaded, so the AUX edits cannot be judged (never called stale). */
+  /**
+   * No residents file or no bundle is loaded, so the AUX edits cannot be judged (never called
+   * stale): a version-2 bundle carries the counts, so without one their source is unknown.
+   */
   readonly auxUnchecked: boolean
   readonly flats: readonly FlatTable[]
 }

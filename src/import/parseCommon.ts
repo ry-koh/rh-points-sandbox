@@ -15,6 +15,8 @@ const WARNING_CODES: ReadonlySet<IssueCode> = new Set<IssueCode>([
   'NO_LEADER_FILE',
   'SEMESTER_ONLY_ON_HALF_CCA',
   'AUX_ABOVE_CAP',
+  'AUX_NOT_A_RESIDENT',
+  'AUX_FROM_BUNDLE',
   'IHG_NON_MEMBER',
   'MANY_HALF_CCAS',
   'IHG_ON_FINAL_CCA',

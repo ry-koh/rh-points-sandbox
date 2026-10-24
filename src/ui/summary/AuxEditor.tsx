@@ -8,7 +8,7 @@ interface AuxEditorProps {
   readonly matric: string
   /** The count in use now. */
   readonly aux: number
-  /** residents.csv's count. */
+  /** The imported count (the bundle's, or residents.csv's with a version-1 bundle). */
   readonly auxFile: number
   readonly hasEdit: boolean
   readonly dispatch: Dispatch<Action>
@@ -62,7 +62,7 @@ export function AuxEditor({ matric, aux, auxFile, hasEdit, dispatch, onDone }: A
           <input value={reason} maxLength={MAX_REASON_LENGTH} onChange={(e) => setReason(e.target.value)} className={inputClass} />
         </label>
       </div>
-      <p className="mt-1 text-cap text-muted">residents.csv says {auxFile}.</p>
+      <p className="mt-1 text-cap text-muted">Imported count: {auxFile}.</p>
       {problem && <p role="alert" className="mt-1 text-cap text-error">{problem}</p>}
       <div className="mt-2 flex gap-2">
         <Button small variant="primary" onClick={save}>Save</Button>

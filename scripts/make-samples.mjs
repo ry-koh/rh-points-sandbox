@@ -22,6 +22,9 @@ const BUNDLE_COLS = [
   'formatVersion', 'section', 'scope', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints', 'type', 'sport',
   'ihgResult', 'ihgCap', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note', 'exportedAt',
 ]
+// The formatVersion-2 bundle header the RH app writes (spec 2d): `aux` before `exportedAt`.
+const BUNDLE_V2_COLS = [...BUNDLE_COLS.slice(0, -1), 'aux', 'exportedAt']
+const AUX_YEAR = 'AY2026/27'
 // The headers of the retired ccas.csv and ihg.csv, used only to show that the sandbox refuses such files.
 const RETIRED_CCA_COLS = ['ccaID', 'ccaName', 'type', 'placement', 'outgoingTier', 'outgoingMultiplier', 'meanMin', 'meanMax', 'sdMin', 'sdMax']
 const RETIRED_IHG_COLS = ['matric', 'ccaID', 'placement']
@@ -217,17 +220,26 @@ function flatRows(ccaID, value, members) {
   }))
 }
 
-/** The RH-app bundle (spec 2d): settings rows, then cca rows, then flat member rows. */
-function toBundleCsv(settings, ccas, flat) {
+/**
+ * The RH-app bundle (spec 2d): settings rows, then cca rows, then flat member rows. With `aux`
+ * (residents' { matric, name, aux }) it is version 2, ending with the non-zero counts by matric.
+ */
+function toBundleCsv(settings, ccas, flat, aux = null) {
   const ccaRow = (cca) => ({
     formatVersion: 1, section: 'cca', ccaID: cca.ccaID, ccaName: cca.ccaName, flatPoints: cca.flatPoints ?? '',
     type: cca.type, sport: cca.sport ?? 'N', ihgResult: cca.ihgResult ?? '', ihgCap: cca.ihgCap ?? '', exportedAt: EXPORTED_AT,
   })
-  return toCsv(BUNDLE_COLS, [
+  const rows = [
     ...settings.map((row) => ({ ...row, section: 'settings' })),
     ...ccas.map(ccaRow),
     ...flat.map((row) => ({ ...row, section: 'flat' })),
-  ])
+  ]
+  if (!aux) return toCsv(BUNDLE_COLS, rows)
+  const auxRows = aux
+    .filter((r) => r.aux > 0)
+    .sort((a, b) => (a.matric < b.matric ? -1 : a.matric > b.matric ? 1 : 0))
+    .map((r) => ({ formatVersion: 2, section: 'aux', scope: AUX_YEAR, matric: r.matric, name: r.name, aux: r.aux, exportedAt: EXPORTED_AT }))
+  return toCsv(BUNDLE_V2_COLS, [...rows.map((row) => ({ ...row, formatVersion: 2 })), ...auxRows])
 }
 
 function writeValid() {
@@ -242,7 +254,8 @@ function writeValid() {
     .filter((cca) => WAIVERS[cca.ccaID])
     .map((cca) => ({ ccaID: cca.ccaID, ccaName: cca.ccaName, range: { ...DEFAULT_RANGE, ...WAIVERS[cca.ccaID] } }))
   const flat = flatRows(FLAT_CCA_ID, FLAT_VALUE, FLAT_MEMBERS)
-  write(dir, 'points_bundle_20270401.csv', toBundleCsv(settingsRows(waivers), [...ccas, makeFlatCca()], flat))
+  // The bundle carries the AUX counts (version 2); residents.csv keeps the same counts, so they agree.
+  write(dir, 'points_bundle_20270401.csv', toBundleCsv(settingsRows(waivers), [...ccas, makeFlatCca()], flat, residents))
   // The sandbox's level table for the demo (entered in the sandbox, not an input file): one level per non-flat CCA.
   const levels = ccas.map((cca, i) => ({ ccaID: cca.ccaID, level: LEVELS[(i * 3) % LEVELS.length], bonusOverride: null, multiplierOverride: null }))
   write(dir, 'demo-levels.json', `${JSON.stringify(levels, null, 2)}\n`)

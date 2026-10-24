@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FILE_COLUMNS, LEADER_V1_COLUMNS, RETIRED_CCAS_COLUMNS, RETIRED_IHG_COLUMNS, detectFileKind } from '../detect'
+import { BUNDLE_V1_COLUMNS, FILE_COLUMNS, LEADER_V1_COLUMNS, RETIRED_CCAS_COLUMNS, RETIRED_IHG_COLUMNS, detectFileKind } from '../detect'
 
 const LEADER = [
   'formatVersion', 'ccaID', 'ccaName', 'matric', 'name',
@@ -11,8 +11,9 @@ const FLAT = ['formatVersion', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints
 const SETTINGS = ['formatVersion', 'scope', 'ccaID', 'ccaName', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note', 'exportedAt']
 const BUNDLE = [
   'formatVersion', 'section', 'scope', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints', 'type', 'sport',
-  'ihgResult', 'ihgCap', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note', 'exportedAt',
+  'ihgResult', 'ihgCap', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note', 'aux', 'exportedAt',
 ]
+const BUNDLE_V1 = BUNDLE.filter((col) => col !== 'aux')
 
 const reversed = (header: readonly string[]): string[] => [...header].reverse()
 
@@ -24,6 +25,7 @@ describe('detectFileKind', () => {
     ['flat', FLAT],
     ['settings', SETTINGS],
     ['bundle', BUNDLE],
+    ['bundle', BUNDLE_V1],
   ] as const)('recognises the %s header', (kind, header) => {
     expect(detectFileKind(header)).toBe(kind)
   })
@@ -34,13 +36,20 @@ describe('detectFileKind', () => {
     ['residents', RESIDENTS],
     ['flat', FLAT],
     ['bundle', BUNDLE],
+    ['bundle', BUNDLE_V1],
   ] as const)('recognises the %s header in any column order', (kind, header) => {
     expect(detectFileKind(reversed(header))).toBe(kind)
   })
 
-  it('the bundle has exactly the 18 columns the RH-app writes', () => {
+  it('bundle formatVersion 2 has the 19 columns the RH-app writes; version 1 is the same without aux', () => {
     expect(FILE_COLUMNS.bundle).toEqual(BUNDLE)
-    expect(FILE_COLUMNS.bundle.length).toBe(18)
+    expect(FILE_COLUMNS.bundle.length).toBe(19)
+    expect(BUNDLE_V1_COLUMNS).toEqual(BUNDLE_V1)
+  })
+
+  it('never accepts a bundle superset', () => {
+    expect(detectFileKind([...BUNDLE, 'extra'])).toBeNull()
+    expect(detectFileKind([...BUNDLE_V1, 'extra'])).toBeNull()
   })
 
   it('leader formatVersion 2 has the 11 columns the RH-app writes; version 1 is the same without ihg', () => {

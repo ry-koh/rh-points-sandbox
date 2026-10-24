@@ -1,4 +1,15 @@
-# RH Hall Points Spec — v2.5
+# RH Hall Points Spec — v2.6
+
+**Changes in v2.6**
+
+- 2(d): the RH-app bundle is **formatVersion 2**: a 19th column `aux` (before `exportedAt`) and an
+  `aux` section, one row per resident with AUX, carrying the year's counts the RH app tracked.
+  Version 1 (18 columns, no `aux`) is still read; `formatVersion` must match the columns.
+- 2(b): with a version-2 bundle the residents' AUX counts come from the bundle and residents.csv's
+  `aux` column is ignored (a resident with no `aux` row has 0). With a version-1 bundle the column
+  is used as before.
+- 6.7: AUX edits are judged against the count in use (the bundle's under version 2).
+- 7.4: new warnings `AUX_NOT_A_RESIDENT` and `AUX_FROM_BUNDLE`.
 
 **Changes in v2.5**
 
@@ -164,7 +175,7 @@ The RH app writes version 2; a file's `formatVersion` must match its columns.
 | `name` | string — the resident's **preferred name**, exactly as it should appear on the published lists |
 | `gender` | `M` / `F` |
 | `sem2` | `Y` / `N` |
-| `aux` | integer ≥ 0 |
+| `aux` | integer ≥ 0. Used only with a version-1 bundle: a version-2 bundle (2d) carries the counts and this column is ignored (`AUX_FROM_BUNDLE` when it holds other non-zero counts) |
 | `jcrc` | `N` / `FULL` / `EXCHANGE` (required; see 4.6). `FULL` or `EXCHANGE` together with `sem2` = `Y` is an error |
 
 ### (c) ihg.csv — retired
@@ -179,14 +190,19 @@ members on the Review step (6.4); the cap check uses the ticks after those edits
 
 Filename: `points_bundle_<YYYYMMDD>.csv`. UTF-8, CRLF line endings, RFC 4180 quoting, the
 apostrophe formula guard on `ccaName`, `name` and `note` (kept verbatim for display). One file
-carries the CCA list, the mean/SD ranges and the flat members. Header exactly (18 columns):
+carries the CCA list, the mean/SD ranges, the flat members and the AUX counts. The RH app writes
+**version 2**; header exactly (19 columns):
 
 ```
-formatVersion,section,scope,ccaID,ccaName,matric,name,flatPoints,type,sport,ihgResult,ihgCap,meanMin,meanMax,sdMin,sdMax,note,exportedAt
+formatVersion,section,scope,ccaID,ccaName,matric,name,flatPoints,type,sport,ihgResult,ihgCap,meanMin,meanMax,sdMin,sdMax,note,aux,exportedAt
 ```
+
+Version 1 is the same without the `aux` column and the `aux` section (18 columns) and is still read;
+with it the AUX counts come from residents.csv (2b).
 
 Rows come in this order: `settings` rows (the default row, then waivers by `ccaID`), `cca`
-rows (by `ccaID`), `flat` rows (by `ccaID`, members in the app's order). `formatVersion`,
+rows (by `ccaID`), `flat` rows (by `ccaID`, members in the app's order), then `aux` rows (by
+`matric`; version 2 only). `formatVersion`,
 `section` and `exportedAt` are filled on every row; every other column must be blank unless the
 row's section uses it (`BAD_BUNDLE_FILE`, naming the line and column).
 
@@ -195,6 +211,7 @@ row's section uses it (`BAD_BUNDLE_FILE`, naming the line and column).
 | `settings` | `scope`, `ccaID`, `ccaName`, `meanMin`, `meanMax`, `sdMin`, `sdMax`, `note` | as the settings file's rows (2g): exactly one `default` row, then `waiver` rows with the effective range |
 | `cca` | `ccaID`, `ccaName`, `flatPoints`, `type`, `sport`, `ihgResult`, `ihgCap` | one row per CCA, `ccaID` unique (`DUPLICATE_CCA`); at least one `cca` row |
 | `flat` | `ccaID`, `ccaName`, `matric`, `name`, `flatPoints` | as the flat-points file's rows (2e) |
+| `aux` | `scope`, `matric`, `name`, `aux` | version 2 only. `scope` is the points year (`AY2026/27`), the same on every `aux` row; `aux` is a whole number ≥ 0 (`BAD_AUX`); one row per matric (a later one is `BAD_BUNDLE_FILE` and ignored). Only residents with AUX have a row |
 
 | `cca` column | Type / allowed values |
 |---|---|
@@ -206,7 +223,10 @@ row's section uses it (`BAD_BUNDLE_FILE`, naming the line and column).
 | `ihgResult` | blank, or `1st` / `2nd` / `3rd` / `3rd4th_no_match`; only on a `sport` = `Y` row (`BAD_BUNDLE_FILE`) |
 | `ihgCap` | blank, or a whole number ≥ 1 (`BAD_IHG_CAP`, read as blank); only on a `sport` = `Y` row (`BAD_BUNDLE_FILE`) |
 
-`formatVersion` must equal `1` (`BAD_FORMAT_VERSION`). A file is detected by its header (or,
+`formatVersion` must be `1` or `2` and match the file's columns (`aux` column = `2`, none = `1`;
+`BAD_FORMAT_VERSION`). With version 2 each resident's AUX count is the bundle's, 0 when the resident
+has no `aux` row; an `aux` row for a matric that is not in residents.csv is ignored
+(`AUX_NOT_A_RESIDENT`). A file is detected by its header (or,
 failing that, a `points_bundle_` file name). The bundle is required (`MISSING_BUNDLE_FILE`);
 a second one is `DUPLICATE_BUNDLE_FILE`. It takes precedence over the standalone files: beside
 a bundle, a standalone settings (2g) or flat-points (2e) file is `DUPLICATE_SETTINGS_FILE` /
@@ -861,7 +881,9 @@ here. A count above the cap is allowed (`AUX_ABOVE_CAP` warns as before).
 auxEdit = { matric, from, to, reason, at }     from / to are whole-number counts
 ```
 
-`from` is the residents list's `aux` when the edit was made. Judged like every edit (6.4):
+`from` is the count in use when the edit was made: residents.csv's `aux`, or the bundle's with a
+version-2 bundle (2d). An edit made against residents.csv's count before the bundle carried the
+counts is stale if the bundle's differs. Judged like every edit (6.4):
 **applied** while the residents list still has `from` (the resident's `aux` becomes `to` before the
 engine), **changed** when it moved, **stale** when the resident is gone or a later edit replaces
 it; one per matric; the reason is optional (over 200 characters is `MISSING_REASON`); an AUX log
@@ -948,6 +970,8 @@ Shown, do not block.
 - a level entry for a CCA that is not in the bundle (the entry is ignored)
 - `semesterOnly` on a `0.5x` CCA (the tick is ignored)
 - `aux` above `auxCap`
+- an `aux` row in a version-2 bundle for someone not in residents.csv (ignored)
+- a version-2 bundle beside a residents.csv whose `aux` column holds other non-zero counts (the column is ignored)
 - IHG for a non-member when `ihgInSportNet` is on (engine only)
 - a sport with a leader file and no IHG result or cap (its ticks get no IHG points yet)
 - `ihg` ticks in a leader file of a CCA that is not a sport in the bundle (ignored)
@@ -1034,6 +1058,8 @@ leader files' ticks and the bundle (2c).
 | `IHG_NO_TICKS` | warning | a sport with an `ihgResult` and a cap whose leader file ticks nobody |
 | `SEMESTER_ONLY_ON_HALF_CCA` | warning | `semesterOnly` = `Y` on a `0.5x` CCA (ignored) |
 | `AUX_ABOVE_CAP` | warning | `aux` above `auxCap` |
+| `AUX_NOT_A_RESIDENT` | warning | (bundle version 2) an `aux` row for a matric not in residents.csv; the count is ignored |
+| `AUX_FROM_BUNDLE` | warning | (bundle version 2) residents.csv's `aux` column holds non-zero counts that differ from the bundle's; raised once, the column is ignored |
 | `IHG_NON_MEMBER` | warning | (engine) IHG entry for a CCA the resident is not in, only when `ihgInSportNet` is on; not raised by file import |
 | `MANY_HALF_CCAS` | warning | a resident has more than 10 `0.5x` memberships |
 | `SETTINGS_UNKNOWN_CCA` | warning | a waiver names a `ccaID` not in the bundle; the row is ignored |

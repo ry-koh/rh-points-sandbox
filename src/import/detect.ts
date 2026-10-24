@@ -3,6 +3,9 @@ import type { FileKind } from './types'
 /** The leader file's IHG tick column, added in formatVersion 2 (spec 2a). A column, not a file kind. */
 export const LEADER_IHG_COLUMN = 'ihg'
 
+/** The bundle's AUX count column, added in formatVersion 2 (spec 2d). A column, not a file kind. */
+export const BUNDLE_AUX_COLUMN = 'aux'
+
 /** Exact column names of each file kind (spec section 2). */
 export const FILE_COLUMNS: Readonly<Record<FileKind, readonly string[]>> = {
   leader: [
@@ -16,7 +19,7 @@ export const FILE_COLUMNS: Readonly<Record<FileKind, readonly string[]>> = {
   ],
   bundle: [
     'formatVersion', 'section', 'scope', 'ccaID', 'ccaName', 'matric', 'name', 'flatPoints', 'type', 'sport',
-    'ihgResult', 'ihgCap', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note', 'exportedAt',
+    'ihgResult', 'ihgCap', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note', BUNDLE_AUX_COLUMN, 'exportedAt',
   ],
 }
 
@@ -32,6 +35,9 @@ export const LEADER_V1_COLUMNS: readonly string[] = FILE_COLUMNS.leader.filter((
 /** The header of the retired ihg.csv (spec 2.2 and earlier). Not a file kind: it is only recognised to raise IHG_FILE_RETIRED. */
 export const RETIRED_IHG_COLUMNS: readonly string[] = ['matric', 'ccaID', 'placement']
 
+/** The formatVersion-1 bundle header (no `aux` column): still read as a bundle (spec 2d). */
+export const BUNDLE_V1_COLUMNS: readonly string[] = FILE_COLUMNS.bundle.filter((col) => col !== BUNDLE_AUX_COLUMN)
+
 const KINDS = Object.keys(FILE_COLUMNS) as FileKind[]
 
 /** True when the header has exactly these columns, in any order. */
@@ -42,5 +48,7 @@ export function headerMatches(header: readonly string[], columns: readonly strin
 /** A header matches a kind when it has exactly that kind's columns, in any order. */
 export function detectFileKind(header: readonly string[]): FileKind | null {
   const kind = KINDS.find((k) => headerMatches(header, FILE_COLUMNS[k])) ?? null
-  return kind ?? (headerMatches(header, LEADER_V1_COLUMNS) ? 'leader' : null)
+  if (kind) return kind
+  if (headerMatches(header, LEADER_V1_COLUMNS)) return 'leader'
+  return headerMatches(header, BUNDLE_V1_COLUMNS) ? 'bundle' : null
 }

@@ -1,5 +1,6 @@
 import type { IhgEntry, MeanSdRange, Membership, PipelineInput, Resident, ScenarioConfig } from '../engine'
 import { applyAuxEdits, type CheckedAuxEdit } from './auxEdits'
+import { withBundleAux, type BundleAux } from './bundleAux'
 import { ccaLevelFor, isBonusTweak, isMultiplierTweak, levelProblems, validateCcaLevelEntry } from './ccaLevels'
 import {
   checkFlatFile,
@@ -21,7 +22,7 @@ import { applyFlatEdits, type CheckedFlatEdit } from './flatEdits'
 import { FILE_COLUMNS, RETIRED_CCAS_COLUMNS, RETIRED_IHG_COLUMNS, detectFileKind, headerMatches } from './detect'
 import { buildIhgFromTicks } from './ihgTicks'
 import { applyMembershipEdits } from './membershipEdits'
-import { parseBundle } from './parseBundle'
+import { bundleVersionOf, parseBundle } from './parseBundle'
 import { parseFlat } from './parseFlat'
 import { makeIssue } from './parseCommon'
 import { parseLeader } from './parseLeader'
@@ -179,10 +180,13 @@ function readSettings(settings: Loaded<SettingsRow> | null): LoadedSettings | nu
   return { fileName: settings.fileName, exportedAt: fallback.exportedAt, defaultRange: fallback.range, waivers }
 }
 
-/** The bundle split into its three parts: settings rows, flat member rows and the CCA list. */
+/** The bundle split into its parts: settings rows, flat member rows, the CCA list and (version 2) the AUX counts. */
 interface SplitBundle {
   readonly fileName: string
   readonly exportedAt: string
+  readonly formatVersion: number
+  /** null for a version-1 bundle: the AUX counts then come from residents.csv. */
+  readonly aux: BundleAux | null
   readonly settings: Loaded<SettingsRow>
   readonly flat: FlatFile
   readonly ccas: ParseResult<BundleCcaRow>
@@ -198,9 +202,13 @@ function splitBundle(classified: readonly Classified[], issues: Issue[]): SplitB
   const settingsRows = pick('settings')
   const flatRows: FlatRow[] = pick('flat')
   const waiverIDs = settingsRows.filter((r) => r.scope === 'waiver').map((r) => r.ccaID)
+  const formatVersion = bundleVersionOf(found.csv.header)
+  const auxRows = pick('aux')
   return {
     fileName,
     exportedAt: found.csv.rows[0]?.cells[found.csv.header.indexOf('exportedAt')] ?? '',
+    formatVersion,
+    aux: formatVersion === 1 ? null : { fileName, year: auxRows[0]?.scope ?? null, rows: auxRows },
     settings: { fileName, result: { rows: settingsRows, seenKeys: waiverIDs, issues: result.issues } },
     flat: { fileName, result: { rows: flatRows, seenKeys: [...new Set(flatRows.map((r) => r.ccaID))], issues: [] } },
     ccas: { rows: pick('cca'), seenKeys: result.seenKeys, issues: [] },
@@ -415,7 +423,13 @@ const byCcaID = (a: BundleCca, b: BundleCca): number => a.ccaID.localeCompare(b.
 function loadedBundle(bundle: SplitBundle | null): LoadedBundle | null {
   if (!bundle) return null
   const ccas = bundle.ccas.rows.map(({ line: _line, ...cca }): BundleCca => cca).sort(byCcaID)
-  return { fileName: bundle.fileName, exportedAt: bundle.exportedAt, ccas }
+  return {
+    fileName: bundle.fileName,
+    exportedAt: bundle.exportedAt,
+    formatVersion: bundle.formatVersion,
+    auxYear: bundle.aux?.year ?? null,
+    ccas,
+  }
 }
 
 /** Adds what the bundle, the level table and the leader file say about a CCA to its stats. */
@@ -472,12 +486,17 @@ export function validateImport(
   issues.push(...fileLevelIssues(classified))
   issues.push(...levelProblems(config))
   const fileResidents = loadFirst(classified, 'residents', parseResidents, issues)
-  // AUX edits first, so AUX_ABOVE_CAP and the engine see the edited counts (R11).
-  const aux = fileResidents ? applyAuxEdits(fileResidents.result.rows, sandbox.auxEdits ?? []) : null
+  const bundle = splitBundle(classified, issues)
+  // A version-2 bundle's AUX counts replace residents.csv's before the AUX edits are judged.
+  const fromBundle =
+    fileResidents && bundle?.aux ? withBundleAux(fileResidents.result.rows, fileResidents.fileName, bundle.aux) : null
+  if (fromBundle) issues.push(...fromBundle.issues)
+  // AUX edits next, so AUX_ABOVE_CAP and the engine see the edited counts (R11).
+  const counted = fromBundle?.rows ?? fileResidents?.result.rows
+  const aux = counted ? applyAuxEdits(counted, sandbox.auxEdits ?? []) : null
   const residents: Loaded<ResidentRow> | null =
     fileResidents && aux ? { ...fileResidents, result: { ...fileResidents.result, rows: aux.rows } } : null
   const auxEdits: CheckedAuxEdit[] = aux?.edits ?? []
-  const bundle = splitBundle(classified, issues)
   // A standalone settings or flat file is only read when there is no bundle (it is a duplicate beside one).
   const settingsSource = bundle ? bundle.settings : loadFirst(classified, 'settings', parseSettings, issues)
   const flatFile = bundle ? bundle.flat : loadFirst(classified, 'flat', parseFlat, issues)

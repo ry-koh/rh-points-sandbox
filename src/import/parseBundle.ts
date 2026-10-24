@@ -1,12 +1,13 @@
 import { CCA_TYPES, IHG_PLACEMENTS, RowReader, makeIssue, wellShapedRows } from './parseCommon'
+import { BUNDLE_AUX_COLUMN } from './detect'
 import { readFlatRow } from './parseFlat'
 import { defaultRowIssues, newSettingsState, readSettingsRow } from './parseSettings'
-import type { BundleCcaRow, BundleRow, Issue, ParsedCsv, ParseResult } from './types'
+import type { BundleAuxRow, BundleCcaRow, BundleRow, Issue, ParsedCsv, ParseResult } from './types'
 
-/** The bundle's own format version (spec 2d); independent of the leader, flat and settings files. */
-export const BUNDLE_FORMAT_VERSION = 1
+/** The bundle's own format version (spec 2d); independent of the leader, flat and settings files. Version 1 is still read. */
+export const BUNDLE_FORMAT_VERSION = 2
 
-const SECTIONS = ['settings', 'cca', 'flat'] as const
+const SECTIONS = ['settings', 'cca', 'flat', 'aux'] as const
 type Section = (typeof SECTIONS)[number]
 
 /** Columns every row may fill, whatever its section. */
@@ -17,6 +18,15 @@ export const SECTION_COLUMNS: Readonly<Record<Section, readonly string[]>> = {
   settings: ['scope', 'ccaID', 'ccaName', 'meanMin', 'meanMax', 'sdMin', 'sdMax', 'note'],
   cca: ['ccaID', 'ccaName', 'flatPoints', 'type', 'sport', 'ihgResult', 'ihgCap'],
   flat: ['ccaID', 'ccaName', 'matric', 'name', 'flatPoints'],
+  aux: ['scope', 'matric', 'name', 'aux'],
+}
+
+/** A points year as RH-app writes it, e.g. AY2026/27. */
+const POINTS_YEAR = /^AY\d{4}\/\d{2}$/
+
+/** The version a bundle's columns are: 2 with the `aux` column, 1 without it. */
+export function bundleVersionOf(header: readonly string[]): number {
+  return header.includes(BUNDLE_AUX_COLUMN) ? 2 : 1
 }
 
 const IHG_COLUMNS = ['ihgResult', 'ihgCap'] as const
@@ -73,38 +83,81 @@ function readCcaRow(fileName: string, read: RowReader, issues: Issue[]): BundleC
   }
 }
 
+/** What the aux rows seen so far have fixed: their year and their matrics. */
+interface AuxState {
+  scope: string | null
+  readonly matrics: Set<string>
+}
+
+/** One `aux` row: a matric, a whole number of 0 or more, and the same year as every other aux row. */
+function readAuxRow(fileName: string, read: RowReader, issues: Issue[], state: AuxState): BundleAuxRow | null {
+  const row: BundleAuxRow = {
+    line: read.line,
+    scope: read.text('scope'),
+    matric: read.matric('matric'),
+    name: read.text('name'),
+    aux: read.int('aux', 'BAD_AUX', { min: 0, expect: 'a whole number of 0 or more' }),
+  }
+  if (!POINTS_YEAR.test(row.scope)) {
+    issues.push(badCell(fileName, read, 'scope', `an aux row's scope must be a points year like AY2026/27 (it has "${row.scope}").`))
+    return null
+  }
+  if (state.scope !== null && row.scope !== state.scope) {
+    issues.push(badCell(fileName, read, 'scope', `every aux row must be for the same year; this one says ${row.scope}, the first said ${state.scope}.`))
+    return null
+  }
+  if (read.failed) return null
+  if (state.matrics.has(row.matric)) {
+    const text = `${row.matric} has more than one aux row; the later row is ignored.`
+    issues.push(makeIssue('BAD_BUNDLE_FILE', fileName, text, { line: read.line, column: 'matric', matric: row.matric }))
+    return null
+  }
+  // The year is fixed by the first row that is kept, so a dropped row cannot set it.
+  state.scope = row.scope
+  state.matrics.add(row.matric)
+  return row
+}
+
 /**
  * Parses the RH-app bundle (spec 2d): `settings` rows (read as the settings file's rows), `cca`
  * rows (the CCA list with type, sport and IHG result / cap) and `flat` rows (read as the
- * flat-points file's rows). `seenKeys` lists the cca rows' ccaIDs in first-seen order, even rows
- * dropped for a bad field. A rejected row is dropped; the issues say why.
+ * flat-points file's rows) and, in version 2, `aux` rows (each resident's AUX count). `seenKeys`
+ * lists the cca rows' ccaIDs in first-seen order, even rows dropped for a bad field. A rejected row is dropped; the issues say why.
  */
 export function parseBundle(fileName: string, csv: ParsedCsv): ParseResult<BundleRow> {
   const issues: Issue[] = []
   const rows: BundleRow[] = []
   const ccaIDs: string[] = []
   const settings = newSettingsState()
+  const aux: AuxState = { scope: null, matrics: new Set() }
+  const expected = bundleVersionOf(csv.header)
   let versionReported = false
   let ccaRows = 0
   for (const row of wellShapedRows(fileName, csv, issues)) {
     const read = new RowReader(fileName, csv.header, row, issues)
     const version = read.text('formatVersion')
-    if (version !== String(BUNDLE_FORMAT_VERSION)) {
+    if (version !== String(expected)) {
       if (!versionReported) {
-        const text = `formatVersion "${version}" is not supported; this tool reads version ${BUNDLE_FORMAT_VERSION}.`
+        const text = `formatVersion "${version}" does not match the file's columns, which are version ${expected} (this tool reads versions 1 and ${BUNDLE_FORMAT_VERSION}).`
         issues.push(makeIssue('BAD_FORMAT_VERSION', fileName, text, { line: row.line, column: 'formatVersion' }))
         versionReported = true
       }
       continue
     }
     const section = read.text('section')
-    if (!isSection(section)) {
-      issues.push(badCell(fileName, read, 'section', `section "${section}" must be one of: ${SECTIONS.join(', ')}.`))
+    const sections: readonly Section[] = expected === 1 ? SECTIONS.filter((s) => s !== 'aux') : SECTIONS
+    if (!isSection(section) || !sections.includes(section)) {
+      issues.push(badCell(fileName, read, 'section', `section "${section}" must be one of: ${sections.join(', ')}.`))
       continue
     }
     issues.push(...strayCells(fileName, csv.header, read, section))
     if (section === 'settings') {
       const parsed = readSettingsRow(read, fileName, issues, settings)
+      if (parsed) rows.push({ section, row: parsed })
+      continue
+    }
+    if (section === 'aux') {
+      const parsed = readAuxRow(fileName, read, issues, aux)
       if (parsed) rows.push({ section, row: parsed })
       continue
     }

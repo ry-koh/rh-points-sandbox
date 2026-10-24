@@ -29,7 +29,7 @@ Drop all files at once on the Import screen. A file with the same name replaces 
 
 | File | Who makes it | Columns |
 |---|---|---|
-| `points_bundle_<YYYYMMDD>.csv` | JCRC (RH app, "Download sandbox bundle") | formatVersion, section, scope, ccaID, ccaName, matric, name, flatPoints, type, sport, ihgResult, ihgCap, meanMin, meanMax, sdMin, sdMax, note, exportedAt |
+| `points_bundle_<YYYYMMDD>.csv` | JCRC (RH app, "Download sandbox bundle") | formatVersion, section, scope, ccaID, ccaName, matric, name, flatPoints, type, sport, ihgResult, ihgCap, meanMin, meanMax, sdMin, sdMax, note, aux, exportedAt (formatVersion 2, with an `aux` section carrying the AUX counts; formatVersion 1, without `aux`, is still read) |
 | `points_<ccaID>_<YYYYMMDD>.csv` | each CCA leader (RH app) | formatVersion (2), ccaID, ccaName, matric, name, basePoints, semesterOnly, outgoingRole, incomingRole, ihg, exportedAt (formatVersion 1, without `ihg`, is still read) |
 | `residents.csv` | JCRC | matric, name (preferred name, as published), gender, sem2, aux, jcrc (N / FULL / EXCHANGE) |
 | `flat_points_<YYYYMMDD>.csv` | JCRC (RH app) | older export, superseded by the bundle |

@@ -30,7 +30,7 @@ export interface SummaryMembership {
   readonly flatFile: number | null
 }
 
-/** How an AUX edit was judged against residents.csv. */
+/** How an AUX edit was judged against the imported count. */
 export type AuxEditState = 'applied' | 'changed' | 'stale'
 
 export interface SummaryRow {
@@ -40,7 +40,7 @@ export interface SummaryRow {
   readonly sem2: boolean
   /** The AUX count in use (an input), not AUX points. */
   readonly aux: number
-  /** residents.csv's count. */
+  /** The imported count (the bundle's, or residents.csv's with a version-1 bundle). */
   readonly auxFile: number
   readonly auxEdit: AuxEditState | null
   readonly jcrc: JcrcStatus

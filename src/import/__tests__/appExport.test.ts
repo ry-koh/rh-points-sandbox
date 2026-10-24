@@ -18,11 +18,29 @@ const run = (files: readonly SourceFile[], ccaLevels: readonly CcaLevelEntry[] =
 
 // Contract test for the RH-app bundle: samples/app-export/bundle/points_bundle_20270401.csv is
 // byte-for-byte what RH-app's buildBundleCsv writes (src/lib/points/bundleCsv.ts there; its test
-// pins the same string): 18 columns, CRLF with a trailing CRLF, settings rows, then cca rows
-// (type, sport, IHG result and cap), then flat rows, the apostrophe formula guard on free text,
+// pins the same string): formatVersion 2, 19 columns, CRLF with a trailing CRLF, settings rows,
+// then cca rows (type, sport, IHG result and cap), then flat rows, then aux rows (by matric), the apostrophe formula guard on free text,
 // a blank type (9002) and one ISO exportedAt on every row. If the app's bytes change, change both.
 const STAMP = '2027-04-01T09:30:00.000Z'
 const BUNDLE_TEXT =
+  [
+    'formatVersion,section,scope,ccaID,ccaName,matric,name,flatPoints,type,sport,ihgResult,ihgCap,meanMin,meanMax,sdMin,sdMax,note,aux,exportedAt',
+    `2,settings,default,,,,,,,,,,10,14,2,5,,,${STAMP}`,
+    `2,settings,waiver,9101,"Drama, Film & Theatre",,,,,,,,12,15,1.5,5,Small CCA (<10 members),,${STAMP}`,
+    `2,cca,,9001,Hall Choir,,,12,1x,N,,,,,,,,,${STAMP}`,
+    `2,cca,,9002,"'=Dance, Crew",,,7.5,,N,,,,,,,,,${STAMP}`,
+    `2,cca,,9101,"Drama, Film & Theatre",,,,1x,N,,,,,,,,,${STAMP}`,
+    `2,cca,,9201,Soccer (M),,,,1x,Y,1st,12,,,,,,,${STAMP}`,
+    `2,cca,,9202,Touch Rugby (W),,,,1x,Y,,,,,,,,,${STAMP}`,
+    `2,flat,,9001,Hall Choir,A9910101X,"Tan, Test 01",12,,,,,,,,,,,${STAMP}`,
+    `2,flat,,9001,Hall Choir,A9910102X,Test Member 02,12,,,,,,,,,,,${STAMP}`,
+    `2,flat,,9002,"'=Dance, Crew",A9910103X,'@Test 03,7.5,,,,,,,,,,,${STAMP}`,
+    `2,aux,AY2026/27,,,A9910104X,'=Test 04,,,,,,,,,,,1,${STAMP}`,
+    `2,aux,AY2026/27,,,A9910105X,"Lim, Test 05",,,,,,,,,,,3,${STAMP}`,
+  ].join('\r\n') + '\r\n'
+
+// The version-1 bytes RH-app wrote before the aux section: still read, AUX counts from residents.csv.
+const BUNDLE_V1_TEXT =
   [
     'formatVersion,section,scope,ccaID,ccaName,matric,name,flatPoints,type,sport,ihgResult,ihgCap,meanMin,meanMax,sdMin,sdMax,note,exportedAt',
     `1,settings,default,,,,,,,,,,10,14,2,5,,${STAMP}`,
@@ -79,6 +97,8 @@ describe('RH-app bundle imports cleanly', () => {
     expect(report.bundle).toEqual({
       fileName: 'points_bundle_20270401.csv',
       exportedAt: STAMP,
+      formatVersion: 2,
+      auxYear: 'AY2026/27',
       ccas: [
         { ccaID: '9001', ccaName: 'Hall Choir', flatPoints: 12, type: '1x', isSport: false, ihgResult: null, ihgCap: null },
         { ccaID: '9002', ccaName: "'=Dance, Crew", flatPoints: 7.5, type: null, isSport: false, ihgResult: null, ihgCap: null },
@@ -97,6 +117,18 @@ describe('RH-app bundle imports cleanly', () => {
     expect(netOf('A9910101X', '9001')).toMatchObject({ stayNet: 12, bidNet: 12 })
     expect(netOf('A9910102X', '9001')).toMatchObject({ stayNet: 12, bidNet: 12 })
     expect(netOf('A9910103X', '9002')).toMatchObject({ stayNet: 7.5, bidNet: 7.5 })
+  })
+
+  it("takes each resident's AUX count from the bundle", () => {
+    const auxOf = (matric: string) => report.input?.residents.find((r) => r.matric === matric)?.aux
+    expect(['A9910104X', 'A9910105X', 'A9910101X'].map(auxOf)).toEqual([1, 3, 0])
+  })
+
+  it('still reads the version-1 bundle, with the AUX counts from residents.csv', () => {
+    const v1 = run(bundleFiles.map((f) => (f === bundle ? { ...f, text: BUNDLE_V1_TEXT } : f)))
+    expect(v1.issues.filter((i) => i.severity === 'error')).toEqual([])
+    expect(v1.bundle).toMatchObject({ formatVersion: 1, auxYear: null })
+    expect(v1.input?.residents.find((r) => r.matric === 'A9910105X')?.aux).toBe(0)
   })
 
   it('needs the bundle: without it, MISSING_BUNDLE_FILE', () => {
